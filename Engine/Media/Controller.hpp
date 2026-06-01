@@ -18,6 +18,7 @@
 
 extern "C" {
 #include <libavutil/opt.h>
+#include <libavutil/channel_layout.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
@@ -86,7 +87,7 @@ public:
 		}
 		static void reg();
 		static AVPixelFormat init(AVCodecContext *context, const AVPixelFormat *format);
-		static AVCodec *findDecoder(AVCodecContext *context);
+		static const AVCodec *findDecoder(AVCodecContext *context);
 		static void deinit(AVCodecContext *context);
 		static AVFrame *process(AVFrame *hwFrame, AVFrame *&tmpFrame);
 	};
@@ -102,8 +103,8 @@ protected:
 	struct AudioSpec {
 		int init(const SDL_AudioSpec &spec);
 		AVSampleFormat format{AV_SAMPLE_FMT_S16};
-		int64_t channelLayout{AV_CH_LAYOUT_STEREO};
-		int8_t channels{2};
+		AVChannelLayout channelLayout{};
+		int channels{2};
 		int32_t frequency{48000};
 	};
 
@@ -165,27 +166,23 @@ protected:
 		friend class MediaDemux;
 
 	protected:
-		enum class CacheRead {
-			None,
-			Started,
-			Finished
-		};
-
 		int64_t debugFrameNumber{-1};
 
 		AVCodecContext *codecContext{nullptr}; // ff codec context
-		AVCodec *codec{nullptr};               // ff codec
+		const AVCodec *codec{nullptr};         // ff codec
 		AVFrame *frame{nullptr};               // ff frame
 
 		int stream;
 
-		Decoder(AVCodecContext *context, AVCodec *codec, int stream)
+		Decoder(AVCodecContext *context, const AVCodec *codec, int stream)
 		    : codecContext(context), codec(codec), stream(stream) {}
 
-		int decodeFrameFromPacket(bool &frameFinished, AVPacket *packet);
+		bool enqueueFrame(MediaEntries index, std::unique_ptr<MediaFrame> frame);
+		bool receiveAvailableFrames(MediaEntries index);
+		bool sendPacket(MediaEntries index, AVPacket *packet);
 
 	private:
-		static AVCodec *findCodec(AVCodecContext *);
+		static const AVCodec *findCodec(AVCodecContext *);
 
 	public:
 		std::atomic<bool> shouldFinish{false};
@@ -200,19 +197,19 @@ protected:
 			}
 
 			if (codecContext) {
-				avcodec_close(codecContext);
-				//codecContext = nullptr;
-				//codec = nullptr;
+				avcodec_free_context(&codecContext);
+				codec = nullptr;
 			}
 		}
 
 		template <class T>
 		static std::unique_ptr<Decoder> create(AVCodecContext *context = nullptr, int stream = -1) {
-			AVCodec *codec = context ? findCodec(context) : nullptr;
+			const AVCodec *codec = context ? findCodec(context) : nullptr;
 
 			if (!context || codec)
 				return std::make_unique<T>(context, codec, stream);
 
+			avcodec_free_context(&context);
 			return {};
 		}
 	};
@@ -222,7 +219,7 @@ protected:
 		SwrContext *swrContext{nullptr};
 
 	public:
-		AudioDecoder(AVCodecContext *context, AVCodec *codec, int stream)
+		AudioDecoder(AVCodecContext *context, const AVCodec *codec, int stream)
 		    : Decoder(context, codec, stream) {
 			frame = av_frame_alloc();
 			av_frame_unref(frame);
@@ -251,7 +248,7 @@ protected:
 
 	public:
 		void processFrame(MediaFrame &vf) override;
-		VideoDecoder(AVCodecContext *context, AVCodec *codec, int stream)
+		VideoDecoder(AVCodecContext *context, const AVCodec *codec, int stream)
 		    : Decoder(context, codec, stream) {
 			frame = av_frame_alloc();
 			av_frame_unref(frame);
@@ -281,7 +278,7 @@ protected:
 		void processFrame(MediaFrame &frame) override;
 
 	public:
-		SubtitleDecoder(AVCodecContext *context, AVCodec *codec, int stream)
+		SubtitleDecoder(AVCodecContext *context, const AVCodec *codec, int stream)
 		    : Decoder(context, codec, stream) {}
 		~SubtitleDecoder() override {
 			subtitleDriver.deinit();
@@ -306,7 +303,6 @@ private:
 #endif
 	static constexpr size_t AudioPacketBufferSize = VideoPacketBufferSize * 2;
 
-	static int lockManager(void **mutex, AVLockOp op);
 	static void logLine(void *inst, int level, const char *fmt, va_list args);
 
 	std::unique_ptr<Decoder> findDecoder(AVMediaType type, unsigned streamNumber = 1, AVCodecID restrictCodecId = AV_CODEC_ID_NONE);

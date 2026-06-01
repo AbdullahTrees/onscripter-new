@@ -45,7 +45,7 @@ AVPacket *MediaProcController::MediaDemux::obtainPacket(MediaEntries index, bool
 		packet = packetQueue[index].front();
 		packetQueue[index].pop_front();
 		SDL_SemPost(packetQueueSemSpaces[index]);
-		cacheReadStarted = (packetQueue[index].size() == 1 && packetQueue[index].back() == nullptr);
+		cacheReadStarted = packet == nullptr;
 	}
 	return packet;
 }
@@ -71,10 +71,9 @@ void MediaProcController::MediaDemux::demultiplexStreams(long double videoTimeBa
 
 		SDL_AtomicUnlock(&async.loadPacketArraysQueue.resultsLock);
 
-		media.getVideoTimecodes(counter, packet, videoTimeBase);
-
 		MediaEntries entry = InvalidEntry;
-		if (!(packet->flags & AV_PKT_FLAG_CORRUPT)) {
+		if (read_result >= 0 && !(packet->flags & AV_PKT_FLAG_CORRUPT)) {
+			media.getVideoTimecodes(counter, packet, videoTimeBase);
 			for (auto &e : {VideoEntry, AudioEntry, SubsEntry}) {
 				if (packet->stream_index == streamIds[e]) {
 					entry = e;
@@ -110,35 +109,31 @@ void MediaProcController::MediaDemux::pushPacket(MediaEntries id, AVPacket *pack
 		//seek_res = avformat_seek_file(media.formatContext, streamIds[VideoEntry], INT64_MIN, 0, INT64_MAX, 0);
 	}
 
-	if (id == InvalidEntry) {
-		av_packet_unref(packet);
+	if (read_result < 0) {
 		av_packet_free(&packet);
-	}
 
-	// Looks like the last packet returned by libav has incorrect values for some videos, start flush immediately
-	if (read_result < 0 && packet && id != SubsEntry) {
-		packet->size = 0;
-		packet->data = nullptr;
+		if (!media.loopVideo || seek_res < 0) {
+			Lock lock1(&packetQueue[VideoEntry]);
+			Lock lock2(&packetQueue[AudioEntry]);
+			packetQueue[VideoEntry].push_back(nullptr);
+			if (media.hasStream(AudioEntry))
+				packetQueue[AudioEntry].push_back(nullptr);
+			SDL_SemPost(packetQueueSemData[VideoEntry]);
+			if (media.hasStream(AudioEntry))
+				SDL_SemPost(packetQueueSemData[AudioEntry]);
+			demultiplexingComplete = true;
+		}
+
+		SDL_AtomicUnlock(&async.loadPacketArraysQueue.resultsLock);
+		return;
 	}
 
 	//if (packet)
 	//	sendToLog(LogLevel::Info, "PKT %d dts %lld pts %lld\n",id,packet->dts,packet->pts);
 
-	if ((read_result < 0 && !media.loopVideo) || (read_result < 0 && media.loopVideo && seek_res < 0)) {
-		Lock lock1(&packetQueue[VideoEntry]);
-		Lock lock2(&packetQueue[AudioEntry]);
-		if (packet && id == SubsEntry) {
-			if (packet->buf && packet->buf->size > 0) {
-				media.processSubsData(reinterpret_cast<char *>(packet->buf->data), packet->buf->size);
-			}
-		} else if (packet) {
-			packetQueue[id].push_back(packet);
-		}
-		packetQueue[VideoEntry].push_back(nullptr);
-		if (media.hasStream(AudioEntry))
-			packetQueue[AudioEntry].push_back(nullptr);
-		demultiplexingComplete = true;
-	} else if (id >= 0 && id != SubsEntry) {
+	if (id == InvalidEntry) {
+		av_packet_free(&packet);
+	} else if (id != SubsEntry) {
 		Lock lock(&packetQueue[id]);
 		packetQueue[id].push_back(packet);
 	} else if (id >= 0 && packet && packet->buf && packet->buf->size > 0) {

@@ -30,7 +30,7 @@ static AVPixelFormat init(AVCodecContext *context, const AVPixelFormat *format) 
 	return MediaProcController::HardwareDecoderIFace::defaultFormat(format);
 }
 
-static AVCodec *findDecoder(AVCodecContext *) {
+static const AVCodec *findDecoder(AVCodecContext *) {
 	return nullptr;
 }
 
@@ -170,7 +170,7 @@ static AVPixelFormat init(AVCodecContext *context, const AVPixelFormat *format) 
 	return MediaProcController::HardwareDecoderIFace::defaultFormat(format);
 }
 
-static AVCodec *findDecoder(AVCodecContext *context) {
+static const AVCodec *findDecoder(AVCodecContext *context) {
 	switch (context->codec_id) {
 		case AV_CODEC_ID_H264:
 			return avcodec_find_decoder_by_name("h264_mediacodec");
@@ -201,18 +201,40 @@ static AVFrame *process(AVFrame *dFrame, AVFrame *&tempFrame) {
 
 const std::unordered_set<int> MediaProcController::HardwareDecoderIFace::hardwareAcceleratedFormats {
 #if defined(LINUX)
+#ifdef AV_PIX_FMT_VDPAU_H264
 	AV_PIX_FMT_VDPAU_H264,
+#endif
+#ifdef AV_PIX_FMT_VDPAU_MPEG1
 	AV_PIX_FMT_VDPAU_MPEG1,
+#endif
+#ifdef AV_PIX_FMT_VDPAU_MPEG2
 	AV_PIX_FMT_VDPAU_MPEG2,
+#endif
+#ifdef AV_PIX_FMT_VDPAU_WMV3
 	AV_PIX_FMT_VDPAU_WMV3,
+#endif
+#ifdef AV_PIX_FMT_VDPAU_VC1
 	AV_PIX_FMT_VDPAU_VC1,
+#endif
+#ifdef AV_PIX_FMT_VDPAU
 	AV_PIX_FMT_VDPAU,
+#endif
+#ifdef AV_PIX_FMT_VAAPI_MOCO
 	AV_PIX_FMT_VAAPI_MOCO,
+#endif
+#ifdef AV_PIX_FMT_VAAPI_IDCT
 	AV_PIX_FMT_VAAPI_IDCT,
+#endif
+#ifdef AV_PIX_FMT_VAAPI
 	AV_PIX_FMT_VAAPI,
+#endif
 #elif defined(WIN32)
+#ifdef AV_PIX_FMT_DXVA2_VLD
 	AV_PIX_FMT_DXVA2_VLD,
+#endif
+#ifdef AV_PIX_FMT_D3D11VA_VLD
 	AV_PIX_FMT_D3D11VA_VLD,
+#endif
 #elif defined(IOS) || defined(MACOSX)
 #ifdef AV_PIX_FMT_VDA_VLD
 	// VDA support is disabled in our builds, and ffmpeg 4.x has it removed.
@@ -248,7 +270,7 @@ AVPixelFormat MediaProcController::HardwareDecoderIFace::init(AVCodecContext *co
 #endif
 }
 
-AVCodec *MediaProcController::HardwareDecoderIFace::findDecoder(AVCodecContext *context) {
+const AVCodec *MediaProcController::HardwareDecoderIFace::findDecoder(AVCodecContext *context) {
 #if defined(IOS) || defined(MACOSX)
 	return HardwareDecoderVT::findDecoder(context);
 #elif defined(DROID)

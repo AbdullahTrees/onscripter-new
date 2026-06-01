@@ -19,11 +19,9 @@ extern "C" {
 //Should be noticed that this function works approximately, because the timeCodes received are taken before decoding
 long double MediaProcController::VideoDecoder::getVideoFramerate(bool &isVFR, bool &isCorrupted) {
 
-	long double fromTimeBase = av_q2d(codecContext->time_base) * codecContext->ticks_per_frame;
-	if (fromTimeBase <= 0)
+	long double fromTimeBase = av_q2d(codecContext->framerate);
+	if (fromTimeBase < 0)
 		fromTimeBase = 0;
-	else
-		fromTimeBase = 1 / fromTimeBase;
 
 	//long double fromLengthWithPackets = formatContext->streams[streams[VideoEntry]]->nb_frames*av_q2d(formatContext->streams[streams[VideoEntry]]->time_base);
 	//if (fromLengthWithPackets <= 0) fromLengthWithPackets = 0;

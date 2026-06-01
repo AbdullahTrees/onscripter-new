@@ -1,36 +1,26 @@
 pkgname=libass
-pkgver=0.14.0
+pkgver=0.17.4
 pkgrel=1
 depends=('harfbuzz' 'fribidi')
 
-sources=(
-    "https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/$pkgname-$pkgver.tar.xz"
-    'libass-ignore-iconv.patch'
-    'libass-unicode-font-path-win.patch'
-    'libass-unicode-fontdir-path-win.patch'
-)
-
-hashes=(
-    '881f2382af48aead75b7a0e02e65d88c5ebd369fe46bc77d9270a94aa8fd38a2'
-    '2482308db0690ec34248cc12d5a7ca3d9e9c7cb8db4273e61a205637d7dfc6fd'
-    '71e38cb4c8ec7e4bc62af64f0c5a6576e7cf2fc750ca43bac725198f2c214fa0'
-    '45988f43b494f4e512b5a3d0b23906edc8ff2a8a8d0b6717656080c5be7c5cbf'
-)
+sources=("https://github.com/libass/libass/releases/download/${pkgver}/libass-${pkgver}.tar.xz")
+hashes=('78f1179b838d025e9c26e8fef33f8092f65611444ffa1bfc0cfac6a33511a05a')
 
 configopts=(
     '--disable-shared'
     '--disable-fontconfig'
     '--disable-dependency-tracking'
     '--disable-require-system-font-provider'
+    'ac_cv_header_iconv_h=no'
     "--libdir=$outdir/lib"
     "FREETYPE_CFLAGS=-I$outdir/include/freetype2"
-    "FREETYPE_LIBS=-L$outdir/lib"
+    'FREETYPE_LIBS=-lfreetype'
     "FRIBIDI_CFLAGS=-I$outdir/include"
-    "FRIBIDI_LIBS=-L$outdir/lib"
+    'FRIBIDI_LIBS=-lfribidi'
     "ENCA_CFLAGS=-I$outdir/include"
     "ENCA_LIBS=-L$outdir/lib"
     "HARFBUZZ_CFLAGS=-I$outdir/include/harfbuzz"
-    "HARFBUZZ_LIBS=-L$outdir/lib"    
+    'HARFBUZZ_LIBS=-lharfbuzz'
 )
 
 configopts_win32=(
@@ -59,19 +49,7 @@ else
 fi
 
 cflags="-I$outdir/include/fribidi"
-
-prebuild() {
-    pushd "$pkgname-$pkgver" &>/dev/null
-    
-    apply_patch "${sources[1]}"
-
-    # libass provides no API to configure file i/o, and thus does not support unicode filenames.
-    # This patch enforces utf-8 path support for ass_set_fonts on Windows.
-    if [ "$(getTarget)" == "win32" ]; then
-        apply_patch "${sources[2]}"
-        apply_patch "${sources[3]}"
-    fi
-}
+ldflags="-L$outdir/lib -lfreetype -lharfbuzz -lfribidi -lpng16 -lz"
 
 postbuild() {
     # Is this necessary?

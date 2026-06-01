@@ -19,19 +19,11 @@
 MediaProcController media;
 
 int MediaProcController::ownInit() {
-	av_register_all();
 	av_log_set_level(AV_LOG_QUIET);
 	av_log_set_callback(logLine);
 	HardwareDecoderIFace::reg();
-	int error = av_lockmgr_register(lockManager);
-	if (!error) {
-		audioSpec = AudioSpec();
-		error     = audioSpec.init(ons.audio_format);
-	} else {
-		sendToLog(LogLevel::Error, "Failed to init media thread safety\n");
-	}
-
-	return error;
+	audioSpec = AudioSpec();
+	return audioSpec.init(ons.audio_format);
 }
 
 int MediaProcController::ownDeinit() {
@@ -76,31 +68,14 @@ int MediaProcController::AudioSpec::init(const SDL_AudioSpec &spec) {
 	}
 
 	// Grab the channels
-	channelLayout = av_get_default_channel_layout(spec.channels);
-	channels      = spec.channels;
+	av_channel_layout_uninit(&channelLayout);
+	av_channel_layout_default(&channelLayout, spec.channels);
+	channels = spec.channels;
 
 	// Grab the frequency
 	frequency = spec.freq;
 
 	return 0;
-}
-
-int MediaProcController::lockManager(void **mutex, AVLockOp op) {
-	switch (op) {
-		case AV_LOCK_CREATE:
-			*mutex = SDL_CreateMutex();
-			if (!*mutex)
-				return 1;
-			return 0;
-		case AV_LOCK_OBTAIN:
-			return SDL_LockMutex(static_cast<SDL_mutex *>(*mutex)) != 0;
-		case AV_LOCK_RELEASE:
-			return SDL_UnlockMutex(static_cast<SDL_mutex *>(*mutex)) != 0;
-		case AV_LOCK_DESTROY:
-			SDL_DestroyMutex(static_cast<SDL_mutex *>(*mutex));
-			return 0;
-	}
-	return 1;
 }
 
 void MediaProcController::logLine(void *inst, int level, const char *fmt, va_list args) {
@@ -138,8 +113,12 @@ std::unique_ptr<MediaProcController::Decoder> MediaProcController::findDecoder(A
 		    (restrictCodecId == AV_CODEC_ID_NONE || restrictCodecId == formatContext->streams[stream]->codecpar->codec_id)) {
 			if (streamNumber == 1) {
 				auto codecContext = avcodec_alloc_context3(nullptr);
-				if (!codecContext || avcodec_parameters_to_context(codecContext, formatContext->streams[stream]->codecpar) < 0)
+				if (!codecContext)
 					throw std::runtime_error("Failed to create AVCodecContext");
+				if (avcodec_parameters_to_context(codecContext, formatContext->streams[stream]->codecpar) < 0) {
+					avcodec_free_context(&codecContext);
+					throw std::runtime_error("Failed to create AVCodecContext");
+				}
 				switch (type) {
 					case AVMEDIA_TYPE_VIDEO:
 						// Starting with 6f69f7a8bf6a0d013985578df2ef42ee6b1c7994 ffmpeg no longer sets decoding thread count to auto.
@@ -473,38 +452,73 @@ void MediaProcController::applySubtitles(MediaFrame &frame) {
 
 // Decoder stuff
 
-int MediaProcController::Decoder::decodeFrameFromPacket(bool &frameFinished, AVPacket *packet) {
-	frameFinished = false;
+bool MediaProcController::Decoder::enqueueFrame(MediaEntries index, std::unique_ptr<MediaFrame> vf) {
+	if (!vf || vf->has()) {
+		bool exiting = false;
+		while (SDL_SemWaitTimeout(media.frameQueueSem[index], 10)) {
+			if (async.threadShutdownRequested || shouldFinish.load(std::memory_order_acquire)) {
+				exiting = true;
+				break;
+			}
+		}
+		if (exiting)
+			return false;
 
-	// According to ffmpeg sources we must be dropping the last packet instead of reading it.
-	// Otherwise we will get into EOF loop.
-	if (media.loopVideo && packet->data == nullptr && packet->size == 0) {
-		avcodec_flush_buffers(codecContext);
-		return 0;
+		if (vf && vf->has() && index == VideoEntry) {
+			media.applySubtitles(*vf);
+		}
+
+		SDL_AtomicLock(&async.loadFramesQueue[index].resultsLock);
+		async.loadFramesQueue[index].results.push_back(vf.release());
+		SDL_AtomicUnlock(&async.loadFramesQueue[index].resultsLock);
 	}
 
-	int err = avcodec_send_packet(codecContext, packet);
-	if (err < 0 && err != AVERROR_EOF)
-		return 0;
-	err = avcodec_receive_frame(codecContext, frame);
-	if (err < 0 && err != AVERROR(EAGAIN) && err != AVERROR_EOF)
-		return 0;
+	return true;
+}
 
-	frameFinished = true;
-	return frame->pkt_size;
+bool MediaProcController::Decoder::receiveAvailableFrames(MediaEntries index) {
+	while (true) {
+		int err = avcodec_receive_frame(codecContext, frame);
+		if (err == AVERROR(EAGAIN) || err == AVERROR_EOF)
+			return true;
+		if (err < 0) {
+			sendToLog(LogLevel::Warn, "Unable to receive decoded frame %d\n", err);
+			av_frame_unref(frame);
+			return true;
+		}
+
+		auto vf = std::make_unique<MediaFrame>();
+		processFrame(*vf);
+		av_frame_unref(frame);
+
+		if (!enqueueFrame(index, std::move(vf)))
+			return false;
+	}
+}
+
+bool MediaProcController::Decoder::sendPacket(MediaEntries index, AVPacket *packet) {
+	while (true) {
+		int err = avcodec_send_packet(codecContext, packet);
+		if (err == 0 || err == AVERROR_EOF)
+			return receiveAvailableFrames(index);
+
+		if (err == AVERROR(EAGAIN)) {
+			if (!receiveAvailableFrames(index))
+				return false;
+			continue;
+		}
+
+		sendToLog(LogLevel::Warn, "Unable to send decoder packet %d\n", err);
+		return receiveAvailableFrames(index);
+	}
 }
 
 void MediaProcController::Decoder::decodeFrame(MediaEntries index) {
 
-	CacheRead crMode{CacheRead::None};
-	cmp::unique_ptr_del<AVPacket> packet(nullptr, MediaDemux::freePacket);
-
 	do {
-		if (packet == nullptr && crMode == CacheRead::None) {
-			while (media.demux->waitForData(index, 10)) {
-				if (async.threadShutdownRequested || shouldFinish.load(std::memory_order_acquire))
-					return;
-			}
+		while (media.demux->waitForData(index, 10)) {
+			if (async.threadShutdownRequested || shouldFinish.load(std::memory_order_acquire))
+				return;
 		}
 
 		if (index != VideoEntry && shouldFinish.load(std::memory_order_acquire)) /* Required to finish */
@@ -526,110 +540,35 @@ void MediaProcController::Decoder::decodeFrame(MediaEntries index) {
 			}
 		}
 
-		while (packet == nullptr && crMode == CacheRead::None) {
-			// Obtain a packet
-			bool cacheReadStarted = false;
-			packet                = cmp::unique_ptr_del<AVPacket>(media.demux->obtainPacket(index, cacheReadStarted), MediaDemux::freePacket);
-			if (cacheReadStarted)
-				crMode = CacheRead::Started; /* WARN: it's done after packet queue lock is unlocked */
+		bool flushDecoder = false;
+		cmp::unique_ptr_del<AVPacket> packet(media.demux->obtainPacket(index, flushDecoder), MediaDemux::freePacket);
 
-			// If that failed, wait for some time
-			if (packet == nullptr) {
-				SDL_Delay(3);
-			}
-		}
-
-		//sendToLog(LogLevel::Info, "packet->dts %lld packet->pts %lld\n",packet->dts, packet->pts);
-
-		auto vf = std::make_unique<MediaFrame>();
-		AVPacket temp_packet{};
-		av_packet_ref(&temp_packet, packet.get());
-
-		bool frame_finished{false};
-
-		do {
-			int decode_size = decodeFrameFromPacket(frame_finished, packet.get());
-
-			if (decode_size < 0 || (crMode != CacheRead::None && !frame_finished)) {
-				// This is a useless packet, it was either buffered or read corrupted
-				if (crMode == CacheRead::Finished && packet->size == 0) {
-					// flushing is done, time to exit
-					vf.reset();
-				} else if (crMode != CacheRead::None) {
-					// prepare for a flush in case of a 'last' packet
-					packet->size = 0;
-					packet->data = nullptr;
-					crMode       = CacheRead::Finished;
-				} else {
-					// ffplay doesn't seem to call av_free_packet in this case, just destruct it
-					packet.reset();
-				}
-				break;
-			}
-
-			// avcodec_decode_video2 could have succeeded or failed (mainly in the end of a flush)
-			// nevertheless one packet may technically have more than a one frame, we ignore this case
-			if (frame_finished) {
-				processFrame(*vf);
-
-				if (crMode != CacheRead::None) {
-					// prepare for a flush this is a 'last' packet
-					packet->size = 0;
-					packet->data = nullptr;
-					crMode       = CacheRead::Finished;
-				}
-
-				if (packet->size != 0) {
-					packet->data += decode_size;
-					packet->size -= decode_size;
-				}
-
-				break;
-			}
-
-			av_frame_unref(frame);
-
-			// We don't modify our packet while flushing, which sets packet->size to 0
-			if (packet->size != 0) {
-				packet->data += decode_size;
-				packet->size -= decode_size;
-			}
-
-		} while (packet->size > 0 && crMode == CacheRead::None);
-
-		// Clean the packet while not flushing and after flushing
-		if ((crMode == CacheRead::None || !vf) && packet) {
-			av_packet_unref(&temp_packet);
-			packet.reset();
+		bool decodeOk = false;
+		if (flushDecoder) {
+			decodeOk = sendPacket(index, nullptr);
+		} else if (packet) {
+			decodeOk = sendPacket(index, packet.get());
+		} else {
+			SDL_Delay(3);
+			SDL_mutexV(media.frameQueuemutex[index]);
+			continue;
 		}
 
 		SDL_mutexV(media.frameQueuemutex[index]);
 
-		if (!vf || vf->has()) {
-			bool exiting = false;
-			while (SDL_SemWaitTimeout(media.frameQueueSem[index], 10)) {
-				if (async.threadShutdownRequested || shouldFinish.load(std::memory_order_acquire)) {
-					exiting = true;
-					break;
-				}
-			}
-			if (exiting)
-				break;
+		if (!decodeOk)
+			break;
 
-			if (vf && vf->has() && index == VideoEntry) {
-				media.applySubtitles(*vf);
-			}
-
-			SDL_AtomicLock(&async.loadFramesQueue[index].resultsLock);
-			async.loadFramesQueue[index].results.push_back(vf.release());
-			SDL_AtomicUnlock(&async.loadFramesQueue[index].resultsLock);
+		if (flushDecoder) {
+			enqueueFrame(index, nullptr);
+			break;
 		}
 
 	} while (true);
 }
 
-AVCodec *MediaProcController::Decoder::findCodec(AVCodecContext *context) {
-	AVCodec *codec = nullptr;
+const AVCodec *MediaProcController::Decoder::findCodec(AVCodecContext *context) {
+	const AVCodec *codec = nullptr;
 
 	// Setup hw acceleration
 	if (context->codec_type == AVMEDIA_TYPE_VIDEO && media.hardwareDecoding) {
@@ -661,11 +600,14 @@ AVCodec *MediaProcController::Decoder::findCodec(AVCodecContext *context) {
 	// Fallback to implicit hardware or software decoder
 	if (!codec) {
 		codec = avcodec_find_decoder(context->codec_id);
+		if (!codec) {
+			sendToLog(LogLevel::Error, "Unable to find decoder for codec %d\n", context->codec_id);
+			return nullptr;
+		}
 
 		int err = avcodec_open2(context, codec, nullptr);
 		if (err < 0) {
 			sendToLog(LogLevel::Error, "Unable to open decoder %d\n", err);
-			avcodec_close(context);
 			return nullptr;
 		}
 	}

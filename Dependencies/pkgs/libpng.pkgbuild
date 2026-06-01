@@ -3,7 +3,7 @@ pkgver=1.6.58
 pkgrel=1
 depends=('zlib')
 sources=("https://downloads.sourceforge.net/libpng/libpng-${pkgver}.tar.xz")
-hashes=('5abe764ce7a55544f3259be87f4ed27b206b9ab1d6a285068f505e61a9583567')
+hashes=('28eb403f51f0f7405249132cecfe82ea5c0ef97f1b32c5a65828814ae0d34775')
 
 configopts=(
     '--disable-dependency-tracking'

@@ -1,27 +1,37 @@
 pkgname=freetype
-pkgver=2.10.0
-pkgrel=2
-sources=("https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/freetype-$pkgver.tar.bz2")
-hashes=('fccc62928c65192fff6c98847233b28eb7ce05f12d2fea3f6cc90e8b4e5fbe06')
+pkgver=2.14.3
+pkgrel=1
+depends=('libpng')
+sources=("https://download.savannah.gnu.org/releases/freetype/freetype-$pkgver.tar.xz")
+hashes=('36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f')
 
 if [ -e "$outdir/.pkgs/harfbuzz" ]; then
     configopts=(
         '--disable-shared'
         "--libdir=$outdir/lib"
         '--enable-freetype-config'
+        '--with-harfbuzz=yes'
+        '--with-png=yes'
+        '--with-zlib=yes'
+        '--with-bzip2=no'
+        '--with-brotli=no'
         "HARFBUZZ_CFLAGS=-I$outdir/include/harfbuzz"
-        "HARFBUZZ_LIBS=-L$outdir/lib"
+        'HARFBUZZ_LIBS=-lharfbuzz'
         "LIBPNG_CFLAGS=-I$outdir/include/libpng16"
-        "LIBPNG_LIBS=-L$outdir/lib"
+        'LIBPNG_LIBS=-lpng16'
     )
 elif [ $(( $PKGBUILD_RECURSION_DEPTH )) -ge 1 ]; then
     configopts=(
         '--disable-shared'
         "--libdir=$outdir/lib"
-        '--without-harfbuzz'
+        '--with-harfbuzz=no'
+        '--with-png=yes'
+        '--with-zlib=yes'
+        '--with-bzip2=no'
+        '--with-brotli=no'
         '--enable-freetype-config'
         "LIBPNG_CFLAGS=-I$outdir/include/libpng16"
-        "LIBPNG_LIBS=-L$outdir/lib"
+        'LIBPNG_LIBS=-lpng16'
     )
 else
     error_out "Please, install harfbuzz before building freetype manually"
@@ -29,9 +39,9 @@ fi
 
 cflags_win32="-U__STRICT_ANSI__"
 if [ -e "$outdir/.pkgs/harfbuzz" ]; then
-    ldflags="-L$outdir/lib -lpng -lharfbuzz"
+    ldflags="-L$outdir/lib -lpng16 -lz -lharfbuzz"
 else
-    ldflags="-L$outdir/lib -lpng"
+    ldflags="-L$outdir/lib -lpng16 -lz"
 fi
 
 build() {
@@ -77,21 +87,23 @@ build() {
             exit
         fi
         
-        msg "Patching libharfbuzz.la" "$pkgname"
-        logfile="$logdir/$pkgname.libharfbuzz-patch.log"
-        ret=0
-        case $(getHost) in
-        darwin-macOS)
-            sed -i "" "s,$outdir/lib/libfreetype.la,$outdir/lib/libfreetype.la $outdir/lib/libharfbuzz.la,g" "$outdir/lib/libharfbuzz.la" &>"$logfile" || ret=$?
-        ;;
-        *)
-            sed -i "s,$outdir/lib/libfreetype.la,$outdir/lib/libfreetype.la $outdir/lib/libharfbuzz.la,g" "$outdir/lib/libharfbuzz.la" &>"$logfile" || ret=$?
-        ;;
-        esac
-        if (( $ret )); then
-            tail -n 20 "$logfile"
-            error "Patching libharfbuzz.la failed."
-            exit
+        if [ -f "$outdir/lib/libharfbuzz.la" ]; then
+            msg "Patching libharfbuzz.la" "$pkgname"
+            logfile="$logdir/$pkgname.libharfbuzz-patch.log"
+            ret=0
+            case $(getHost) in
+            darwin-macOS)
+                sed -i "" "s,$outdir/lib/libfreetype.la,$outdir/lib/libfreetype.la $outdir/lib/libharfbuzz.la,g" "$outdir/lib/libharfbuzz.la" &>"$logfile" || ret=$?
+            ;;
+            *)
+                sed -i "s,$outdir/lib/libfreetype.la,$outdir/lib/libfreetype.la $outdir/lib/libharfbuzz.la,g" "$outdir/lib/libharfbuzz.la" &>"$logfile" || ret=$?
+            ;;
+            esac
+            if (( $ret )); then
+                tail -n 20 "$logfile"
+                error "Patching libharfbuzz.la failed."
+                exit
+            fi
         fi
     fi
     

@@ -1,9 +1,9 @@
 pkgname=fribidi
-pkgver=1.0.5
+pkgver=1.0.16
 pkgrel=1
 depends=('freetype')
-sources=("https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/fribidi-${pkgver}.tar.bz2")
-hashes=('6a64f2a687f5c4f203a46fa659f43dd43d1f8b845df8d723107e8a7e6158e4ce')
+sources=("https://github.com/fribidi/fribidi/releases/download/v${pkgver}/fribidi-${pkgver}.tar.xz")
+hashes=('1b1cde5b235d40479e91be2f0e88a309e3214c8ab470ec8a2744d82a5a9ea05c')
 
 configopts=(
     '--disable-shared'

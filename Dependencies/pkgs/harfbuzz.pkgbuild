@@ -1,29 +1,42 @@
 pkgname=harfbuzz
-pkgver=2.5.2
+pkgver=14.2.0
 pkgrel=1
 depends=('freetype')
-sources=(
-    "https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/harfbuzz-${pkgver}.tar.xz"
-    'harfbuzz-multithread-mingw.patch'
-)
-hashes=(
-    '7c8fcf9a2bbe3df5ed9650060d89f9b7cfd40ec5729671447ace8b0505527e8b'
-    '9b54df6b3b095b639906009d749132104c3e6ce0143d66b3cac7f01a9d1810bd'
+sources=("https://github.com/harfbuzz/harfbuzz/releases/download/${pkgver}/harfbuzz-${pkgver}.tar.xz")
+hashes=('94017020f96d025bb66ae91574e4cf334bcad23e8175a8a40565b3721bc2eaff')
+
+mesonopts=(
+    '--buildtype=release'
+    '--default-library=static'
+    '-Dglib=disabled'
+    '-Dgobject=disabled'
+    '-Dcairo=disabled'
+    '-Dchafa=disabled'
+    '-Dpng=disabled'
+    '-Dzlib=disabled'
+    '-Dicu=disabled'
+    '-Dgraphite2=disabled'
+    '-Dfreetype=enabled'
+    '-Dgdi=disabled'
+    '-Ddirectwrite=disabled'
+    '-Dcoretext=disabled'
+    '-Dfontations=disabled'
+    '-Dharfrust=disabled'
+    '-Dkbts=disabled'
+    '-Dwasm=disabled'
+    '-Draster=disabled'
+    '-Dvector=disabled'
+    '-Dgpu=disabled'
+    '-Dgpu_demo=disabled'
+    '-Dsubset=disabled'
+    '-Dtests=disabled'
+    '-Dintrospection=disabled'
+    '-Ddocs=disabled'
+    '-Dutilities=disabled'
+    '-Dbenchmark=disabled'
 )
 
-configopts=(
-    '--disable-dependency-tracking'
-    '--disable-shared'
-    '--with-glib=no'
-    '--with-cairo=no'
-    '--with-gobject=no'
-    '--with-icu=no'
-    "--libdir=$outdir/lib"
-    "FREETYPE_CFLAGS=-I$outdir/include/freetype2"
-    "FREETYPE_LIBS=-L$outdir/lib"
-)
-
-ldflags="-L$outdir/lib -lfreetype"
+ldflags="-L$outdir/lib -lfreetype -lpng16 -lz"
 # Xcode 10 does not have libstdc++
 if [ "$MMAC_VER_MIN" != "10.6" ]; then
     ldflags_mac_extra="-stdlib=libc++"
@@ -31,38 +44,97 @@ fi
 
 prebuild() {
     pushd "$pkgname-$pkgver" &>/dev/null
-    apply_patch "${sources[1]}"
+}
 
-    # harfbuzz requires insisting on our architecture, all configure options, cflags and ldflags are ignored 
-    case $(getTarget) in
-    darwin*)
-        export CC="$(getCC) $APPLE_CPU_FLAG"
-        export CXX="$(getCXX) $APPLE_CPU_FLAG"
-    ;;
-    droid)
-        export CC="$(getCC)"
-        export CXX="$(getCXX)"
-    ;;
-    win32)
-        autoconf
-    ;;
-    esac
-    
-    cppflags="${cppflags[@]} ${cflags[@]}"
+configure() {
+    msg "Running meson"
+
+    local ret=0
+    local logfile="$logdir/$pkgname.meson.log"
+    local lcf="$CFLAGS ${cflags[@]} $CFLAGS_EXTRA"
+    local lcxf="$CPPFLAGS ${cppflags[@]} ${cflags[@]} $CPPFLAGS_EXTRA $CFLAGS_EXTRA"
+    local llf="$LDFLAGS ${ldflags[@]} $LDFLAGS_EXTRA"
+    local meson_outdir="$outdir"
+    local meson_pcdir="$PWD/.meson-pkgconfig"
+
+    rm -rf build
+    rm -rf "$meson_pcdir"
+    mkdir -p "$meson_pcdir"
+
+    if [ "$(getHost)" == "win32" ]; then
+        meson_outdir="$(cygpath -m "$outdir")"
+        lcf="${lcf//$outdir/$meson_outdir}"
+        lcxf="${lcxf//$outdir/$meson_outdir}"
+        llf="${llf//$outdir/$meson_outdir}"
+    fi
+
+    for pcdir in "$outdir/lib/pkgconfig" "$outdir/share/pkgconfig"; do
+        if [ -d "$pcdir" ]; then
+            for pcfile in "$pcdir"/*.pc; do
+                [ -f "$pcfile" ] || continue
+                sed "s#$outdir#$meson_outdir#g" "$pcfile" > "$meson_pcdir/$(basename "$pcfile")"
+            done
+        fi
+    done
+
+    export CC="$(getCC)"
+    export CXX="$(getCXX)"
+    export CFLAGS="$lcf"
+    export CXXFLAGS="$lcxf"
+    export LDFLAGS="$llf"
+    export PKG_CONFIG_PATH="$meson_pcdir:$PKG_CONFIG_PATH"
+    export PKG_CONFIG_LIBDIR="$meson_pcdir"
+
+    meson setup build \
+        --prefix="$meson_outdir" \
+        --libdir=lib \
+        "${mesonopts[@]}" &>"$logfile" || ret=$?
+
+    unset CC
+    unset CXX
+    unset CFLAGS
+    unset CXXFLAGS
+    unset LDFLAGS
+    unset PKG_CONFIG_PATH
+    unset PKG_CONFIG_LIBDIR
+
+    if (( $ret )); then
+        tail -n 20 "$logfile"
+        error "Meson setup %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
+}
+
+compile() {
+    local logfile="$logdir/$pkgname.ninja.log"
+    local ret=0
+    ninja -C build &>"$logfile" || ret=$?
+    if (( $ret )); then
+        tail -n 20 "$logfile"
+        error "Compiling %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
+}
+
+copy() {
+    local logfile="$logdir/$pkgname.install.log"
+    local ret=0
+    ninja -C build install &>"$logfile" || ret=$?
+    if (( $ret )); then
+        tail -n 20 "$logfile"
+        error "Installing %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
 }
 
 postbuild() {
-    case $(getTarget) in
-    darwin*|droid)
-        unset CC
-        unset CXX
-    ;;
-    esac
-    
     # Freetype needs to be rebuilt with Harfbuzz support now
     rm -f "$outdir/.pkgs/freetype"
     rm -rf $(dirname "$outdir")/src/freetype*
-    
+
     popd &>/dev/null
 }
 
