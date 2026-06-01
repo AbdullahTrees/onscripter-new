@@ -4,51 +4,51 @@
 # fatbuild.sh
 # ONScripter-RU
 #
-# macOS FAT file generation (embeds multiple architectures).
-# Run with "i386/executable" "x86_64/executable" "x86_64h/executable" "target/executable" arguments.
+# macOS universal file generation.
+# Run with "x86_64/executable" ["arm64/executable"] "target/executable" action.
 #
 # Consult LICENSE file for licensing terms and copyright holders.
 #
 
-if (( $# < 5 )); then
-  echo "Usage: i386/executable x86_64/executable x86_64h/executable target/executable"
+if (( $# != 3 && $# != 4 )); then
+  echo "Usage: x86_64/executable [arm64/executable] target/executable action"
   exit 1
 fi
 
-executable32="${1}"
-executable64="${2}"
-executable64h="${3}"
-executabledst="${4}"
-action="${5}"
+executable64="${1}"
+if (( $# == 4 )); then
+  executablearm64="${2}"
+  executabledst="${3}"
+  action="${4}"
+else
+  executablearm64=""
+  executabledst="${2}"
+  action="${3}"
+fi
 
 if [ "$action" == "clean" ]; then
 	exit 0
 fi
 
-echo "EXE32:  ${executable32}"
-echo "EXE64:  ${executable64}"
-echo "EXE64h: ${executable64h}"
-echo "DST:    ${executabledst}"
+echo "EXE64:    ${executable64}"
+echo "EXEARM64: ${executablearm64}"
+echo "DST:      ${executabledst}"
 
-if [ ! -x "${executable32}" ] || [ ! -x "${executable64}" ] || [ ! -x "${executable64h}" ] || [ ! -x "${executabledst}" ]; then
-  echo "Missing dependent app for merging!"
+if [ ! -x "${executable64}" ] || [ ! -x "${executabledst}" ]; then
+  echo "Missing dependent app for packaging!"
   exit 1
 fi
 
-rm -rf /tmp/onscripter-ru-exec
-mkdir -p /tmp/onscripter-ru-exec || exit 1
+if [ "${executablearm64}" == "" ]; then
+  cp "${executable64}" "${executabledst}" || exit 1
+  exit 0
+fi
 
-cp "${executable32}" /tmp/onscripter-ru-exec/ons32
-cp "${executable64}" /tmp/onscripter-ru-exec/ons64
-cp "${executable64h}" /tmp/onscripter-ru-exec/ons64h
+if [ ! -x "${executablearm64}" ]; then
+  echo "Missing arm64 app for universal packaging!"
+  exit 1
+fi
 
-# Set cpu_subtype to Haswell (until Xcode supports compiling for x86_64h)
-echo -n -e "\x08\x00\x00\x00" | dd of="/tmp/onscripter-ru-exec/ons64h" bs=1 seek=8 count=4 conv=notrunc
-
-# Create fat archive with i386, x86_64, x86_64h order, so that older os ignore x86_64h
-lipo -create "/tmp/onscripter-ru-exec/ons32" "/tmp/onscripter-ru-exec/ons64" \
-			"/tmp/onscripter-ru-exec/ons64h" -output "${executabledst}" || exit 1
-
-rm -rf /tmp/onscripter-ru-exec
+lipo -create "${executable64}" "${executablearm64}" -output "${executabledst}" || exit 1
 
 exit 0

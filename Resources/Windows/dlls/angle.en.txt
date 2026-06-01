@@ -19,10 +19,9 @@ d3dcompiler=d3dcompiler_43.dll
 
 
 Notes:
-You could use legacy libraries by copying the contents of dlls\legacy
-folder into the corresponding folder:
-dlls\6.1  for Windows 7 and higher
-dlls\5.1  for Windows XP and higher
+Windows 10 is the supported floor. The dlls\5.1, dlls\6.1, and
+dlls\legacy folders are retained only for historical testing and are not
+supported packaging targets.
 
 Legacy libraries should require render-self=yes but in normal cases
 should also reduce memory consumption. However, you should probably

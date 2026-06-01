@@ -83,7 +83,7 @@ gendeps() {
 
 # Attempt to convert /c/ to c:/
 pathautofix() {
-  if [[ $(uname) == MINGW* ]]; then
+  if [[ $(uname) == MINGW* ]] || [[ $(uname) == MSYS* ]]; then
     echo "$1" | sed -e "s/^\/\([a-zA-Z]\)\//\1:\//g"
   else
     echo "$1"
@@ -115,8 +115,10 @@ DEFAULT_CC="gcc"
 DEFAULT_OPT="-Os"
 DEFAULT_MACOSX_CC="clang"
 DEFAULT_DROID_CC="clang"
+MACOSX_DEPLOYMENT_TARGET=14.0
+DROID_MIN_API=34
 DROID_BUILD=false
-DROID_ARCH=arm
+DROID_ARCH=arm64
 DROID_TOOLCHAIN=""
 CROSS_TRIPLE=""
 TOOLCHAIN_PREFIX=""
@@ -212,7 +214,7 @@ do
 	  --directx-sdk-path=DIR   enable DirectX 9 SDK support (Windows only)
 	  --prefer-clang           use clang compiler if CC is not specified
 	  --droid-build            build for droid
-	  --droid-arch=ARCH        build for droid arch: arm|arm64|x86 (default is arm)
+	  --droid-arch=ARCH        build for droid arch: arm64|x86_64 (default is arm64)
 	  --droid-toolchain=DIR    path to droid toolchain (default is auto)
 	  --cross=TRIPLE           cross compilation triple
 	  --embed-path=EMBED       path to compiled embed binary (default is target compile)
@@ -238,6 +240,18 @@ if [ "$BUILD_PATH" == "" ]; then
 fi
 
 if $DROID_BUILD; then
+  case "$DROID_ARCH" in
+    aarch64)
+      DROID_ARCH=arm64 ;;
+    x64)
+      DROID_ARCH=x86_64 ;;
+    arm64|x86_64)
+      ;;
+    *)
+      echo "Error: unsupported droid arch '$DROID_ARCH'. Supported Android arches are arm64 and x86_64."
+      exit 1 ;;
+  esac
+
   if [ "$DROID_TOOLCHAIN" == "" ]; then
     chmod a+x Scripts/ndktoolchain.sh
     ./Scripts/ndktoolchain.sh "$BUILD_PATH" || exit 1
@@ -247,7 +261,7 @@ if $DROID_BUILD; then
 fi
 
 if $DROID_BUILD; then
-  if [[ $(uname) == MINGW* ]]; then
+  if [[ $(uname) == MINGW* ]] || [[ $(uname) == MSYS* ]]; then
     echo "Warning: cross-compiling on Windows is not recommend!"
     echo "Attempting to fix unix-like HDD name in DROID_TOOLCHAIN..."
     DROID_TOOLCHAIN=$(pathautofix "$DROID_TOOLCHAIN")
@@ -301,7 +315,9 @@ esac
 echo -n "Checking cpu type...      "
 ARCH=
 case "$PLATFORM" in
-*mingw32)  echo "i686";     ARCH=i686;;
+*x86_64*mingw*|*mingw*x86_64*) echo "x86_64";   ARCH=x86_64;;
+*mingw*)   echo "i686";     ARCH=i686;;
+*droid*x86_64*) echo "x86_64";   ARCH=x86_64;;
 *droid*86*)echo "i386";     ARCH=i386;;
 *86_64*)   echo "x86_64";   ARCH=x86_64;;
 *86*)      ARCH=`expr "x$PLATFORM" : 'x\(.*86\).*'`; \
@@ -511,15 +527,15 @@ EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DOV_EXCLUDE_STATIC_CALLBACKS"
 case "$CXX_TMP:$SYS" in
   clang*:"MacOSX")
     CXXSTD="$CXXSTD -stdlib=libc++"
-    EXTRACFLAGS="$EXTRACFLAGS -mmacosx-version-min=10.6"
-    EXTRALDFLAGS="$EXTRALDFLAGS -mmacosx-version-min=10.6"
+    EXTRACFLAGS="$EXTRACFLAGS -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
+    EXTRALDFLAGS="$EXTRALDFLAGS -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
     EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DMACOSX -DDISABLE_OBJC"
     EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -stdlib=libc++ -Wl,-framework,VideoToolbox -Wl,-framework,CoreMedia -lc++ -lc++abi"
   ;;
   Apple*:"MacOSX")
     CXXSTD="$CXXSTD -stdlib=libc++"
-    EXTRACFLAGS="$EXTRACFLAGS -mmacosx-version-min=10.7"
-    EXTRALDFLAGS="$EXTRALDFLAGS -mmacosx-version-min=10.7"
+    EXTRACFLAGS="$EXTRACFLAGS -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
+    EXTRALDFLAGS="$EXTRALDFLAGS -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
     EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DMACOSX -DDISABLE_OBJC"
     EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -stdlib=libc++ -Wl,-framework,VideoToolbox -Wl,-framework,CoreMedia -lc++ -lc++abi"
   ;;
@@ -527,7 +543,7 @@ case "$CXX_TMP:$SYS" in
     LINK_START_GROUP="-Wl,--start-group"
     LINK_END_GROUP="-Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic -Wl,--end-group"
     EXTRALDFLAGS="$EXTRALDFLAGS -static-libgcc"
-    EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DWIN32 -DPTW32_STATIC_LIB"
+    EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DWIN32 -DPTW32_STATIC_LIB -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00"
     EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -lwinmm -lshlwapi -lws2_32 -lglu32 -lopengl32 -Wl,--wrap=SDL_LoadObject -Wl,--large-address-aware"
   ;;
   *clang*:"Droid")
@@ -541,7 +557,7 @@ case "$CXX_TMP:$SYS" in
     LINK_START_GROUP="-Wl,--start-group"
     LINK_END_GROUP="-Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic -Wl,--end-group"
     EXTRALDFLAGS="$EXTRALDFLAGS -static-libgcc -static-libstdc++ -mthreads"
-    EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DWIN32 -DPTW32_STATIC_LIB -mthreads"
+    EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DWIN32 -DPTW32_STATIC_LIB -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -mthreads"
     EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -lwinmm -lshlwapi -lws2_32 -lglu32 -lopengl32 -Wl,--wrap=SDL_LoadObject -Wl,--large-address-aware"
   ;;
   g++*:"Posix" | *clang*:"Posix")

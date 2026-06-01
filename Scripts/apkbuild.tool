@@ -4,8 +4,8 @@
 # apkbuild.tool
 # ONScripter-RU
 #
-# Droid apk generation script.
-# Run with "build/dir" [--jsign] [--recompile] arguments.
+# Android APK generation script.
+# Run with "build/dir" [--jsign] arguments.
 #
 # Consult LICENSE file for licensing terms and copyright holders.
 #
@@ -20,11 +20,17 @@ else
   WORK="$1"
 fi
 
-RECOMPILE=false
+DROID_MIN_API="${DROID_MIN_API:-34}"
+DROID_TARGET_API="${DROID_TARGET_API:-36}"
+DROID_BUILD_TOOLS_VERSION="${DROID_BUILD_TOOLS_VERSION:-36.1.0}"
+
+RECOMPILE=true
 JAVASIGN=false
 
-if [ "$2" == "--recompile" ] || [ "$3" == "--recompile" ]; then
-  RECOMPILE=true
+if [ "$2" == "--no-recompile" ] || [ "$3" == "--no-recompile" ]; then
+  echo "Precompiled Android package resources are not supported after raising the floor to Android 14/API 34."
+  echo "Recompile the package with Android SDK platform $DROID_TARGET_API and build-tools $DROID_BUILD_TOOLS_VERSION."
+  exit 1
 fi
 if [ "$2" == "--jsign" ] || [ "$3" == "--jsign" ]; then
   JAVASIGN=true
@@ -57,6 +63,7 @@ MANPATH="$PKGPATH/bin/AndroidManifest.xml"
 TXTMANPATH="$PKGPATH/AndroidManifest.xml"
 APTPATH="$PKGPATH/apt"
 UNSIGNED_APK="$PKGPATH/unsigned.apk"
+ALIGNED_APK="$PKGPATH/aligned.apk"
 SIGNED_APK="$PKGPATH/onscripter-ru.apk"
 
 KEYSTORE="$PKGPATH/Test.keystore"
@@ -71,18 +78,17 @@ cp -r "$SCRIPTS/../Resources/Droid" "$WORK/Droid-package" || exit 1
 if [ -f "$WORK/onscripter-ru" ]; then 
   echo "Proceeding with single arch mode..."
   ARCH="$(basename "$WORK")"
-  if [ "$ARCH" == "Droid-arm" ]; then
-    echo "Found armeabi-v7a engine, copying..."
-    mkdir -p "$PKGPATH/lib/armeabi-v7a" || exit 1
-    cp "$WORK/onscripter-ru" "$PKGPATH/lib/armeabi-v7a/libmain.so" || exit 1
-  elif [ "$ARCH" == "Droid-aarch64" ]; then
+  if [ "$ARCH" == "Droid-aarch64" ] || [ "$ARCH" == "Droid-arm64" ]; then
     echo "Found arm64-v8a engine, copying..."
     mkdir -p "$PKGPATH/lib/arm64-v8a" || exit 1
     cp "$WORK/onscripter-ru" "$PKGPATH/lib/arm64-v8a/libmain.so" || exit 1
-  elif [ "$ARCH" == "Droid-i386" ]; then
-    echo "Found x86 engine, copying..."
-    mkdir -p "$PKGPATH/lib/x86" || exit 1
-    cp "$WORK/onscripter-ru" "$PKGPATH/lib/x86/libmain.so" || exit 1
+  elif [ "$ARCH" == "Droid-x86_64" ]; then
+    echo "Found x86_64 engine, copying..."
+    mkdir -p "$PKGPATH/lib/x86_64" || exit 1
+    cp "$WORK/onscripter-ru" "$PKGPATH/lib/x86_64/libmain.so" || exit 1
+  elif [ "$ARCH" == "Droid-arm" ] || [ "$ARCH" == "Droid-i386" ]; then
+    echo "Unsupported Android architecture '$ARCH'. The supported package ABIs are arm64-v8a and x86_64."
+    exit 1
   else
     echo "Unknown architecture: $ARCH, check your $WORK folder!"
     exit 1
@@ -90,22 +96,22 @@ if [ -f "$WORK/onscripter-ru" ]; then
 else
   echo "Proceeding with multi arch mode..."
   COPIED=false
-  if [ -f "$WORK/Droid-arm/onscripter-ru" ]; then
-    echo "Found armeabi-v7a engine, copying..."
-    mkdir -p "$PKGPATH/lib/armeabi-v7a" || exit 1
-    cp "$WORK/Droid-arm/onscripter-ru" "$PKGPATH/lib/armeabi-v7a/libmain.so" || exit 1
-    COPIED=true
-  fi
   if [ -f "$WORK/Droid-aarch64/onscripter-ru" ]; then
     echo "Found arm64-v8a engine, copying..."
     mkdir -p "$PKGPATH/lib/arm64-v8a" || exit 1
     cp "$WORK/Droid-aarch64/onscripter-ru" "$PKGPATH/lib/arm64-v8a/libmain.so" || exit 1
     COPIED=true
   fi
-  if [ -f "$WORK/Droid-i386/onscripter-ru" ]; then
-    echo "Found x86 engine, copying..."
-    mkdir -p "$PKGPATH/lib/x86" || exit 1
-    cp "$WORK/Droid-i386/onscripter-ru" "$PKGPATH/lib/x86/libmain.so" || exit 1
+  if [ -f "$WORK/Droid-arm64/onscripter-ru" ]; then
+    echo "Found arm64-v8a engine, copying..."
+    mkdir -p "$PKGPATH/lib/arm64-v8a" || exit 1
+    cp "$WORK/Droid-arm64/onscripter-ru" "$PKGPATH/lib/arm64-v8a/libmain.so" || exit 1
+    COPIED=true
+  fi
+  if [ -f "$WORK/Droid-x86_64/onscripter-ru" ]; then
+    echo "Found x86_64 engine, copying..."
+    mkdir -p "$PKGPATH/lib/x86_64" || exit 1
+    cp "$WORK/Droid-x86_64/onscripter-ru" "$PKGPATH/lib/x86_64/libmain.so" || exit 1
     COPIED=true
   fi
   if ! $COPIED ; then
@@ -116,8 +122,7 @@ fi
 
 # Further code requires at least one of:
 # $PKGPATH/lib/arm64-v8a/libmain.so
-# $PKGPATH/lib/armeabi-v7a/libmain.so
-# $PKGPATH/lib/x86/libmain.so
+# $PKGPATH/lib/x86_64/libmain.so
 
 compile_sources() {
   echo "Compiling sources..."
@@ -126,7 +131,7 @@ compile_sources() {
   rm -rf "$OBJPATH"
   
   mkdir -p "$OBJPATH"
-  "$JAVAC" -source 1.7 -target 1.7 -classpath "$CLASSPATH" -Xlint:deprecation -d "$OBJPATH" "$SDLACTPATH" "$SDLJPATH" "$SDLAUDIOPATH" "$SDLCTRLPATH" "$ONSACTPATH" "$HIDDEVPATH" "$HIDBLEPATH" "$HIDMGRPATH" "$HIDUSBPATH"
+  "$JAVAC" -source 1.8 -target 1.8 -classpath "$CLASSPATH" -Xlint:deprecation -d "$OBJPATH" "$SDLACTPATH" "$SDLJPATH" "$SDLAUDIOPATH" "$SDLCTRLPATH" "$ONSACTPATH" "$HIDDEVPATH" "$HIDBLEPATH" "$HIDMGRPATH" "$HIDUSBPATH"
 
   if (( $? )); then
     exit 1
@@ -134,7 +139,12 @@ compile_sources() {
 
   rm -rf "$BINPATH"
   mkdir -p "$BINPATH"
-  "$DX" --dex --output="$BINPATH/classes.dex" "$OBJPATH"
+  classfiles=()
+  while IFS= read -r classfile; do
+    classfiles+=("$classfile")
+  done < <(find "$OBJPATH" -type f -name "*.class")
+
+  "$D8" --min-api "$DROID_MIN_API" --output "$BINPATH" "${classfiles[@]}"
   if (( $? )); then
     exit 1
   fi
@@ -176,11 +186,8 @@ create_apk() {
     if [ -f "lib/arm64-v8a/libmain.so" ]; then
       "$AAPT" add "$UNSIGNED_APK" "lib/arm64-v8a/libmain.so"
     fi
-    if [ -f "lib/armeabi-v7a/libmain.so" ]; then
-      "$AAPT" add "$UNSIGNED_APK" "lib/armeabi-v7a/libmain.so"
-    fi
-    if [ -f "lib/x86/libmain.so" ]; then
-      "$AAPT" add "$UNSIGNED_APK" "lib/x86/libmain.so"
+    if [ -f "lib/x86_64/libmain.so" ]; then
+      "$AAPT" add "$UNSIGNED_APK" "lib/x86_64/libmain.so"
     fi
     popd &>/dev/null
     
@@ -205,6 +212,31 @@ create_apk() {
 
 sign_apk() {
   echo "Signing APK..."
+  rm -f "$ALIGNED_APK"
+  if [ "$JAVASIGN" != "true" ] && [ "$APKSIGNER" != "" ]; then
+    rm -f "$KEYSTORE"
+    "$JAVAKEY" -genkeypair -validity 10000 \
+      -dname "CN=GB, OU=Selfsign, O=Xtova Corporation, L=Unknown, S=Unknown, C=Unknown" \
+      -keystore "$KEYSTORE" -storepass password -keypass password -alias Test -keyalg RSA -v
+    if (( $? )); then
+      exit 1
+    fi
+
+    "$ZIPALIGN" -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+    if (( $? )); then
+      exit 1
+    fi
+
+    "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:password --key-pass pass:password --min-sdk-version "$DROID_MIN_API" --out "$SIGNED_APK" "$ALIGNED_APK"
+    if (( $? )); then
+      exit 1
+    fi
+
+    rm -f "$KEYSTORE" "$ALIGNED_APK" "$UNSIGNED_APK"
+    echo "APK signing successful!"
+    return
+  fi
+
   if [ "$JAVASIGN" != "true" ]; then
     rm -rf "$APTPATH"
     
@@ -308,75 +340,99 @@ if [ "$JAVASIGN" != "true" ]; then
   fi
 fi
 
+resolve_tool() {
+  local dir="$1"
+  local tool="$2"
+  local suffix
+
+  for suffix in "" ".exe" ".bat" ".cmd" ".sh"; do
+    if [ -f "$dir/$tool$suffix" ]; then
+      echo "$dir/$tool$suffix"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 if [ "$JAVASIGN" == "true" ] || [ "$RECOMPILE" == "true" ]; then
   if [ -z "$JAVA_PATH" ]; then
-    JAVAC="$(which javac)"
-    if [ "$JAVAC" != "" ]; then
-      JAVA_PATH="$(dirname "$JAVAC")"
+    java_candidates=()
+    if [ "$JAVA_HOME" != "" ]; then
+      java_candidates+=("$JAVA_HOME/bin")
     fi
-    if [ "$JAVA_PATH" == "" ]; then
-      pushd "/C/Program Files (x86)/Java/"jdk* &>/dev/null
-      if (( $? )); then
-        echo "Unable to find JDK, please provide JAVA_PATH variable!"
-        popd &>/dev/null
-        exit 1
-      else
-        JAVA_PATH="$(pwd)/bin"
-        popd &>/dev/null
+    if command -v javac >/dev/null 2>&1; then
+      java_candidates+=("$(dirname "$(which javac)")")
+    fi
+    java_candidates+=(
+      "/C/Program Files/Java/"jdk*/bin
+      "/C/Program Files (x86)/Java/"jdk*/bin
+    )
+
+    for candidate in "${java_candidates[@]}"; do
+      JAVAC="$(resolve_tool "$candidate" javac)"
+      JAVAKEY="$(resolve_tool "$candidate" keytool)"
+      JAVASIGNER="$(resolve_tool "$candidate" jarsigner)"
+      if [ "$JAVAC" != "" ] && [ "$JAVAKEY" != "" ] && [ "$JAVASIGNER" != "" ]; then
+        JAVA_PATH="$candidate"
+        break
       fi
+    done
+
+    if [ "$JAVA_PATH" == "" ]; then
+      echo "Unable to find a complete JDK, please provide JAVA_PATH or JAVA_HOME!"
+      exit 1
     fi
   fi
   
   echo "Using jdk from $JAVA_PATH"
   
-  JAVAC="$JAVA_PATH/javac"
-  JAVAKEY="$JAVA_PATH/keytool"
-  JAVASIGNER="$JAVA_PATH/jarsigner"
+  JAVAC="$(resolve_tool "$JAVA_PATH" javac)"
+  JAVAKEY="$(resolve_tool "$JAVA_PATH" keytool)"
+  JAVASIGNER="$(resolve_tool "$JAVA_PATH" jarsigner)"
 
   if [ "$RECOMPILE" == "true" ]; then
 
     if [ -z "$DROID_TOOLS" ]; then
-      pushd "/C/droid/build-tools/"*/ &>/dev/null
-      if (( $? )); then
-        echo "Unable to find droid build tools, please provide DROID_TOOLS variable!"
-        popd &>/dev/null
-        exit 1
-      else
-        DROID_TOOLS="$(pwd)"
-        popd &>/dev/null
-      fi
+      for candidate in "/C/droid/build-tools/$DROID_BUILD_TOOLS_VERSION" "/c/droid/build-tools/$DROID_BUILD_TOOLS_VERSION"; do
+        if [ -d "$candidate" ]; then
+          DROID_TOOLS="$candidate"
+          break
+        fi
+      done
+    fi
+
+    if [ -z "$DROID_TOOLS" ]; then
+      echo "Unable to find Android build-tools $DROID_BUILD_TOOLS_VERSION, please provide DROID_TOOLS variable!"
+      exit 1
     fi
 
     echo "Using droid build-tools from $DROID_TOOLS"
     
-    DX="$DROID_TOOLS/dx"
-    AAPT="$DROID_TOOLS/aapt"
+    D8="$(resolve_tool "$DROID_TOOLS" d8)"
+    AAPT="$(resolve_tool "$DROID_TOOLS" aapt)"
+    APKSIGNER="$(resolve_tool "$DROID_TOOLS" apksigner)"
+    ZIPALIGN="$(resolve_tool "$DROID_TOOLS" zipalign)"
 
     if [ -z "$DROID_PLATFORM" ]; then
-      pushd "/C/droid/platforms/android-"*/ &>/dev/null
-      if (( $? )); then
-        echo "Unable to find droid platform, please provide DROID_PLATFORM variable!"
-        popd &>/dev/null
-        exit 1
-      else
-        DROID_PLATFORM="$(pwd)"
-        popd &>/dev/null
-      fi
+      for candidate in "/C/droid/platforms/android-$DROID_TARGET_API" "/c/droid/platforms/android-$DROID_TARGET_API"; do
+        if [ -d "$candidate" ]; then
+          DROID_PLATFORM="$candidate"
+          break
+        fi
+      done
     fi
 
-    echo "Using droid droid platform from $DROID_PLATFORM"
+    if [ -z "$DROID_PLATFORM" ]; then
+      echo "Unable to find Android SDK platform $DROID_TARGET_API, please provide DROID_PLATFORM variable!"
+      exit 1
+    fi
+
+    echo "Using droid platform from $DROID_PLATFORM"
     
-    if [ ! -f "$DX" ]; then
-      if [ -f "$DX.bat" ]; then
-        DX="$DX.bat"
-      elif [ -f "$DX.exe" ]; then
-        DX="$DX.exe"
-      elif [ -f "$DX.sh" ]; then
-        DX="$DX.sh"
-      else
-        echo "Unable to find dx tool, please provide valid DROID_PLATFORM variable!"
-        exit 1
-      fi
+    if [ "$D8" == "" ] || [ "$AAPT" == "" ] || [ "$APKSIGNER" == "" ] || [ "$ZIPALIGN" == "" ]; then
+      echo "Unable to find d8, aapt, apksigner, or zipalign in Android build-tools $DROID_TOOLS!"
+      exit 1
     fi
 
     CLASSPATH="$DROID_PLATFORM/android.jar"

@@ -13,36 +13,26 @@ IOS=0
 ARCH="${1}"
 PROJECT_DIR="${2}"
 ACTION="${3}"
+MACOS_DEPLOYMENT_FLOOR=14.0
+IOS_DEPLOYMENT_FLOOR=17.0
 
 if [ ! -d "${PROJECT_DIR}/Dependencies" ]; then
   echo "Invalid path project path: ${PROJECT_DIR}!"
   exit 1
 fi
 
-if [ "${ARCH}" == "x86_64h" ]; then
-  DST="${PROJECT_DIR}/DerivedData/Xcode/onscrlib64h"
-  BLD_ARCH="x86_64"
-  VERMIN="10.7"
-elif [ "${ARCH}" == "x86_64" ]; then
+if [ "${ARCH}" == "x86_64" ]; then
   DST="${PROJECT_DIR}/DerivedData/Xcode/onscrlib64"
   BLD_ARCH="x86_64"
-  VERMIN="10.6"
-elif [ "${ARCH}" == "i386" ]; then
-  DST="${PROJECT_DIR}/DerivedData/Xcode/onscrlib32"
-  BLD_ARCH="i386"
-  VERMIN="10.6"
-elif [ "${ARCH}" == "armv7" ]; then
-  DST="${PROJECT_DIR}/DerivedData/Xcode/onscrlib-armv7"
-  BLD_ARCH="armv7"
-  IOS=1
-elif [ "${ARCH}" == "armv7s" ]; then
-  DST="${PROJECT_DIR}/DerivedData/Xcode/onscrlib-armv7s"
-  BLD_ARCH="armv7s"
-  IOS=1
+  VERMIN="$MACOS_DEPLOYMENT_FLOOR"
 elif [ "${ARCH}" == "arm64" ]; then
   DST="${PROJECT_DIR}/DerivedData/Xcode/onscrlib-arm64"
   BLD_ARCH="arm64"
+  VERMIN="$IOS_DEPLOYMENT_FLOOR"
   IOS=1
+else
+  echo "Unsupported Xcode dependency architecture '${ARCH}'. Supported architectures are x86_64 for macOS and arm64 for iOS."
+  exit 1
 fi
 
 # Trash Xcode overrides.
@@ -79,14 +69,10 @@ if (( $IOS )); then
   unset MACOSX_DEPLOYMENT_TARGET
 
   ret=0
-  ./build.sh -i -a ${BLD_ARCH} onscrlib || ret=1
+  ./build.sh -i -a ${BLD_ARCH} -m ${VERMIN} onscrlib || ret=1
 else
   ret=0
-  if [ "${ARCH}" == "x86_64h" ]; then
-    ./build.sh -a ${BLD_ARCH} -m ${VERMIN} onscrlib || ret=1
-  else
-    ./build.sh -a ${BLD_ARCH} -m ${VERMIN} onscrlib && ./build.sh -a ${BLD_ARCH} libcxx || ret=1
-  fi
+  ./build.sh -a ${BLD_ARCH} -m ${VERMIN} onscrlib || ret=1
 fi
 
 if (( $ret )); then

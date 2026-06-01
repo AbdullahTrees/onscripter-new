@@ -34,8 +34,8 @@ configopts=(
 )
 
 configopts_win32=(
-    '--build=i686-pc-mingw32'
-    '--host=i686-pc-mingw32'
+    '--build=x86_64-w64-mingw32'
+    '--host=x86_64-w64-mingw32'
     '--disable-directwrite'
 )
 

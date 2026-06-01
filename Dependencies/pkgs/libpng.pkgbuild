@@ -1,9 +1,9 @@
 pkgname=libpng
-pkgver=1.6.37
+pkgver=1.6.58
 pkgrel=1
 depends=('zlib')
-sources=("https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/libpng-${pkgver}.tar.xz")
-hashes=('505e70834d35383537b6491e7ae8641f1a4bed1876dbfe361201fc80868d88ca')
+sources=("https://downloads.sourceforge.net/libpng/libpng-${pkgver}.tar.xz")
+hashes=('5abe764ce7a55544f3259be87f4ed27b206b9ab1d6a285068f505e61a9583567')
 
 configopts=(
     '--disable-dependency-tracking'

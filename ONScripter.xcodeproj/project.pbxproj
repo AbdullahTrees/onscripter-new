@@ -1748,8 +1748,6 @@
 			);
 			dependencies = (
 				CE425BB51D75B52E0010C62C /* PBXTargetDependency */,
-				CEF2085E21ADF38300D01AD8 /* PBXTargetDependency */,
-				2F5351A61D51FF6A0023D8F0 /* PBXTargetDependency */,
 				2FD1DB671D52124F00362A7C /* PBXTargetDependency */,
 			);
 			name = "onscripter-ru-ios";
@@ -1810,9 +1808,7 @@
 			buildRules = (
 			);
 			dependencies = (
-				CE9D818020E3ECE200670C17 /* PBXTargetDependency */,
 				CE9D818220E3ECE200670C17 /* PBXTargetDependency */,
-				CE9D818420E3ECE200670C17 /* PBXTargetDependency */,
 			);
 			name = "onscripter-ru-osx";
 			productName = "onscripter-ru-osx64h";
@@ -2106,7 +2102,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
-			shellScript = "/bin/bash \"${PROJECT_DIR}/Scripts/fatbuild.sh\" \"${TARGET_BUILD_DIR}/onscripter-ru-osx32.app/Contents/MacOS/onscripter-ru-osx32\" \"${TARGET_BUILD_DIR}/onscripter-ru-osx64.app/Contents/MacOS/onscripter-ru-osx64\" \"${TARGET_BUILD_DIR}/onscripter-ru-osx64h.app/Contents/MacOS/onscripter-ru-osx64h\" \"${TARGET_BUILD_DIR}/${EXECUTABLE_PATH}\" \"${ACTION}\"";
+			shellScript = "/bin/bash \"${PROJECT_DIR}/Scripts/fatbuild.sh\" \"${TARGET_BUILD_DIR}/onscripter-ru-osx64.app/Contents/MacOS/onscripter-ru-osx64\" \"${TARGET_BUILD_DIR}/${EXECUTABLE_PATH}\" \"${ACTION}\"";
 		};
 		CEE1272120E38F1500C286AF /* Prepare Generated Source */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -2636,7 +2632,7 @@
 				GENERATE_PROFILING_CODE = YES;
 				KEEP_PRIVATE_EXTERNS = YES;
 				LD_DEPENDENCY_INFO_FILE = "";
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				ONLY_ACTIVE_ARCH = YES;
 				SCAN_ALL_SOURCE_FILES_FOR_INCLUDES = YES;
 				SDKROOT = macosx;
@@ -2709,7 +2705,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LD_DEPENDENCY_INFO_FILE = "";
 				LLVM_LTO = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				SCAN_ALL_SOURCE_FILES_FOR_INCLUDES = YES;
 				SDKROOT = macosx;
 				USER_HEADER_SEARCH_PATHS = "$(PROJECT_DIR)";
@@ -2766,7 +2762,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "";
@@ -2800,7 +2796,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "";
@@ -2838,7 +2834,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "";
@@ -2872,7 +2868,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "";
@@ -2883,11 +2879,7 @@
 		2F5351981D51FD980023D8F0 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = (
-					armv7,
-					armv7s,
-					arm64,
-				);
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-ios";
 				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
@@ -2918,7 +2910,7 @@
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7s/onscrlib/include/freetype2",
 				);
 				INFOPLIST_FILE = "$(PROJECT_DIR)/Resources/Bundle/Info-ios.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LIBRARY_SEARCH_PATHS = "";
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-arm64/onscrlib/lib";
 				"LIBRARY_SEARCH_PATHS[arch=armv7]" = "$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7/onscrlib/lib";
@@ -2937,18 +2929,14 @@
 				PROVISIONING_PROFILE_SPECIFIER = "GenericMobile (Apple Development)";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				VALID_ARCHS = "armv7 armv7s arm64";
+				VALID_ARCHS = arm64;
 			};
 			name = Debug;
 		};
 		2F5351991D51FD980023D8F0 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = (
-					armv7,
-					armv7s,
-					arm64,
-				);
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-ios";
 				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
@@ -2981,7 +2969,7 @@
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7s/onscrlib/include/freetype2",
 				);
 				INFOPLIST_FILE = "$(PROJECT_DIR)/Resources/Bundle/Info-ios.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LIBRARY_SEARCH_PATHS = "";
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-arm64/onscrlib/lib";
 				"LIBRARY_SEARCH_PATHS[arch=armv7]" = "$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7/onscrlib/lib";
@@ -3001,7 +2989,7 @@
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
-				VALID_ARCHS = "armv7 armv7s arm64";
+				VALID_ARCHS = arm64;
 			};
 			name = Release;
 		};
@@ -3037,7 +3025,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 8.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				OTHER_CFLAGS = "";
 				PRODUCT_NAME = "onscrlib-armv7s";
@@ -3075,7 +3063,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 8.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				OTHER_CFLAGS = "";
 				PRODUCT_NAME = "onscrlib-armv7s";
@@ -3117,7 +3105,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 8.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				OTHER_CFLAGS = "";
 				PRODUCT_NAME = onscrlib_arm64;
@@ -3156,7 +3144,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 8.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				OTHER_CFLAGS = "";
 				PRODUCT_NAME = onscrlib_arm64;
@@ -3204,7 +3192,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64/onscrlib/lib",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				OTHER_CFLAGS = "-m64";
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx64";
@@ -3260,7 +3248,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64/onscrlib/lib",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				OTHER_CFLAGS = "-m64";
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx64";
@@ -3313,7 +3301,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib32/onscrlib/lib",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				OTHER_CFLAGS = "-m32";
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx32";
@@ -3371,7 +3359,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib32/onscrlib/lib",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				OTHER_CFLAGS = "-m32";
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx32";
@@ -3405,7 +3393,7 @@
 				INFOPLIST_FILE = "$(PROJECT_DIR)/Resources/Bundle/Info-mac.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				LIBRARY_SEARCH_PATHS = "$(inherited)";
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -3443,7 +3431,7 @@
 				INFOPLIST_FILE = "$(PROJECT_DIR)/Resources/Bundle/Info-mac.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				LIBRARY_SEARCH_PATHS = "$(inherited)";
-				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -3461,7 +3449,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.embed";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -3471,7 +3459,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.embed";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -3481,7 +3469,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.embed";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -3491,7 +3479,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.embed";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -3531,7 +3519,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64h/onscrlib/lib",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.7;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx64h";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -3583,7 +3571,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64h/onscrlib/lib",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.7;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx64h";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -3629,7 +3617,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 8.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				OTHER_CFLAGS = "";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -3667,7 +3655,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 8.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				OTHER_CFLAGS = "";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -3707,7 +3695,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.7;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "";
@@ -3741,7 +3729,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.7;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "";

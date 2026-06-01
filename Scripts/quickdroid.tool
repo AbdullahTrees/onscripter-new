@@ -27,9 +27,8 @@ elif [ "$1" == "--debug" ]; then
 fi
 
 archnames=(
-  "arm"
   "arm64"
-  "x86"
+  "x86_64"
 )
 
 for arch in "${archnames[@]}"; do

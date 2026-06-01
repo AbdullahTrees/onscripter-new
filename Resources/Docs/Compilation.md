@@ -3,13 +3,12 @@ ONScripter-RU Compilation
 
 This document does not cover all the compilation steps for every platform, but tries to provide a general idea to give one the right direction on the minimal recommended platform versions as follows:
 
-- macOS 10.6 (i386 SSE3, x86_64)
-- macOS 10.7 (x86_64h)
-- iOS 8.0 (armv7, armv7s, aarch64)
-- Debian Linux 9 (x86_64)
-- Ubuntu Linux 18.04 (x86_64)
-- Windows XP SP3 (i686 SSE3)
-- Android 4.1 (i386 SSE3, armv7, aarch64)
+- macOS 14 (x86_64; arm64 support is the target for new Apple Silicon work)
+- iOS 17 (arm64)
+- Debian Linux 11 (x86_64)
+- Ubuntu Linux 22.04 LTS (x86_64)
+- Windows 10 (x86_64)
+- Android 14/API 34 (arm64-v8a; x86_64 for emulator/dev builds)
 
 Build stacks use a shared dependency compilation system called **onscrlib** (see `Dependencies` folder for more details). The supported build stacks are as follows:
 
@@ -26,75 +25,46 @@ make -j8    # Add DEBUG=1 for debugging
 
 #### macOS and iOS
 
-[Xcode](https://developer.apple.com/xcode/) is a requirement regardless of the compilation method. Xcode 9.2 or 9.4 is a recommended choice, Xcode 10 is **NOT** recommended, as you may not be able to target 32-bit 10.6, and its new build system may not be optimised for ONScripter-RU needs. It is suggested to use [MacPorts](https://www.macports.org), as it is supported by Apple and can provide the necessary tools at easy cost.
+[Xcode](https://developer.apple.com/xcode/) is a requirement regardless of the compilation method. Use a current Xcode that can target macOS 14 and iOS 17. It is suggested to use [MacPorts](https://www.macports.org), as it is supported by Apple and can provide the necessary tools at easy cost.
 
 1. Install the dependencies required to build onscrlib.
 ```
 sudo port install automake autoconf yasm pkgconfig gmake cmake
 ```
-2. Install custom clang compiler if you plan to target 10.6.  
-At least Clang 5.0 is required, any newer should work too. You can use the one from MacPorts by running:
-```
-sudo port install llvm-7.0 clang-7.0 cctools +xcode ld64 +ld64_xcode
-```
-To enable external clang support in Xcode perform the following steps:
-    1. Recursively create ~/Library/Application Support/Developer/Shared/Xcode/Plug-Ins directory.
-    2. Copy a provided xcplugin to it.
-    3. Add your Xcode DVTPlugInCompatibilityUUID to the plugin:
-```
-XCODEUUID=$(defaults read /Applications/Xcode.app/Contents/Info DVTPlugInCompatibilityUUID)
-defaults write ~/Library/Application\ Support/Developer/Shared/Xcode/Plug-Ins/Clang\ MacPorts.xcplugin/Contents/Info.plist DVTPlugInCompatibilityUUIDs -array-add $XCODEUUID
-```
-    4. Patch `/opt/local/libexec/llvm-7.0/include/c++/v1/__config` to fix libcxxabi compilation by replacing:
-```
-	#define _LIBCPP_AVAILABILITY_TYPEINFO_VTABLE                                   \
-	  __attribute__((availability(macosx,strict,introduced=10.9)))                 \
-	  __attribute__((availability(ios,strict,introduced=7.0)))
-```
-with:
-```
-	#define _LIBCPP_AVAILABILITY_TYPEINFO_VTABLE                                   \
-	  __attribute__((availability(macosx,strict,introduced=10.6)))                 \
-	  __attribute__((availability(ios,strict,introduced=7.0)))
-```
+2. Legacy custom-clang, macOS 10.6, i386, armv7, and armv7s targets are no longer supported. A custom compiler is no longer required for the supported floor.
 3. Run Xcode and select the project of your choice:
-    - `onscripter-ru-osx64h` for native compilation for macOS 10.7+
-    - `onscripter-ru-ios` for native compilation for iOS 8.0+
-    - `onscripter-ru-osx64` for custom compilation for macOS 10.6+ x86_64
-    - `onscripter-ru-osx32` for custom compilation for macOS 10.6+ i386
-    - `onscripter-ru-osx` to create an aggregated FAT binary with all osx targets
-4. Set the compiler to `Clang MacPorts` and update `Clang compiler path` if you use custom compilation targets in project settings.
-5. Set custom working directory in `Edit Scheme` → `Options`.
-6. Set build configuration (`Release` or `Debug`) in `Edit Scheme` → `Options`.
-7. Build and debug.
+    - `onscripter-ru-ios` for native compilation for iOS 17+ arm64
+    - `onscripter-ru-osx64` for macOS 14+ x86_64
+4. Set custom working directory in `Edit Scheme` -> `Options`.
+5. Set build configuration (`Release` or `Debug`) in `Edit Scheme` -> `Options`.
+6. Build and debug.
 
 
 **NOTES**:
 
 - It is recommended to use project-relative path to DerivedData in Xcode preferences, as some build scripts assume it by default.
 - You can obviously attempt to use command line compilation. Follow Linux recommendations after installing the dependencies. This is not a supported option and has limitations with Cocoa integration.
-- `onscripter-ru-osx64h` has AVX 2 extensions turned on, make sure to turn them off if your CPU is older than Haswell.
 - For iOS ipa generation use `Scripts/ipabuild.tool` after compiling the app in Xcode.
 
 #### Cross-compiling for Windows
 
 Cross compiling is the easiest way to get Windows binaries.
 
-1. Install the MinGW-W64 dependencies for i686. On macOS this could be done with a MacPorts command:
+1. Install the MinGW-W64 dependencies for x86_64. On macOS this could be done with a MacPorts command:
 ```
-sudo port install i686-w64-mingw32-binutils i686-w64-mingw32-crt i686-w64-mingw32-gcc i686-w64-mingw32-headers
+sudo port install x86_64-w64-mingw32-binutils x86_64-w64-mingw32-crt x86_64-w64-mingw32-gcc x86_64-w64-mingw32-headers
 ```
 2. Run the necessary commands:
 ```
 cd /path/to/onscripter
-export CC=i686-w64-mingw32-gcc
-export CXX=i686-w64-mingw32-g++
-export LD=i686-w64-mingw32-ld
-export AR=i686-w64-mingw32-ar
-export RANLIB=i686-w64-mingw32-ranlib
-export AS=i686-w64-mingw32-as
+export CC=x86_64-w64-mingw32-gcc
+export CXX=x86_64-w64-mingw32-g++
+export LD=x86_64-w64-mingw32-ld
+export AR=x86_64-w64-mingw32-ar
+export RANLIB=x86_64-w64-mingw32-ranlib
+export AS=x86_64-w64-mingw32-as
 chmod a+x configure
-./configure --cross=i686-w64-mingw32
+./configure --cross=x86_64-w64-mingw32
 make
 ```
 
@@ -108,7 +78,7 @@ You will need these tools:
 * [CLion](https://www.jetbrains.com/clion/) or [CodeLite](http://codelite.org/) for a more convenient debugging interface (optional)
 
 1. Install MSYS2 to `C:\msys64` (installing to other locations and using CLion require one to change `MSYS_PATH` in CMakeLists.txt).
-2. Update MSYS2 core (always use `mingw32.exe`):
+2. Update MSYS2 core (use `ucrt64.exe` for native Windows builds):
 ```
 pacman -Syu
 ```
@@ -119,11 +89,11 @@ pacman -Syu
 4. Repeat the previous action until you are fully updated.
 5. Install the required packages via pacman:
 ```
-pacman -S base-devel git mercurial subversion unzip yasm mingw-w64-i686-toolchain mingw-w64-i686-cmake python
+pacman -S --needed base-devel git mercurial subversion unzip zip p7zip yasm nasm pkgconf autoconf automake libtool make patch gettext-devel mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-meson mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-yasm mingw-w64-ucrt-x86_64-nasm mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-curl
 ```
 6. Optionally install these packages:
 ```
-pacman -S mingw-w64-i686-codelite-git mingw-w64-i686-gcc-debug mingw-w64-i686-clang
+pacman -S mingw-w64-ucrt-x86_64-gdb
 ```
 7. Proceed using the generic method of compilation at the beginning of these instructions. Provide `--prefer-clang` configure argument if using Clang.
 
@@ -132,7 +102,7 @@ pacman -S mingw-w64-i686-codelite-git mingw-w64-i686-gcc-debug mingw-w64-i686-cl
 - GDB may find no source in your executable, `make DEBUG=1` is needed to build a debug binary.
 - If you need to build a shared SDL2 library, after you change `--disable-shared` to `--disable-static` you may get an error on compilation step with `SDL_window_main.o` not found. To fix that you are in need to go to SDL2 sources and copy the contents of build/.libs to build (perhaps one more time after next step). Then manually run `make` and `make install`. To mark the package as built run `touch onscrlib/onscrlib/.pkgs/SDL2`.
 - Latest gdb versions from MSYS2 distribution do not always work properly in Codelite. A slightly older mingw build may be more stable (try [gdb2014-05-23.zip](https://sourceforge.net/projects/gdbmingw/files/)).
-- You may run into issues if you forget to start MSYS2 via `mingw32.exe`.
+- You may run into issues if you forget to start MSYS2 via `ucrt64.exe`.
 - You must remember that MSYS2 uses linux-style slashes for paths. This means a path `C:\Directory\AnotherDir` should be written as `/c/Directory/AnotherDir` in MSYS2.
 - First compilation must be performed outside of CLion due to several incompatibilities.
 - Using `make -j4` or similar is prohibited for the first compilation and is not recommended when building with gcc due to MinGW issues.
@@ -157,6 +127,8 @@ As an alternative to Codelite you may use CLion IDE created by JetBrains. Copy t
 - zip command line tool (pacman -S zip in msys2)
 - wget or curl command line tool
 - libtool for libunwind compilation
+- JDK 17+ for APK packaging
+- Android SDK platform 36, Build Tools 36.1.0, Platform Tools, and NDK r29
 
 **Basic compilation guide**:
 
@@ -164,9 +136,9 @@ This guide is useful for development when targeting a single device with a singl
 
 1. Run configure for your target architecture:
 ```
-./configure --droid-build --droid-arch=arm
+./configure --droid-build --droid-arch=arm64
 ```
-The target architecture is one of arm, arm64, and x86. Please note, that the configure script will download and setup the ndk for any architecure if necessary on every run. All the normal configure options from the beginning of the document apply.
+The supported target architecture is `arm64`; `x86_64` is available for emulator and development builds. The configure script will use NDK r29 from the Android SDK if present, or set up wrapper toolchains as needed. All the normal configure options from the beginning of the document apply.
 2. Make the engine:
 ```
 make -j8
@@ -180,11 +152,9 @@ make apk
 
 To compile for multiple architectures (i.e. create a FAT apk file) for deployment you could either use `./Scripts/quickdroid.tool` tool or run the following commands manually:
 ```
-./configure --droid-build --droid-arch=arm
-make
 ./configure --droid-build --droid-arch=arm64
 make
-./configure --droid-build --droid-arch=x86
+./configure --droid-build --droid-arch=x86_64
 make
 make apkall
 ```
@@ -210,13 +180,12 @@ It is recommended to debug using IDA Pro.
     1. Open `libmain.so` in IDA Pro by dragging `onscripter-ru.apk` into its main window
     2. Set debugger to `Remote Linux Debugger`
     3. Upload a correct android debugger server to the device (e.g. to `/data/debug/`):
-        - `android_server` — for arm
         - `android_server64` — for arm64
-        - `android_x86_server` — for x86
+        - `android_x86_64_server` — for x86_64
 
         You may use the following command:
         ```
-        adb push android_server /data/debug/
+        adb push android_server64 /data/debug/
         ```
 
     4. Set debugger executable permissions to 0777 and run the debugger (use adb shell).
@@ -245,8 +214,8 @@ It is recommended to debug using IDA Pro.
 
 **NOTES**:
 
-- No Java installation, Android SDK, or tools are necessary to build onscripter-ru
-- Only arm-v7a, aarch64, and x86 binaries are compiled
+- Java, Android SDK Build Tools, Android platform 36, and NDK r29 are required for supported APK packaging.
+- Only arm64-v8a and x86_64 binaries are compiled.
 - Building on Linux and Windows systems is mostly untested
 - Building standalone onscrlib package may fail on Windows due to `%PATH%`/`$PATH` design
 - Source level debugging may not always be available
@@ -259,40 +228,37 @@ adb logcat | grep -E '(ONScripter-RU|SDL)'
 
 Even though all the Java-dependent files are provided in compiled form you may rebuild them.
 
-1. Download [Java SE Development Kit](http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html) (not Java RE) for your platform.
+1. Download a current [Java SE Development Kit](https://www.oracle.com/java/technologies/downloads/) or OpenJDK distribution for your platform.
 2. Download [Android command line tools](https://developer.android.com/studio/index.html#downloads) for your platform (avoid Android Studio itself).
 3. Extract the downloaded tools some folder e.g. `$HOME/droid/tools`
 4. Install the following packages:
-    - `tools` (Android SDK Tools)
     - `platform-tools` (Android SDK Platform-tools)
-    - `build-tools;26.0.0` (Android SDK Build-tools)
-    - `platforms;android-26` (Android 8.0 (API 26) → SDK Platform (others are not tested))
+    - `build-tools;36.1.0` (Android SDK Build-tools)
+    - `platforms;android-36` (Android 16/API 36 SDK Platform)
+    - `ndk;29.0.14206865` (Android NDK r29)
 
     On Windows run android.bat and manually uncheck everything else.  
     On Other platforms you could run the following command:
     ```
-    ./bin/sdkmanager tools platform-tools 'platforms;android-26' 'build-tools;26.0.0'
+    ./bin/sdkmanager platform-tools 'platforms;android-36' 'build-tools;36.1.0' 'ndk;29.0.14206865'
     ```
 
 5. Recompile the resources by running the following command:
     ```
-    ./Scripts/apkbuild.sh DerivedData --recompile
+    ./Scripts/apkbuild.tool DerivedData
     ```
 
     The following arguments are supported:
 
-    - `--recompile` — rebuilds Java/Android sources
     - `--jsign` — signs apk file with jarsigner
 
     The following environment variables are supported:
 
     - `JAVA_PATH` — path to `bin/javac`
-    - `DROID_TOOLS` — path to `aapt` tool
+    - `DROID_TOOLS` — path to Android build-tools
     - `DROID_PLATFORM` — path to `android.jar`
 
-You will have to copy the recompiled binaries from `DerivedData/Droid-package/bin` to `Resources/Droid/bin` for later usage without the need to recompile and building by running `make apk` or `make apkall`.
-
-#### Linux Ubuntu 18.04/Debian 9/SteamOS
+#### Linux Ubuntu 22.04 LTS/Debian 11/SteamOS
 
 1. You will need a number of packages:
 ```

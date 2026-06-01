@@ -79,11 +79,12 @@ cat <<EndOfHelp
                 System default compilers will be used.
 
     -m  <ver>   sets the version of iOS or macOS to build for.  The appropriate
-                SDKs and compilers must be installed.  Defaults to 10.6.
+                SDKs and compilers must be installed.  Defaults to macOS 14.0
+                or iOS 17.0.
 
     -a  <arch>  sets the iOS or macOS architecture to build for.  May be specified
                 multiple times to pass multiple -arch flags to the compiler.
-                Defaults to i386.
+                Defaults to x86_64 for macOS and arm64 for iOS.
 EndOfHelp
     ;;
     esac
@@ -106,15 +107,47 @@ list_packages() {
 
 # Handle all of the options passed to the script.
 
+APPLE_MACOS_FLOOR=14.0
+APPLE_IOS_FLOOR=17.0
+
+apple_version_macro() {
+    local version="$1"
+    local major minor patch
+    IFS=. read -r major minor patch <<< "$version"
+    major="${major:-0}"
+    minor="${minor:-0}"
+    patch="${patch:-0}"
+
+    if [ "$((10#$major))" -eq 10 ] && [ "$((10#$minor))" -lt 10 ]; then
+        printf "%d%d%d" "$((10#$major))" "$((10#$minor))" "$((10#$patch))"
+    else
+        printf "%d%02d%02d" "$((10#$major))" "$((10#$minor))" "$((10#$patch))"
+    fi
+}
+
+apple_version_order() {
+    local version="$1"
+    local major minor patch
+    IFS=. read -r major minor patch <<< "$version"
+    major="${major:-0}"
+    minor="${minor:-0}"
+    patch="${patch:-0}"
+    printf "%d%03d%03d" "$((10#$major))" "$((10#$minor))" "$((10#$patch))"
+}
+
+apple_version_lt() {
+    [ "$(apple_version_order "$1")" -lt "$(apple_version_order "$2")" ]
+}
+
 DEBUG=false
-MMAC_VER_MIN=10.6
+MMAC_VER_MIN=$APPLE_MACOS_FLOOR
 MAC_SDK=
-MAC_MIN_VER=1060
+MAC_MIN_VER=$(apple_version_macro "$MMAC_VER_MIN")
 APPLE_ARCH=()
-MIOS_VER_MIN=8.0
-IOS_MIN_VER=800
-IOS_SDK=8.4
-DROID_DEFAULT_TRIPLE="arm-linux-androideabi"
+MIOS_VER_MIN=$APPLE_IOS_FLOOR
+IOS_MIN_VER=$(apple_version_macro "$MIOS_VER_MIN")
+IOS_SDK=
+DROID_DEFAULT_TRIPLE="aarch64-linux-android"
 CROSS_BUILD=false
 CROSS_SHIM=true
 CROSS_TRIPLE=""
@@ -164,9 +197,9 @@ while getopts O:defphilm:a:o:r:b:c:g: o; do
             fi;;
         m)
             MMAC_VER_MIN="$OPTARG"
-            MAC_MIN_VER="${MMAC_VER_MIN//./}0"
+            MAC_MIN_VER=$(apple_version_macro "$MMAC_VER_MIN")
             MIOS_VER_MIN="$OPTARG"
-            IOS_MIN_VER="${MIOS_VER_MIN//./}0" ;;
+            IOS_MIN_VER=$(apple_version_macro "$MIOS_VER_MIN") ;;
         a)
             APPLE_ARCH=( ${APPLE_ARCH[@]} "-arch $OPTARG" );;
         b)
@@ -195,7 +228,7 @@ while getopts O:defphilm:a:o:r:b:c:g: o; do
             fi
             PATH="$OPTARG/bin:$PATH"
             # Full path is necessary on Windows due to $PATH not being synced with %PATH%
-            if [[ $(uname) == MINGW* ]]; then
+            if [[ $(uname) == MINGW* ]] || [[ $(uname) == MSYS* ]]; then
                 CROSS_SYS_PREFIX="$OPTARG/bin/"
             fi
             CC="${CROSS_SYS_PREFIX}clang"
@@ -222,8 +255,8 @@ while getopts O:defphilm:a:o:r:b:c:g: o; do
 done
 
 if [ ${#APPLE_ARCH[@]} -eq 0 ]; then
-    if $CROSS_BUILD; then
-        APPLE_ARCH=("-arch armv7s")
+    if [ "$CROSS_TARGET" == "darwin-iOS" ]; then
+        APPLE_ARCH=("-arch arm64")
     else
         APPLE_ARCH=("-arch x86_64")
     fi
@@ -597,7 +630,7 @@ fi
 getHost() {
     case $(uname) in
         Darwin*) echo "darwin-macOS" ;;
-        MINGW32*) echo "win32" ;;
+        MINGW*|MSYS*) echo "win32" ;;
         *) echo "linux-like" ;; # For bsd compat
     esac
 }
@@ -629,7 +662,9 @@ getTarget() {
 getTargetCPU() {
     case $(getTarget) in
         darwin-macOS)
-            if [ "$APPLE_CPU_FLAG" == "-m32" ]; then
+            if [[ "${APPLE_ARCH[*]}" == *"-arch arm64"* ]]; then
+                echo "arm64"
+            elif [ "$APPLE_CPU_FLAG" == "-m32" ]; then
                 echo "i686"
             else
                 echo "x86_64"
@@ -647,7 +682,11 @@ getTargetCPU() {
             fi
         ;;
         win32)
-            echo "i686"
+            if [[ $CROSS_TRIPLE == *x86_64* ]] || [ "$(uname -m)" == "x86_64" ]; then
+                echo "x86_64"
+            else
+                echo "i686"
+            fi
         ;;
         linux-like)
             if [ "$(uname -m)" == "x86_64" ]; then
@@ -659,7 +698,9 @@ getTargetCPU() {
             fi
         ;;
         droid)
-            if [[ $CROSS_TRIPLE == *86* ]]; then 
+            if [[ $CROSS_TRIPLE == *x86_64* ]]; then
+                echo "x86_64"
+            elif [[ $CROSS_TRIPLE == *86* ]]; then
                 echo "x86_32"
             elif [[ $CROSS_TRIPLE == *aarch64* ]]; then
                 echo "aarch64"
@@ -717,6 +758,19 @@ case $(getHost) in
             #warn "Failed to find a specified MacOSX SDK, performing a search"
             MAC_SDK=""
 
+            if [ -d "${MAC_SDK_PATH}/MacOSX.sdk" ]; then
+                MAC_SDK=""
+            fi
+
+            for i in {14..26}; do
+                if [ -d "${MAC_SDK_PATH}/MacOSX${i}.sdk" ]; then
+                    MAC_SDK="${i}"
+                fi
+                if [ -d "${MAC_SDK_PATH}/MacOSX${i}.0.sdk" ]; then
+                    MAC_SDK="${i}.0"
+                fi
+            done
+
             for i in {6..15}; do
                 if [ -d "${MAC_SDK_PATH}/MacOSX10.${i}.sdk" ]; then
                     MAC_SDK="10.${i}"
@@ -727,22 +781,27 @@ case $(getHost) in
                 error_out "No installed MacOSX SDK found, cannot continue"
             fi
 
-            if [ "${MAC_SDK}" == "10.6" ]; then
-                warn "Using outdated 10.6 SDK, packages like SDL2 will not build"
-            fi
-
             #msg "Search succeeded with ${MAC_SDK} SDK"
-        fi
-
-        if [ "${MAC_SDK}" == "10.6" ]; then
-            warn "Using outdated 10.6 SDK, packages like SDL2 will not build"
         fi
 
         if [ ! -d "${IOS_SDK_PATH}/iPhoneOS${IOS_SDK}.sdk" ]; then
             #warn "Failed to find a specified iOS SDK, performing a search"
             IOS_SDK=""
 
-            for i in {8..15}; do
+            if [ -d "${IOS_SDK_PATH}/iPhoneOS.sdk" ]; then
+                IOS_SDK=""
+            fi
+
+            for i in {17..26}; do
+                if [ -d "${IOS_SDK_PATH}/iPhoneOS${i}.sdk" ]; then
+                    IOS_SDK="${i}"
+                fi
+                if [ -d "${IOS_SDK_PATH}/iPhoneOS${i}.0.sdk" ]; then
+                    IOS_SDK="${i}.0"
+                fi
+            done
+
+            for i in {8..18}; do
                 for j in {0..6}; do
                     if [ -d "${IOS_SDK_PATH}/iPhoneOS${i}.${j}.sdk" ]; then
                         IOS_SDK="${i}.${j}"
@@ -755,6 +814,25 @@ case $(getHost) in
             fi
 
             #msg "Search succeeded with ${MAC_SDK} SDK"
+        fi
+    ;;
+esac
+
+case $(getTarget) in
+    darwin-macOS)
+        if apple_version_lt "$MMAC_VER_MIN" "$APPLE_MACOS_FLOOR"; then
+            error_out "macOS deployment target %s is below the supported floor %s" "$MMAC_VER_MIN" "$APPLE_MACOS_FLOOR"
+        fi
+        if [[ "${APPLE_ARCH[*]}" == *"-arch i386"* ]]; then
+            error_out "i386 macOS builds are no longer supported; use x86_64 or arm64"
+        fi
+    ;;
+    darwin-iOS)
+        if apple_version_lt "$MIOS_VER_MIN" "$APPLE_IOS_FLOOR"; then
+            error_out "iOS deployment target %s is below the supported floor %s" "$MIOS_VER_MIN" "$APPLE_IOS_FLOOR"
+        fi
+        if [[ "${APPLE_ARCH[*]}" == *"-arch armv7"* ]]; then
+            error_out "armv7/armv7s iOS builds are no longer supported; use arm64"
         fi
     ;;
 esac

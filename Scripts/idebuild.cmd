@@ -36,7 +36,7 @@ if "%3"=="" (
 	set B_MSYS_PATH=%3\
 )
 
-set PATH=%PATH%;%B_MSYS_PATH%usr\bin;%B_MSYS_PATH%mingw32\bin
+set PATH=%PATH%;%B_MSYS_PATH%usr\bin;%B_MSYS_PATH%ucrt64\bin
 
 rem Fixing CLion "handy" -j 4 and other presents
 set MAKEFLAGS=""
