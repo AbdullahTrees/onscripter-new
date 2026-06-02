@@ -12,9 +12,10 @@
 #include "External/Compatibility.hpp"
 #include "External/LRUCache.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_mixer.h>
-#include <SDL2/SDL_gpu.h>
+#include "Support/SDLCompat.hpp"
+#include "Support/SDLMixerCompat.hpp"
+
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <unordered_map>
 #include <string>
@@ -53,8 +54,8 @@ struct Wrapped_SDL_Surface {
 };
 
 struct Wrapped_GPU_Image {
-	GPU_Image *img{nullptr};
-	Wrapped_GPU_Image(GPU_Image *image) {
+	RenderImage *img{nullptr};
+	Wrapped_GPU_Image(RenderImage *image) {
 		//assert(image != nullptr && image->refcount == 1);
 		img = image;
 	}

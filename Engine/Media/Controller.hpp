@@ -15,6 +15,7 @@
 #include "Engine/Media/SubtitleDriver.hpp"
 #include "Engine/Graphics/Pool.hpp"
 #include "Support/Clock.hpp"
+#include "Support/SDLCompat.hpp"
 
 extern "C" {
 #include <libavutil/opt.h>
@@ -25,8 +26,8 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_gpu.h>
+#include "Support/SDLCompat.hpp"
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <array>
 #include <deque>
@@ -146,7 +147,7 @@ protected:
 		}
 
 		int waitForData(MediaEntries entry, uint32_t ms) {
-			return SDL_SemWaitTimeout(packetQueueSemData[entry], ms);
+			return onsWaitSemaphoreTimeoutResult(packetQueueSemData[entry], ms);
 		}
 
 		std::atomic<bool> shouldFinish{false};
@@ -336,7 +337,7 @@ private:
 
 public:
 	bool loadVideo(const char *filename, unsigned audioStream, unsigned subtitleStream);
-	bool loadPresentation(const GPU_Rect &rect, bool loop);
+	bool loadPresentation(const RenderRect &rect, bool loop);
 	void frameSize(const SDL_Rect &rect, int &width, float &wFactor, int &height, float &hFactor, bool alpha);
 	bool addSubtitles(const char *filename, int frameWidth, int frameHeight);
 	void startProcessing();

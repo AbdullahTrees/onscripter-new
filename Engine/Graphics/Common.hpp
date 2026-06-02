@@ -10,9 +10,9 @@
 #pragma once
 
 #include "External/Compatibility.hpp"
+#include "Engine/Graphics/RendererBackend.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_gpu.h>
+#include "Support/SDLCompat.hpp"
 
 #include <cstdint>
 
@@ -36,7 +36,7 @@ enum class BlendModeId {
 uint32_t getSurfacePixel(SDL_Surface *surface, int x, int y);
 void setSurfacePixel(SDL_Surface *surface, int x, int y, uint32_t pixel);
 int resizeSurface(SDL_Surface *src, SDL_Surface *dst);
-int doClipping(GPU_Rect *dst, GPU_Rect *clip, GPU_Rect *clipped = nullptr);
+int doClipping(RenderRect *dst, RenderRect *clip, RenderRect *clipped = nullptr);
 void resizeImage(uint8_t *dst_buffer, int dst_width, int dst_height, int dst_total_width,
                  uint8_t *src_buffer, int src_width, int src_height, int src_total_width,
                  int byte_per_pixel, uint8_t *tmp_buffer, int tmp_total_width,

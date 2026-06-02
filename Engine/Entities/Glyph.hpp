@@ -11,8 +11,8 @@
 
 #include "External/Compatibility.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_gpu.h>
+#include "Support/SDLCompat.hpp"
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <cstdint>
 
@@ -40,16 +40,16 @@ struct GlyphParams {
 class GlyphValues {
 public:
 	//glyph and glyph_gpu are same for the shadow
-	GPU_Image *glyph_gpu{nullptr};
-	GPU_Image *border_gpu{nullptr};
+	RenderImage *glyph_gpu{nullptr};
+	RenderImage *border_gpu{nullptr};
 
 	// I don't like having these surfaces here either
 	SDL_Surface *bitmap{nullptr};
 	SDL_Surface *border_bitmap{nullptr};
 
 	SDL_Point border_bitmap_offset{0, 0};
-	cmp::optional<GPU_Rect> glyph_pos;
-	cmp::optional<GPU_Rect> border_pos;
+	cmp::optional<RenderRect> glyph_pos;
+	cmp::optional<RenderRect> border_pos;
 
 	//I don't like having this block here, but a unified Glyph class is worth it
 	float minx{0}, maxx{0}, miny{0}, maxy{0}, advance{0}, faceAscender{0}, faceDescender{0};

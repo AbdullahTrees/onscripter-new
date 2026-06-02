@@ -1,22 +1,104 @@
 pkgname=libepoxy
-pkgver=1.4.3
+pkgver=1.5.10
 pkgrel=1
-# TODO: Upgrade libepoxy in some future, but this will require patches:
-# 1.5.x branch till 1.5.3 is pretty much broken:
-# - https://github.com/anholt/libepoxy/issues/160
-# - https://github.com/anholt/libepoxy/issues/180
-# 1.5.0 and newer do not have configure, and autoreconf requires xorg macros.
-# As they switched to meson, upgrading to 1.5.3 will require supporting meson
-# in onscrlib rather than attempting to work around no longer supported autotools.
-sources=(
-    "https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/$pkgname-$pkgver.tar.xz"
-)
-hashes=(
-    '0b808a06c9685a62fca34b680abb8bc7fb2fda074478e329b063c1f872b826f6'
+sources=("https://download.gnome.org/sources/libepoxy/${pkgver%.*}/$pkgname-$pkgver.tar.xz")
+hashes=('072cda4b59dd098bba8c2363a6247299db1fa89411dc221c8b81b8ee8192e623')
+
+mesonopts=(
+    '--buildtype=release'
+    '--default-library=static'
+    '-Ddocs=false'
+    '-Dtests=false'
 )
 
-configopts=(
-    '--disable-shared'
+mesonopts_win32=(
+    '-Degl=no'
+    '-Dglx=no'
+    '-Dx11=false'
 )
+
+mesonopts_mac=(
+    '-Degl=no'
+    '-Dglx=no'
+    '-Dx11=false'
+)
+
+configure() {
+    msg "Running meson"
+
+    local ret=0
+    local logfile="$logdir/$pkgname.meson.log"
+    local lcf="$CFLAGS ${cflags[@]} $CFLAGS_EXTRA"
+    local lcxf="$CPPFLAGS ${cppflags[@]} ${cflags[@]} $CPPFLAGS_EXTRA $CFLAGS_EXTRA"
+    local llf="$LDFLAGS ${ldflags[@]} $LDFLAGS_EXTRA"
+    local meson_outdir="$outdir"
+    local opts=("${mesonopts[@]}")
+
+    case $(getTarget) in
+        win32)
+            opts+=("${mesonopts_win32[@]}")
+            ;;
+        darwin-macOS)
+            opts+=("${mesonopts_mac[@]}")
+            ;;
+    esac
+
+    rm -rf build
+
+    if [ "$(getHost)" == "win32" ]; then
+        meson_outdir="$(cygpath -m "$outdir")"
+        lcf="${lcf//$outdir/$meson_outdir}"
+        lcxf="${lcxf//$outdir/$meson_outdir}"
+        llf="${llf//$outdir/$meson_outdir}"
+    fi
+
+    export CC="$(getCC)"
+    export CXX="$(getCXX)"
+    export CFLAGS="$lcf"
+    export CXXFLAGS="$lcxf"
+    export LDFLAGS="$llf"
+
+    meson setup build \
+        --prefix="$meson_outdir" \
+        --libdir=lib \
+        "${opts[@]}" &>"$logfile" || ret=$?
+
+    unset CC
+    unset CXX
+    unset CFLAGS
+    unset CXXFLAGS
+    unset LDFLAGS
+
+    if (( $ret )); then
+        tail -n 20 "$logfile"
+        error "Meson setup %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
+}
+
+compile() {
+    local logfile="$logdir/$pkgname.ninja.log"
+    local ret=0
+    ninja -C build &>"$logfile" || ret=$?
+    if (( $ret )); then
+        tail -n 20 "$logfile"
+        error "Compiling %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
+}
+
+copy() {
+    local logfile="$logdir/$pkgname.install.log"
+    local ret=0
+    ninja -C build install &>"$logfile" || ret=$?
+    if (( $ret )); then
+        tail -n 20 "$logfile"
+        error "Installing %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
+}
 
 # vim: set syntax=sh:

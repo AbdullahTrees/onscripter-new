@@ -1,14 +1,14 @@
 pkgname=SDL2_image
-pkgver=2.0.4
+pkgver=2.8.12
 pkgrel=1
 depends=('SDL2' 'jpeg' 'libpng')
 sources=(
-    "https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/$pkgname-$pkgver.tar.gz"
+    "https://www.libsdl.org/projects/SDL_image/release/$pkgname-$pkgver.tar.gz"
     'SDL2_image-no-programs.patch'
 )
 hashes=(
-    'e74ec49c2402eb242fbfa16f2f43a19582a74c2eabfbfb873f00d4250038ceac'
-    'de84e8ba37cc07dd73cc778a9803b46fe7a4dcc23e81b1608e608d91a9dc4f6a'
+    '393f5efb50536ec13ca4f4affb69cc9966d3c3f969e6c5e701faddf9f9785381'
+    '8b057313640cc3d88e9585f31a96a4d81dc38d2775c4cc837344e76337215829'
 )
 
 cflags="-O3"
@@ -18,16 +18,20 @@ cppflags_win32="-I$outdir/include -I$outdir/include/SDL2"
 configopts=(
     '--disable-dependency-tracking'
     '--disable-shared'
-    '--disable-lbm'
-    '--disable-pcx'
-    '--disable-pnm'
-    '--disable-tga'
+    '--enable-static'
+    '--disable-stb-image'
+    '--disable-avif'
+    '--disable-avif-shared'
+    '--disable-jxl'
+    '--disable-jxl-shared'
     '--disable-tif'
-    '--disable-xcf'
-    '--disable-xv'
+    '--disable-tif-shared'
     '--disable-webp'
+    '--disable-webp-shared'
     '--disable-jpg-shared'
+    '--disable-save-jpg'
     '--disable-png-shared'
+    '--disable-save-png'
     '--disable-sdltest'
     "--libdir=$outdir/lib"
     "--with-sdl-prefix=$outdir"
@@ -46,10 +50,11 @@ prebuild() {
 
     apply_patch "${sources[1]}"
 
-    export LIBPNG_LIBS="-L$outdir/lib -lpng"
+    export PKG_CONFIG_PATH="$outdir/lib/pkgconfig:$outdir/share/pkgconfig:$PKG_CONFIG_PATH"
+    export LIBJPEG_CFLAGS="-I$outdir/include"
+    export LIBJPEG_LIBS="-L$outdir/lib -ljpeg"
     export LIBPNG_CFLAGS="-I$outdir/include/libpng16"
-
-    autogen
+    export LIBPNG_LIBS="-L$outdir/lib -lpng16"
 }
 
 # Special version of this to ignore errors in extraction
@@ -57,24 +62,23 @@ prebuild() {
 extract_sources() {
     msg "Extracting sources"
     pushd $srcdir &>/dev/null
-    
+
     local netfile
     for netfile in "${sources[@]}"; do
         local file=$(get_filename "$netfile")
         if in_array "$file" "${noextract[@]}"; then
             continue
         fi
-        
+
         local filetype=$(file -bzL --mime "$file")
         local ext=${file##*.}
         local cmd=''
-        local cmd_flags=''
 
         case "$filetype" in
             *application/x-tar*)
                 cmd='tar -xf';;
-            *application/x-zip*)
-                cmd='unzip';;
+            *application/x-zip*|*application/zip*)
+                cmd='unzip -q';;
             *)
                 # MinGW32 has broken mime types in 'file' command, fall back on the
                 # extension to work around
@@ -82,6 +86,9 @@ extract_sources() {
                     bz2|gz|tar|xz)
                         # should look one more level in, to see if tar is there...
                         cmd='tar -xf';;
+                    zip)
+                        # should look one more level in, to see if tar is there...
+                        cmd='unzip -q';;
                     *)
                         continue;;
                 esac;;

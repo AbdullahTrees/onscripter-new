@@ -242,7 +242,7 @@ void VirtualMutexes::debugJoin(int debug1, int debug2) {
 	}
 	SDL_AtomicUnlock(&access_mutex);
 	SDL_SemPost(s2);                     //<- important part
-	int r = SDL_SemWaitTimeout(s1, 100); //<- important part
+	int r = onsWaitSemaphoreTimeoutResult(s1, 100); //<- important part
 	if (r == SDL_MUTEX_TIMEDOUT) {
 		SDL_SemTryWait(s2); // take it away again, but don't block if the other thread just consumed it in a case of really bad timing
 	}

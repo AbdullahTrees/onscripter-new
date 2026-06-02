@@ -180,7 +180,7 @@ int ONScripter::playSoundThreaded(const char *filename, int format, bool loop_fl
 	async.playSound(filename, format, loop_flag, channel);
 
 	preventExit(true);
-	while (SDL_SemWaitTimeout(async.playSoundQueue.resultsWaiting, 1) != 0) {
+	while (!onsWaitSemaphoreTimeout(async.playSoundQueue.resultsWaiting, 1)) {
 		if (waitevent) {
 			event_mode = IDLE_EVENT_MODE;
 			Lock lock(&playSoundThreadedLock);
@@ -318,7 +318,7 @@ int ONScripter::playSound(const char *filename, int format, bool loop_flag, int 
 	if (format & SOUND_MUSIC) {
 		int id3v2_size = 0;
 		if (HAS_ID3V2_TAG(buffer)) {
-			//found an ID3v2 tag, skipping since SMPEG doesn't
+			// Skip ID3v2 metadata before probing the audio stream.
 			for (int i = 0; i < 4; i++) {
 				if (buffer[6 + i] & 0x80) { //err music_buffer brb, sorry {think of it}. See above ^
 					id3v2_size = 0;
@@ -346,15 +346,6 @@ int ONScripter::playSound(const char *filename, int format, bool loop_flag, int 
 				Mix_MusicType mtype  = Mix_GetMusicType(music_info_local);
 				SDL_AudioSpec wanted = audio_format;
 				bool change_spec     = false;
-
-				if (mtype == MUS_MP3) {
-					SMPEG *mp3_chk = SMPEG_new_rwops(SDL_RWFromMem(m_buf, static_cast<int>(m_len)), nullptr, 0, 0);
-					SMPEG_wantedSpec(mp3_chk, &wanted);
-					SMPEG_delete(mp3_chk);
-					if ((wanted.freq != audio_format.freq) ||
-					    (wanted.format != audio_format.format))
-						change_spec = true;
-				}
 
 				if (mtype == MUS_OGG) {
 					OVInfo *ovi = new OVInfo();

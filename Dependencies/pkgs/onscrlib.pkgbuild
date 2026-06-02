@@ -13,17 +13,21 @@ depends=(
     'ffmpeg'
     'harfbuzz'
     'freetype'
-    'SDL2'
-    'smpeg2'
-    'SDL2_image'
-    'SDL2_mixer'
-    'SDL2_gpu'
     'fribidi'
     'libass'
 )
 
+if option_set 'sdl3_renderer'; then
+    depends=(${depends[@]} 'SDL3' 'SDL3_image' 'SDL3_mixer');
+else
+    depends=(${depends[@]} 'SDL2' 'SDL2_image' 'SDL2_mixer' 'SDL2_gpu');
+fi
+
 if [ "$(getTarget)" != "darwin-iOS" ] && [ "$(getTarget)" != "droid" ]; then
-    depends=(${depends[@]} 'lua' 'libusb' 'libepoxy');
+    depends=(${depends[@]} 'lua' 'libusb');
+    if ! option_set 'sdl3_renderer'; then
+        depends=(${depends[@]} 'libepoxy');
+    fi
 fi
 
 if [ "$(getTarget)" == "droid" ] && [ "$(getTargetCPU)" != "arm" ]; then

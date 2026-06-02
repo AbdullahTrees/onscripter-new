@@ -14,7 +14,7 @@
 #include "Support/Apple/UIKitWrapper.hpp"
 #endif
 
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>

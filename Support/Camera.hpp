@@ -12,7 +12,7 @@
 #include "External/Compatibility.hpp"
 #include "Support/Clock.hpp"
 
-#include <SDL2/SDL_gpu.h>
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <cmath>
 
@@ -54,7 +54,7 @@ class Camera {
 public:
 	float2 pos{0, 0};
 	float2 offset_pos{0, 0};
-	GPU_Rect center_pos{0, 0, 0, 0};
+	RenderRect center_pos{0, 0, 0, 0};
 	bool has_moved{false};
 	CameraMove x_move{CameraMove::Type::X}, y_move{CameraMove::Type::X};
 	bool isMoving() {

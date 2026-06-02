@@ -23,6 +23,26 @@ cd /path/to/onscripter
 make -j8    # Add DEBUG=1 for debugging
 ```
 
+The default renderer stack remains the temporary SDL2_gpu path during the SDL3 migration. To build the staging SDL3_GPU/SDL3_image/SDL3_mixer path, configure with `--sdl3-renderer`:
+
+```
+./configure --sdl3-renderer
+make -j8
+```
+
+For packaged game distributions that ship compressed `.file` scripts, use a public release build. Development builds expect the plaintext script layout and can stop at startup with "No compatible game script found" when pointed at release game data.
+
+```
+./configure --sdl3-renderer --release-build --strip-binary --std=gnu++14
+make -j8
+```
+
+On current MSYS2/UCRT64 GCC 16 toolchains, `--std=gnu++14` is recommended for Windows release builds. It avoids strict `-std=c++14` parsing failures in current libstdc++ headers around `__float128` literal suffix declarations.
+
+If `sdl3-shadercross.pc` is available in the dependency prefix, `--sdl3-renderer` also defines `ONS_USE_SDL3_SHADERCROSS` and links SDL_shadercross. That optional path lets the SDL3 backend run external SPIR-V/HLSL shaders natively, and it translates simple SDL2_gpu-style fragment GLSL (`sampler2D`, `varying color`/`texCoord`, scalar/vector uniforms, `gl_FragColor`) into the native SDL_GPU pipeline. If `shaderc.pc` is also available, configure defines `ONS_USE_SDL3_SHADERC` and modern Vulkan-layout GLSL can be compiled to SPIR-V at runtime before SDL_shadercross reflection. MSYS2's shaderc package links the shared `libshaderc_shared` import library, so release packaging must ship that DLL or use a static shaderc build. Older arbitrary OpenGL GLSL still needs source porting or a dedicated translator.
+
+The Windows SDL3 path currently links SDL3, SDL3_image, and SDL3_mixer statically, so a normal package does not need SDL3 DLLs beside the executable. Runtime validation on Windows reached the Umineko Project main menu with `--sdl3-renderer --release-build --strip-binary --std=gnu++14`; the log showed SDL3_GPU initialization, shader compilation, and SDL3_mixer audio startup without a new Windows application error during the 120 second validation run.
+
 #### macOS and iOS
 
 [Xcode](https://developer.apple.com/xcode/) is a requirement regardless of the compilation method. Use a current Xcode that can target macOS 14 and iOS 17. It is suggested to use [MacPorts](https://www.macports.org), as it is supported by Apple and can provide the necessary tools at easy cost.

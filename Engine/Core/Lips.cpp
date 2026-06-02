@@ -9,6 +9,8 @@
 
 #include "Engine/Core/ONScripter.hpp"
 
+#include <limits>
+
 bool ONScripter::LipsAnimationAction::expired() {
 	if (ons.skipLipsAction)
 		return false; // can't expire if we're told not even to do anything
@@ -77,8 +79,10 @@ double ONScripter::readChunk(int channel, uint32_t no) {
 			return wave_sample[channel]->chunk->abuf[no];
 		case AUDIO_S16:
 			return std::abs(*reinterpret_cast<int16_t *>(wave_sample[channel]->chunk->abuf + no));
+#if !defined(ONS_USE_SDL3)
 		case AUDIO_U16:
 			return *reinterpret_cast<uint16_t *>(wave_sample[channel]->chunk->abuf + no);
+#endif
 		case AUDIO_S32:
 			return std::abs(*reinterpret_cast<int32_t *>(wave_sample[channel]->chunk->abuf + no));
 		case AUDIO_F32:
@@ -101,10 +105,12 @@ void ONScripter::getChunkParams(uint32_t &chunk_size, double &max_value) {
 			chunk_size = sizeof(int16_t) * audio_format.channels;
 			max_value  = std::numeric_limits<int16_t>::max();
 			break;
+#if !defined(ONS_USE_SDL3)
 		case AUDIO_U16:
 			chunk_size = sizeof(uint16_t) * audio_format.channels;
 			max_value  = std::numeric_limits<uint16_t>::max();
 			break;
+#endif
 		case AUDIO_S32:
 			chunk_size = sizeof(int32_t) * audio_format.channels;
 			max_value  = std::numeric_limits<int32_t>::max();

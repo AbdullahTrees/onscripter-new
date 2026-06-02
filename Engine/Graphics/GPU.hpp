@@ -11,12 +11,12 @@
 
 #include "External/Compatibility.hpp"
 #include "Engine/Graphics/Common.hpp"
+#include "Engine/Graphics/RendererBackend.hpp"
 #include "Engine/Components/Base.hpp"
 #include "Engine/Entities/Breakup.hpp"
 #include "Support/Cache.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_gpu.h>
+#include "Support/SDLCompat.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -40,12 +40,12 @@
 
 void dbgSaveImg(void *ptr);
 void dbgSaveTgt(void *ptr);
-void dbgSaveImgR(GPU_Image *ptr);
-void dbgSaveTgtR(GPU_Target *ptr);
+void dbgSaveImgR(RenderImage *ptr);
+void dbgSaveTgtR(RenderTarget *ptr);
 
 struct GPUImageDiff {
 	int w{0}, h{0};
-	GPU_FormatEnum format{GPU_FORMAT_RGBA};
+	RenderFormat format{GPU_FORMAT_RGBA};
 	bool operator==(const GPUImageDiff &two) const;
 };
 
@@ -78,7 +78,7 @@ struct equal_to<GPUImageDiff> {
 
 class CombinedImagePool {
 public:
-	GPU_Image *get(int w, int h, int channels, bool store);
+	RenderImage *get(int w, int h, int channels, bool store);
 	CombinedImagePool(int size)
 	    : existent(size) {}
 	LRUCachedSet<Wrapped_GPU_Image, GPUImageDiff> existent;
@@ -97,7 +97,7 @@ public:
 			SDL_AtomicUnlock(&access);
 		}
 	}
-	void push(GPU_Rect &&rect) {
+	void push(RenderRect &&rect) {
 		SDL_AtomicLock(&access);
 		toDo.push_back(rect);
 		SDL_AtomicUnlock(&access);
@@ -106,11 +106,11 @@ public:
 
 private:
 	SDL_SpinLock access{0};
-	std::vector<GPU_Rect> toDo;
-	std::vector<GPU_Image *> requested;
+	std::vector<RenderRect> toDo;
+	std::vector<RenderImage *> requested;
 };
 
-const std::array<GPU_BlendMode, static_cast<size_t>(BlendModeId::TOTAL)> BLEND_MODES{{//{GPU_FUNC_SRC_ALPHA, GPU_FUNC_ONE_MINUS_SRC_ALPHA, GPU_FUNC_SRC_ALPHA, GPU_FUNC_DST_ALPHA, GPU_EQ_ADD, GPU_EQ_ADD},
+const std::array<RenderBlendMode, static_cast<size_t>(BlendModeId::TOTAL)> BLEND_MODES{{//{GPU_FUNC_SRC_ALPHA, GPU_FUNC_ONE_MINUS_SRC_ALPHA, GPU_FUNC_SRC_ALPHA, GPU_FUNC_DST_ALPHA, GPU_EQ_ADD, GPU_EQ_ADD},
                                                                                       {GPU_FUNC_ONE, GPU_FUNC_ONE_MINUS_SRC_ALPHA, GPU_FUNC_ONE, GPU_FUNC_ONE_MINUS_SRC_ALPHA, GPU_EQ_ADD, GPU_EQ_ADD},
                                                                                       //Take care of alpha values, we need them for rain
                                                                                       {GPU_FUNC_SRC_ALPHA, GPU_FUNC_ONE, GPU_FUNC_SRC_ALPHA, GPU_FUNC_DST_ALPHA, GPU_EQ_ADD, GPU_EQ_ADD},
@@ -120,17 +120,17 @@ const std::array<GPU_BlendMode, static_cast<size_t>(BlendModeId::TOTAL)> BLEND_M
 
 struct PooledGPUImage;
 class TempGPUImagePool {
-	std::unordered_map<GPU_Image *, bool> pool; // boolean = is this GPU_Image* "checked-out"?
+	std::unordered_map<RenderImage *, bool> pool; // boolean = is this RenderImage* "checked-out"?
 public:
 	SDL_Point size;
-	GPU_Image *getImage();         // get a fresh temporary image
-	void giveImage(GPU_Image *im); // return a temporary image to the pool for reuse
+	RenderImage *getImage();         // get a fresh temporary image
+	void giveImage(RenderImage *im); // return a temporary image to the pool for reuse
 	void addImages(int n);         // pre-create some blank temporary images to avoid delays later
 	void clearUnused(bool require_empty = false);
 };
 
 struct PooledGPUImage {
-	GPU_Image *image{nullptr};
+	RenderImage *image{nullptr};
 	TempGPUImagePool *pool{nullptr};
 	PooledGPUImage() = default;
 	PooledGPUImage(TempGPUImagePool *_pool)
@@ -168,11 +168,11 @@ class GPUTransformableCanvasImage {
 	std::unordered_map<SDL_Point, PooledGPUImage> pooledDownscaledImages;
 
 public:
-	GPU_Image *image{nullptr};
-	void setImage(GPU_Image *_canvas);
+	RenderImage *image{nullptr};
+	void setImage(RenderImage *_canvas);
 	void clearImage();
 	GPUTransformableCanvasImage() {}
-	GPUTransformableCanvasImage(GPU_Image *canvas)
+	GPUTransformableCanvasImage(RenderImage *canvas)
 	    : image(canvas) {}
 };
 
@@ -181,8 +181,8 @@ class GPUImageChunkLoader {
 	int x{0}, y{0}; // next-to-load chunk position in units of chunk size dimensions
 public:
 	SDL_Surface *src{nullptr};
-	GPU_Rect *src_area{nullptr};
-	GPU_Image *dst{nullptr};
+	RenderRect *src_area{nullptr};
+	RenderImage *dst{nullptr};
 	constexpr static uint32_t MinimumChunkDim{128};
 	uint32_t chunkWidth{0};
 	uint32_t chunkHeight{0};
@@ -200,7 +200,7 @@ public:
 	uint16_t w{0}, h{0};
 	int channels{0};
 	// Returns a vector of GPU_Images with their dst coordinates
-	std::vector<std::pair<GPU_Image *, GPU_Rect>> getImagesForArea(GPU_Rect &area);
+	std::vector<std::pair<RenderImage *, RenderRect>> getImagesForArea(RenderRect &area);
 	bool has() {
 		return w > 0 && h > 0;
 	}
@@ -215,10 +215,10 @@ public:
 struct TriangleBlitter {
 	std::vector<float> vertices;
 	std::vector<uint16_t> indices;
-	GPU_Image *image{nullptr};
-	GPU_Target *target{nullptr};
+	RenderImage *image{nullptr};
+	RenderTarget *target{nullptr};
 	int elementsPerVertex{4};
-	GPU_BatchFlagEnum dataStructure{GPU_BATCH_XY_ST};
+	RenderBatchFlag dataStructure{GPU_BATCH_XY_ST};
 	static constexpr int maxVertices{60000};
 	static constexpr int maxIndices{200000};
 	uint16_t verticesInVertexBuffer{0};
@@ -307,7 +307,7 @@ public:
 		    xDst, yDst, radius * resizeFactor, radius * resizeFactor);
 	}
 
-	FORCE_INLINE void updateTargets(GPU_Image *src, GPU_Target *dst) {
+	FORCE_INLINE void updateTargets(RenderImage *src, RenderTarget *dst) {
 		//Note, that we do not check vector sizes here
 		image  = src;
 		target = dst;
@@ -354,10 +354,10 @@ public:
 	// Upper chunk size limit (in bytes)
 	int max_chunk{896 * 896 * 4};
 
-	GPU_Image *loadGPUImageByChunks(SDL_Surface *s, GPU_Rect *r = nullptr);
+	RenderImage *loadGPUImageByChunks(SDL_Surface *s, RenderRect *r = nullptr);
 
 	void setVirtualResolution(unsigned int width, unsigned int height);
-	void setBlendMode(GPU_Image *image);
+	void setBlendMode(RenderImage *image);
 	void pushBlendMode(BlendModeId mode);
 	void popBlendMode();
 
@@ -370,30 +370,30 @@ public:
 	void linkProgram(const char *programAlias, uint32_t prog);
 
 	//We are in need of a proper image loading that disables SDL_gpu blending...
-	GPU_Image *createImage(uint16_t w, uint16_t h, uint8_t channels, bool store = false) {
-		GPU_Image *image = globalImagePool.get(w, h, channels, store);
+	RenderImage *createImage(uint16_t w, uint16_t h, uint8_t channels, bool store = false) {
+		RenderImage *image = globalImagePool.get(w, h, channels, store);
 		//GPU_SetBlendMode(image, GPU_BLEND_OVERRIDE);
 		if (image->snap_mode != GPU_SNAP_NONE)
 			GPU_SetSnapMode(image, GPU_SNAP_NONE);
 		return image;
 	}
 
-	GPU_Image *copyImage(GPU_Image *image) {
+	RenderImage *copyImage(RenderImage *image) {
 		GPU_SetSnapMode(image, GPU_SNAP_DIMENSIONS);
-		GPU_Image *newImage = GPU_CopyImage(image);
+		RenderImage *newImage = GPU_CopyImage(image);
 		GPU_SetSnapMode(newImage, GPU_SNAP_NONE);
 		GPU_SetSnapMode(image, GPU_SNAP_NONE);
 		return newImage;
 	}
 
-	GPU_Image *copyImageFromTarget(GPU_Target *target) {
-		GPU_Image *image = GPU_CopyImageFromTarget(target);
+	RenderImage *copyImageFromTarget(RenderTarget *target) {
+		RenderImage *image = GPU_CopyImageFromTarget(target);
 		GPU_SetSnapMode(image, GPU_SNAP_NONE);
 		return image;
 	}
 
-	GPU_Image *copyImageFromSurface(SDL_Surface *surface) {
-		GPU_Image *image = createImage(surface->w, surface->h, surface->format->BytesPerPixel == 4 ? 4 : 3);
+	RenderImage *copyImageFromSurface(SDL_Surface *surface) {
+		RenderImage *image = createImage(surface->w, surface->h, onsSurfaceBytesPerPixel(surface) == 4 ? 4 : 3);
 		updateImage(image, nullptr, surface, nullptr);
 		//GPU_SetBlendMode(image, GPU_BLEND_OVERRIDE);
 		if (image->snap_mode != GPU_SNAP_NONE)
@@ -401,19 +401,19 @@ public:
 		return image;
 	}
 
-	void clear(GPU_Target *target, uint8_t r = 0, uint8_t g = 0, uint8_t b = 0, uint8_t a = 0) {
+	void clear(RenderTarget *target, uint8_t r = 0, uint8_t g = 0, uint8_t b = 0, uint8_t a = 0) {
 		if (use_glclear) {
 			GPU_ClearRGBA(target, r, g, b, a);
 		} else {
 			// Dodges a strange bug on certain hardware
 			GPU_SetShapeBlending(false);
 			SDL_Color color{r, g, b, a};
-			GPU_Rect full{0, 0, static_cast<float>(target->w), static_cast<float>(target->h)};
+			RenderRect full{0, 0, static_cast<float>(target->w), static_cast<float>(target->h)};
 			GPU_RectangleFilled2(target, full, color);
 		}
 	}
 
-	void freeImage(GPU_Image *image) {
+	void freeImage(RenderImage *image) {
 		if (!texture_reuse || !initialised() || image->refcount > 1 || (image->format != GPU_FORMAT_RGB && image->format != GPU_FORMAT_RGBA)) {
 			GPU_FreeImage(image);
 		} else {
@@ -425,10 +425,10 @@ public:
 		}
 	}
 
-	GPU_ShaderEnum getShaderTypeByExtension(const char *filename);
-	void bindImageToSlot(GPU_Image *image, int slot_number);
-	void multiplyAlpha(GPU_Image *image, GPU_Rect *dst_clip = nullptr);
-	void mergeAlpha(GPU_Image *image, GPU_Rect *imageRect, GPU_Image *mask, GPU_Rect *maskRect, SDL_Surface *src);
+	RenderShaderType getShaderTypeByExtension(const char *filename);
+	void bindImageToSlot(RenderImage *image, int slot_number);
+	void multiplyAlpha(RenderImage *image, RenderRect *dst_clip = nullptr);
+	void mergeAlpha(RenderImage *image, RenderRect *imageRect, RenderImage *mask, RenderRect *maskRect, SDL_Surface *src);
 	void enter3dMode();
 	void exit3dMode();
 	void setShaderProgram(const char *programAlias);
@@ -438,19 +438,19 @@ public:
 	void setShaderVar(const char *name, float value);
 	void setShaderVar(const char *name, float value1, float value2);
 	void setShaderVar(const char *name, const SDL_Color &color);
-	void clearWholeTarget(GPU_Target *target, uint8_t r = 0, uint8_t g = 0, uint8_t b = 0, uint8_t a = 0);
-	void copyGPUImage(GPU_Image *img, GPU_Rect *src_rect, GPU_Rect *clip_rect, GPU_Target *target, float x = 0, float y = 0, float ratio_x = 1, float ratio_y = 1, float angle = 0, bool centre_coordinates = false);
-	void copyGPUImage(GPU_Image *img, GPU_Rect *src_rect, GPU_Rect *clip_rect, GPUBigImage *bigImage, float x = 0, float y = 0);
-	void updateImage(GPU_Image *image, const GPU_Rect *image_rect, SDL_Surface *surface, const GPU_Rect *surface_rect, bool finish = true);
-	void convertNV12ToRGB(GPU_Image *image, GPU_Image **imgs, GPU_Rect &rect, uint8_t *planes[4], int *linesizes, bool masked);
-	void convertYUVToRGB(GPU_Image *image, GPU_Image **imgs, GPU_Rect &rect, uint8_t *planes[4], int *linesizes, bool masked);
-	void simulateRead(GPU_Image *img);
+	void clearWholeTarget(RenderTarget *target, uint8_t r = 0, uint8_t g = 0, uint8_t b = 0, uint8_t a = 0);
+	void copyGPUImage(RenderImage *img, RenderRect *src_rect, RenderRect *clip_rect, RenderTarget *target, float x = 0, float y = 0, float ratio_x = 1, float ratio_y = 1, float angle = 0, bool centre_coordinates = false);
+	void copyGPUImage(RenderImage *img, RenderRect *src_rect, RenderRect *clip_rect, GPUBigImage *bigImage, float x = 0, float y = 0);
+	void updateImage(RenderImage *image, const RenderRect *image_rect, SDL_Surface *surface, const RenderRect *surface_rect, bool finish = true);
+	void convertNV12ToRGB(RenderImage *image, RenderImage **imgs, RenderRect &rect, uint8_t *planes[4], int *linesizes, bool masked);
+	void convertYUVToRGB(RenderImage *image, RenderImage **imgs, RenderRect &rect, uint8_t *planes[4], int *linesizes, bool masked);
+	void simulateRead(RenderImage *img);
 
 	struct GPURendererInfo {
 		const char *name{nullptr};
-		GPU_RendererID (GPUController::*makeRendererId)(){nullptr};
+		RenderDriverId (GPUController::*makeRendererId)(){nullptr};
 		void (GPUController::*initRendererFlags)(){nullptr};
-		int (GPUController::*getImageFormat)(GPU_Image *image){nullptr};
+		int (GPUController::*getImageFormat)(RenderImage *image){nullptr};
 		void (GPUController::*printBlitBufferState)(){nullptr};
 		void (GPUController::*syncRendererState)(){nullptr};
 		int (GPUController::*getMaxTextureSize)(){nullptr};
@@ -459,43 +459,52 @@ public:
 		int formatBGRA{GL_BGRA};
 	};
 
-	GPU_Target *rendererInit(GPU_WindowFlagEnum SDL_flags);
-	GPU_Target *rendererInitWithInfo(GPURendererInfo &info, uint16_t w, uint16_t h, GPU_WindowFlagEnum SDL_flags);
+	RenderTarget *rendererInit(RenderWindowFlags SDL_flags);
+	RenderTarget *rendererInitWithInfo(GPURendererInfo &info, uint16_t w, uint16_t h, RenderWindowFlags SDL_flags);
 
-	GPU_RendererID makeRendererIdGLES2();
+#if defined(ONS_USE_SDL3)
+	RenderDriverId makeRendererIdSDL3GPU();
+	void initRendererFlagsSDL3GPU();
+	int getImageFormatSDL3GPU(RenderImage *image);
+	void printBlitBufferStateSDL3GPU();
+	void syncRendererStateSDL3GPU();
+	int getMaxTextureSizeSDL3GPU();
+#else
+	RenderDriverId makeRendererIdGLES2();
 	void initRendererFlagsGLES2();
-	int getImageFormatGLES2(GPU_Image *image);
+	int getImageFormatGLES2(RenderImage *image);
 	void printBlitBufferStateGLES2();
 	void syncRendererStateGLES2();
 	int getMaxTextureSizeGLES2();
 
-	GPU_RendererID makeRendererIdGLES3();
+	RenderDriverId makeRendererIdGLES3();
 	void initRendererFlagsGLES3();
-	int getImageFormatGLES3(GPU_Image *image);
+	int getImageFormatGLES3(RenderImage *image);
 	void printBlitBufferStateGLES3();
 	void syncRendererStateGLES3();
 	int getMaxTextureSizeGLES3();
 
-	GPU_RendererID makeRendererIdANGLE2();
+	RenderDriverId makeRendererIdANGLE2();
 	void initRendererFlagsANGLE2();
-	int getImageFormatANGLE2(GPU_Image *image);
+	int getImageFormatANGLE2(RenderImage *image);
 	void printBlitBufferStateANGLE2();
 	void syncRendererStateANGLE2();
 	int getMaxTextureSizeANGLE2();
 
-	GPU_RendererID makeRendererIdANGLE3();
+	RenderDriverId makeRendererIdANGLE3();
 	void initRendererFlagsANGLE3();
-	int getImageFormatANGLE3(GPU_Image *image);
+	int getImageFormatANGLE3(RenderImage *image);
 	void printBlitBufferStateANGLE3();
 	void syncRendererStateANGLE3();
 	int getMaxTextureSizeANGLE3();
 
-	GPU_RendererID makeRendererIdGL2();
+	RenderDriverId makeRendererIdGL2();
 	void initRendererFlagsGL2();
-	int getImageFormatGL2(GPU_Image *image);
+	int getImageFormatGL2(RenderImage *image);
 	void printBlitBufferStateGL2();
 	void syncRendererStateGL2();
 	int getMaxTextureSizeGL2();
+#endif
 
 #if defined(DROID) || defined(IOS)
 	// This is generally too harsh on iOS
@@ -504,7 +513,17 @@ public:
 	static constexpr size_t GlobalImagePoolSize{20};
 #endif
 
-#if defined(DROID) || defined(IOS)
+#if defined(ONS_USE_SDL3)
+	GPURendererInfo renderers[1]{
+	    {"SDL3_GPU",
+	     &GPUController::makeRendererIdSDL3GPU,
+	     &GPUController::initRendererFlagsSDL3GPU,
+	     &GPUController::getImageFormatSDL3GPU,
+	     &GPUController::printBlitBufferStateSDL3GPU,
+	     &GPUController::syncRendererStateSDL3GPU,
+	     &GPUController::getMaxTextureSizeSDL3GPU,
+	     false}};
+#elif defined(DROID) || defined(IOS)
 	GPURendererInfo renderers[2]{
 	    {"GLES2",
 	     &GPUController::makeRendererIdGLES2,
@@ -567,16 +586,16 @@ public:
 	GPURendererInfo *current_renderer{nullptr};
 
 	PooledGPUImage getBlurredImage(GPUTransformableCanvasImage &im, int blurFactor);
-	PooledGPUImage getMaskedImage(GPUTransformableCanvasImage &im, GPU_Image *mask);
+	PooledGPUImage getMaskedImage(GPUTransformableCanvasImage &im, RenderImage *mask);
 
-	void breakUpImage(BreakupID id, GPU_Image *src, GPU_Rect *src_rect, GPU_Target *target, int breakupFactor,
+	void breakUpImage(BreakupID id, RenderImage *src, RenderRect *src_rect, RenderTarget *target, int breakupFactor,
 	                  int breakupDirectionFlagset, const char *params, float dstX, float dstY);
 	PooledGPUImage getBrokenUpImage(GPUTransformableCanvasImage &im, BreakupID id,
 	                                int breakupFactor, int breakupDirectionFlagset,
 	                                const char *params);
 	void drawUnbrokenBreakupRegions(BreakupID id, float dstX, float dstY);
 
-	void glassSmashImage(GPU_Image *src, GPU_Target *dst, int smashFactor);
+	void glassSmashImage(RenderImage *src, RenderTarget *dst, int smashFactor);
 	PooledGPUImage getGlassSmashedImage(GPUTransformableCanvasImage &im, int smashFactor);
 
 	PooledGPUImage getWarpedImage(GPUTransformableCanvasImage &im, float animationClock, float amplitude, float waveLength, float speed);
@@ -585,7 +604,7 @@ public:
 	PooledGPUImage getNegativeImage(GPUTransformableCanvasImage &im);
 	PooledGPUImage getPixelatedImage(GPUTransformableCanvasImage &im, int factor);
 
-	FORCE_INLINE TriangleBlitter createTriangleBlitter(GPU_Image *image, GPU_Target *target) {
+	FORCE_INLINE TriangleBlitter createTriangleBlitter(RenderImage *image, RenderTarget *target) {
 		TriangleBlitter res;
 		res.image  = image;
 		res.target = target;
@@ -619,10 +638,10 @@ public:
 		globalImagePool.clear();
 	}
 
-	GPU_Image *getCanvasImage() { return canvasImagePool.getImage(); }
-	void giveCanvasImage(GPU_Image *im) { canvasImagePool.giveImage(im); }
-	GPU_Image *getScriptImage() { return scriptImagePool.getImage(); }
-	void giveScriptImage(GPU_Image *im) { scriptImagePool.giveImage(im); }
+	RenderImage *getCanvasImage() { return canvasImagePool.getImage(); }
+	void giveCanvasImage(RenderImage *im) { canvasImagePool.giveImage(im); }
+	RenderImage *getScriptImage() { return scriptImagePool.getImage(); }
+	void giveScriptImage(RenderImage *im) { scriptImagePool.giveImage(im); }
 
 	GPUController()
 	    : BaseController(this), globalImagePool(GlobalImagePoolSize) {}

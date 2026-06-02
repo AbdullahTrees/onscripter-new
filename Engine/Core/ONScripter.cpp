@@ -502,7 +502,9 @@ void ONScripter::initSDL() {
 	/* Initialize SDL */
 
 	SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
+#if !defined(ONS_USE_SDL3)
 	SDL_SetHint(SDL_HINT_VIDEO_HIGHDPI_DISABLED, "0");
+#endif
 	SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1"); // this makes no difference but better to set it
 
 #ifdef DROID
@@ -516,7 +518,7 @@ void ONScripter::initSDL() {
 	if (d3d != ons_cfg_options.end())
 		SDL_SetHint(SDL_HINT_VIDEO_WIN_D3DCOMPILER, d3d->second.c_str());
 
-	if (SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) < 0) {
+	if (!onsSDLInitSubSystem(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO)) {
 		errorAndExit("Couldn't initialize SDL", SDL_GetError(), "Init Error", true);
 		return; //dummy
 	}
@@ -528,11 +530,11 @@ void ONScripter::initSDL() {
 		ons.localEventQueue.emplace_front(k);
 	});
 #endif
-	SDL_StartTextInput();
+	onsStartTextInput();
 #ifdef DROID
 	// Prevent droid keyboard from opening!
 	// Removing the start call breaks input on select devices.
-	SDL_StopTextInput();
+	onsStopTextInput();
 #endif
 
 	auto cursorMode = ons_cfg_options.find("cursor");
@@ -597,11 +599,11 @@ void ONScripter::initSDL() {
 	if (icon && !use_app_icons) {
 #if defined(MACOSX) || defined(WIN32)
 		//resize the (usually 32x32) icon if necessary
-		SDL_Surface *tmp2 = SDL_CreateRGBSurface(SDL_SWSURFACE, DEFAULT_WM_ICON_W, DEFAULT_WM_ICON_H,
+		SDL_Surface *tmp2 = onsCreateRGBSurface(SDL_SWSURFACE, DEFAULT_WM_ICON_W, DEFAULT_WM_ICON_H,
 		                                         32, 0x00ff0000, 0x0000ff00,
 		                                         0x000000ff, 0xff000000);
 
-		SDL_Surface *tmp = SDL_ConvertSurface(icon, tmp2->format, SDL_SWSURFACE);
+		SDL_Surface *tmp = onsConvertSurfaceLike(icon, tmp2, SDL_SWSURFACE);
 		if (tmp->w == tmp2->w && tmp->h == tmp2->h) {
 			//already the right size, just use converted surface as-is
 			SDL_FreeSurface(tmp2);
@@ -703,8 +705,13 @@ void ONScripter::initSDL() {
 			default_audio_format.format = AUDIO_U8;
 		else if (defaultFormat->second == "s16")
 			default_audio_format.format = AUDIO_S16;
-		else if (defaultFormat->second == "u16")
+		else if (defaultFormat->second == "u16") {
+#if defined(ONS_USE_SDL3)
+			default_audio_format.format = AUDIO_S16;
+#else
 			default_audio_format.format = AUDIO_U16;
+#endif
+		}
 		else if (defaultFormat->second == "s32")
 			default_audio_format.format = AUDIO_S32;
 		else if (defaultFormat->second == "f32")
@@ -770,11 +777,11 @@ void ONScripter::openAudio(const SDL_AudioSpec &spec) {
 
 	it = ons_cfg_options.find("audiodriver");
 	if (it != ons_cfg_options.end()) {
-		SDL_setenv("SDL_AUDIODRIVER", it->second.c_str(), true);
+		onsSDLSetEnv("SDL_AUDIODRIVER", it->second.c_str(), true);
 	} else {
 #ifdef WIN32
 		// WASAPI driver that appeared in 2.0.7 is total garbage
-		SDL_setenv("SDL_AUDIODRIVER", "directsound", false);
+		onsSDLSetEnv("SDL_AUDIODRIVER", "directsound", false);
 #endif
 	}
 
@@ -791,7 +798,7 @@ void ONScripter::openAudio(const SDL_AudioSpec &spec) {
 		audio_open_flag = false;
 	} else {
 		int freq = 0, channels = 0;
-		uint16_t format = 0;
+		SDL_AudioFormat format{};
 		Mix_QuerySpec(&freq, &format, &channels);
 		sendToLog(LogLevel::Info, "Audio: %d Hz %d bit %s %s\n",
 		          freq, format & 0xFF, SDL_AUDIO_ISFLOAT(format) ? "float" : SDL_AUDIO_ISSIGNED(format) ? "sint" : "uint", channels > 1 ? "stereo" : "mono");
@@ -855,7 +862,7 @@ void ONScripter::enableCDAudio() {
 }
 
 void ONScripter::cursorState(bool show) {
-	SDL_ShowCursor(show ? SDL_ENABLE : SDL_DISABLE);
+	onsShowCursor(show);
 #if defined(MACOSX) && defined(USE_OBJC)
 	nativeCursorState(show);
 #endif
@@ -980,7 +987,7 @@ int ONScripter::ownInit() {
 		sendToLog(LogLevel::Info, "init:archive_path: \"%s\"\n", archive_path.getAllPaths().c_str());
 	}
 
-	if (SDL_Init(0) < 0)
+	if (!onsSDLInit(0))
 		ctrl.quit(-1, "Failed to load SDL internals!\nAborting everything!");
 
 	// Prepare basic window support.
@@ -1027,8 +1034,8 @@ int ONScripter::ownInit() {
 
 	initSDL();
 
-	pixel_format_enum_32bpp = SDL_MasksToPixelFormatEnum(32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000); // RGBA
-	pixel_format_enum_24bpp = SDL_MasksToPixelFormatEnum(24, 0x0000ff, 0x00ff00, 0xff0000, 0);                // RGB
+	pixel_format_enum_32bpp = onsMasksToPixelFormatEnum(32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000); // RGBA
+	pixel_format_enum_24bpp = onsMasksToPixelFormatEnum(24, 0x0000ff, 0x00ff00, 0xff0000, 0);                // RGB
 
 	auto breakupMode = ons_cfg_options.find("breakup");
 	if (breakupMode != ons_cfg_options.end()) {
@@ -1431,7 +1438,7 @@ void ONScripter::printClock(const char *str, bool print_time) {
 	last_clock_time = this_clock_time;
 }
 
-void ONScripter::flush(int refresh_mode, GPU_Rect *scene_rect, GPU_Rect *hud_rect, bool clear_dirty_flag, bool direct_flag, bool wait_for_cr) {
+void ONScripter::flush(int refresh_mode, RenderRect *scene_rect, RenderRect *hud_rect, bool clear_dirty_flag, bool direct_flag, bool wait_for_cr) {
 
 	if (!(refresh_mode & CONSTANT_REFRESH_MODE)) {
 		refresh_mode &= ~REFRESH_BEFORESCENE_MODE;
@@ -1450,7 +1457,7 @@ void ONScripter::flush(int refresh_mode, GPU_Rect *scene_rect, GPU_Rect *hud_rec
 	}
 
 	if (direct_flag || pre_screen_render || onionAlphaCooldown || onionAlphaFactor) {
-		GPU_Rect full_rect = full_script_clip;
+		RenderRect full_rect = full_script_clip;
 		if (!scene_rect)
 			scene_rect = &full_rect;
 		if (!hud_rect)
@@ -1495,9 +1502,9 @@ void ONScripter::flush(int refresh_mode, GPU_Rect *scene_rect, GPU_Rect *hud_rec
 	//sendToLog(LogLevel::Info, "exited flush.\n");
 }
 
-void ONScripter::createScreenshot(GPU_Image *first, GPU_Rect *first_r, GPU_Image *second, GPU_Rect *second_r) {
+void ONScripter::createScreenshot(RenderImage *first, RenderRect *first_r, RenderImage *second, RenderRect *second_r) {
 	char filename[64];
-	std::snprintf(filename, sizeof(filename), "%ld.png", time(nullptr));
+	std::snprintf(filename, sizeof(filename), "%lld.png", static_cast<long long>(time(nullptr)));
 	FILE *fp = FileIO::openFile(filename, "wb", script_h.save_path);
 	if (fp) {
 		auto screenshot = gpu.getScriptImage();
@@ -1507,8 +1514,14 @@ void ONScripter::createScreenshot(GPU_Image *first, GPU_Rect *first_r, GPU_Image
 		GPU_SetBlending(first, true);
 		if (second)
 			gpu.copyGPUImage(second, second_r, nullptr, screenshot->target, second_r ? 0 : -(second->w - screenshot->w) / 2.0, second_r ? 0 : -(second->h - screenshot->h) / 2.0);
+#if defined(ONS_USE_SDL3)
+		std::fclose(fp);
+		const std::string screenshotPath = std::string(script_h.save_path ? script_h.save_path : "") + filename;
+		GPU_SaveImage(screenshot, screenshotPath.c_str(), GPU_FILE_PNG);
+#else
 		auto rwops = SDL_RWFromFP(fp, SDL_TRUE);
 		GPU_SaveImage_RW(screenshot, rwops, true, GPU_FILE_PNG);
+#endif
 		gpu.giveScriptImage(screenshot);
 		needs_screenshot = false;
 	} else {
@@ -1516,7 +1529,7 @@ void ONScripter::createScreenshot(GPU_Image *first, GPU_Rect *first_r, GPU_Image
 	}
 }
 
-void ONScripter::flushDirect(GPU_Rect &scene_rect, GPU_Rect &hud_rect, int refresh_mode) {
+void ONScripter::flushDirect(RenderRect &scene_rect, RenderRect &hud_rect, int refresh_mode) {
 	if (!(refresh_mode & CONSTANT_REFRESH_MODE)) {
 		refresh_mode &= ~REFRESH_BEFORESCENE_MODE;
 		constant_refresh_mode |= refresh_mode;
@@ -1579,7 +1592,7 @@ void ONScripter::flushDirect(GPU_Rect &scene_rect, GPU_Rect &hud_rect, int refre
 	screenChanged    = true;
 }
 
-void ONScripter::combineWithCamera(GPU_Image *scene, GPU_Image *hud, GPU_Target *dst, GPU_Rect &scene_rect, GPU_Rect &hud_rect, int refresh_mode) {
+void ONScripter::combineWithCamera(RenderImage *scene, RenderImage *hud, RenderTarget *dst, RenderRect &scene_rect, RenderRect &hud_rect, int refresh_mode) {
 	//sendToLog(LogLevel::Info, "combineWithCamera called rm %d\n", refresh_mode);
 
 	if (scene != nullptr && hud != nullptr) {
@@ -1588,7 +1601,7 @@ void ONScripter::combineWithCamera(GPU_Image *scene, GPU_Image *hud, GPU_Target 
 	} else {
 		sendToLog(LogLevel::Error, "Null accumulation surface AT LEAST\n");
 	}
-	GPU_Rect combined_camera = camera.center_pos;
+	RenderRect combined_camera = camera.center_pos;
 	combined_camera.x -= camera.pos.x;
 	combined_camera.y -= camera.pos.y;
 	GPU_SetBlending(scene, false); // in breakup transition, the (broken-up) scene may have holes! make sure we blank those areas in dst too
@@ -1681,8 +1694,8 @@ void ONScripter::doHoverButton(bool hovering, int buttonNumber, int buttonLinkIn
 
 	//Normally, all buttons should be placed to hud but nobody disallows doing the opposite
 	//Make sure we update every button we need
-	GPU_Rect check_src_rect{0, 0, 0, 0};
-	GPU_Rect check_dst_rect{0, 0, 0, 0};
+	RenderRect check_src_rect{0, 0, 0, 0};
+	RenderRect check_dst_rect{0, 0, 0, 0};
 	updateButtonsToDefaultState(check_src_rect, check_dst_rect);
 
 	if (hovering) {
@@ -1740,7 +1753,7 @@ void ONScripter::doHoverButton(bool hovering, int buttonNumber, int buttonLinkIn
 	flush(refreshMode());
 }
 
-void ONScripter::updateButtonsToDefaultState(GPU_Rect &check_src_rect, GPU_Rect &check_dst_rect) {
+void ONScripter::updateButtonsToDefaultState(RenderRect &check_src_rect, RenderRect &check_dst_rect) {
 	if (previouslyHoveredButtonLink == nullptr) {
 		// Nothing was previously hovered, so just set all buttons to defaults.
 		if (is_exbtn_enabled && exbtn_d_button_link.exbtn_ctl) {
@@ -2213,7 +2226,7 @@ void ONScripter::refreshButtonHoverState(bool forced) {
 		// With setting to -1:
 		//    After a mouse movement that doesn't hover a button, arrow keys will start the cursor at the default position for that menu.
 		int mx, my;
-		SDL_GetMouseState(&mx, &my);
+		onsGetMouseState(&mx, &my);
 		window.translateWindowToScriptCoords(mx, my);
 		mouseOverCheck(mx, my, forced);
 	} else {
@@ -2308,7 +2321,7 @@ struct ONScripter::ButtonLink *ONScripter::getSelectableSentence(char *buffer, F
 	return button_link;
 }
 
-void ONScripter::decodeExbtnControl(const char *ctl_str, GPU_Rect *check_src_rect, GPU_Rect *check_dst_rect) {
+void ONScripter::decodeExbtnControl(const char *ctl_str, RenderRect *check_src_rect, RenderRect *check_dst_rect) {
 	char sound_name[256];
 	int i, sprite_no, sprite_no2, cell_no, angle;
 
@@ -2351,7 +2364,7 @@ void ONScripter::decodeExbtnControl(const char *ctl_str, GPU_Rect *check_src_rec
 				ctl_str++;
 		} else if (com == 'M' || com == 'm') {
 			sprite_no     = getNumberFromBuffer(&ctl_str);
-			GPU_Rect rect = sprite_info[sprite_no].pos;
+			RenderRect rect = sprite_info[sprite_no].pos;
 			if (*ctl_str != ',')
 				continue;
 			ctl_str++; // skip ','
@@ -2559,11 +2572,11 @@ void ONScripter::requestQuit(ExitType code) {
 void ONScripter::cleanImages() {
 	//GPU Cleanup
 
-	for (GPU_Image **varPtr : {&accumulation_gpu, &hud_gpu,
+	for (RenderImage **varPtr : {&accumulation_gpu, &hud_gpu,
 	                           &text_gpu, &window_gpu, &screenshot_gpu, &draw_gpu, &draw_screen_gpu,
 	                           // and some extras put into here for conciseness
 	                           &breakup_cellforms_gpu, &breakup_cellform_index_grid, &cursor_gpu, &tmp_image}) {
-		GPU_Image *imagePtr = *varPtr;
+		RenderImage *imagePtr = *varPtr;
 		if (imagePtr) {
 			gpu.freeImage(imagePtr);
 			// Don't forget to set the variable pointer contents themselves to zero (i.e. null out accumulation_gpu etc)
@@ -2580,16 +2593,16 @@ void ONScripter::cleanImages() {
 		spriteSet.second.commit();
 	}
 
-	for (GPU_Image **varPtr : {&effect_dst_gpu, &hud_effect_dst_gpu, &effect_src_gpu, &hud_effect_src_gpu}) {
-		GPU_Image *imagePtr = *varPtr;
+	for (RenderImage **varPtr : {&effect_dst_gpu, &hud_effect_dst_gpu, &effect_src_gpu, &hud_effect_src_gpu}) {
+		RenderImage *imagePtr = *varPtr;
 		if (imagePtr) {
 			gpu.giveCanvasImage(imagePtr);
 			*varPtr = nullptr;
 		}
 	}
 
-	for (GPU_Image **varPtr : {&onion_alpha_gpu, &pre_screen_gpu, &combined_effect_src_gpu, &combined_effect_dst_gpu}) {
-		GPU_Image *imagePtr = *varPtr;
+	for (RenderImage **varPtr : {&onion_alpha_gpu, &pre_screen_gpu, &combined_effect_src_gpu, &combined_effect_dst_gpu}) {
+		RenderImage *imagePtr = *varPtr;
 		if (imagePtr) {
 			gpu.giveScriptImage(imagePtr);
 			*varPtr = nullptr;

@@ -525,9 +525,9 @@ void ONScripter::resetGlyphCache() {
 	glyphCache.resize(sz);
 }
 
-void ONScripter::renderGlyphValues(const GlyphValues &values, GPU_Rect *dst_clip, TextRenderingState::TextRenderingDst dst, float x, float y, float r, bool render_border, int alpha) {
-	GPU_Image *coloured_glyph{nullptr};
-	GPU_Rect *src_rect{nullptr};
+void ONScripter::renderGlyphValues(const GlyphValues &values, RenderRect *dst_clip, TextRenderingState::TextRenderingDst dst, float x, float y, float r, bool render_border, int alpha) {
+	RenderImage *coloured_glyph{nullptr};
+	RenderRect *src_rect{nullptr};
 	if ((!render_border && values.glyph_pos.has()) || (render_border && values.border_pos.has())) {
 		// new approach goes here
 		coloured_glyph = glyphAtlas.atlas;
@@ -697,19 +697,19 @@ void ONScripter::leaveTextDisplayMode(bool force_leave_flag, bool perform_effect
 	display_mode |= DISPLAY_MODE_UPDATED;
 }
 
-void ONScripter::renderDynamicTextWindow(GPU_Target *target, GPU_Rect *canvas_clip_dst, int refresh_mode, bool useCamera) {
+void ONScripter::renderDynamicTextWindow(RenderTarget *target, RenderRect *canvas_clip_dst, int refresh_mode, bool useCamera) {
 	// The normal, non-dynamic way
 	// drawToGPUTarget(target, sentence_font_info.oldNew(refresh_mode), refresh_mode, clip_dst);
 
 	AnimationInfo *info = sentence_font_info.oldNew(refresh_mode);
-	GPU_Image *src      = info->gpu_image;
+	RenderImage *src      = info->gpu_image;
 	if (!src)
 		return;
 
 	auto blits = wndCtrl.getRegions();
 	for (auto blit : blits) {
-		GPU_Rect clip_src = blit.src;
-		GPU_Rect real_dst = blit.dst;
+		RenderRect clip_src = blit.src;
+		RenderRect real_dst = blit.dst;
 		if (useCamera) {
 			real_dst.x += camera.center_pos.x;
 			real_dst.y += camera.center_pos.y;

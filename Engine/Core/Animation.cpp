@@ -69,7 +69,7 @@ int ONScripter::proceedCursorAnimation() {
 			anim = &cursor_info[CURSOR_NEWPAGE_NO];
 
 		if (anim->visible && anim->is_animatable) {
-			GPU_Rect dst_rect = anim->pos;
+			RenderRect dst_rect = anim->pos;
 			if (!anim->abs_flag) {
 				dst_rect.x += sentence_font.x();
 				dst_rect.y += sentence_font.y();
@@ -79,7 +79,7 @@ int ONScripter::proceedCursorAnimation() {
 		}
 
 		if (anim->old_ai && anim->old_ai->visible && anim->old_ai->is_animatable) {
-			GPU_Rect dst_rect = anim->old_ai->pos;
+			RenderRect dst_rect = anim->old_ai->pos;
 			if (!anim->old_ai->abs_flag) {
 				dst_rect.x += sentence_font.x();
 				dst_rect.y += sentence_font.y();
@@ -92,7 +92,7 @@ int ONScripter::proceedCursorAnimation() {
 	return minimum_duration;
 }
 
-int ONScripter::estimateNextDuration(AnimationInfo *anim, GPU_Rect & /*rect*/, int minimum, bool old_ai) {
+int ONScripter::estimateNextDuration(AnimationInfo *anim, RenderRect & /*rect*/, int minimum, bool old_ai) {
 	if (anim->clock.expired()) {
 		if (anim->trans_mode != AnimationInfo::TRANS_LAYER) {
 			if ((minimum == -1) ||
@@ -210,7 +210,7 @@ void ONScripter::setupAnimationInfo(AnimationInfo *anim, Fontinfo *info) {
 
 		TextRenderingState state;
 		uint16_t w, h;
-		GPU_Rect clip{0, 0, 0, 0};
+		RenderRect clip{0, 0, 0, 0};
 		state.dstClip = &clip;
 
 		//TODO: make this configurable? vertical cells for buttons are less likely to exceed the texture limit
@@ -268,7 +268,7 @@ void ONScripter::setupAnimationInfo(AnimationInfo *anim, Fontinfo *info) {
 		int old_event_mode = event_mode;
 		event_mode         = IDLE_EVENT_MODE;
 		preventExit(true);
-		while (SDL_SemWaitTimeout(async.loadImageQueue.resultsWaiting, 1) != 0)
+		while (!onsWaitSemaphoreTimeout(async.loadImageQueue.resultsWaiting, 1))
 			waitEvent(0);
 		preventExit(false);
 		event_mode = old_event_mode;
@@ -300,7 +300,7 @@ void ONScripter::buildAIImage(AnimationInfo *anim) {
 	if (!surface)
 		return;
 
-	bool using_24_bpp = surface->format->BitsPerPixel == 24;
+	bool using_24_bpp = onsSurfaceBitsPerPixel(surface) == 24;
 
 	SDL_Surface *surface_m = nullptr;
 	if (anim->trans_mode == AnimationInfo::TRANS_MASK)
@@ -537,8 +537,8 @@ void ONScripter::parseTaggedString(AnimationInfo *anim, bool is_mask) {
 	                     !treatAsSameImage(*anim, acopy));
 }
 
-void ONScripter::drawSpritesetToGPUTarget(GPU_Target *target, SpritesetInfo *spriteset, GPU_Rect *clip, int rm) {
-	GPU_Rect myClip{0, 0, static_cast<float>(target->w), static_cast<float>(target->h)};
+void ONScripter::drawSpritesetToGPUTarget(RenderTarget *target, SpritesetInfo *spriteset, RenderRect *clip, int rm) {
+	RenderRect myClip{0, 0, static_cast<float>(target->w), static_cast<float>(target->h)};
 	if (clip) {
 		myClip = *clip;
 		myClip.x += camera.center_pos.x;
@@ -557,7 +557,7 @@ void ONScripter::drawSpritesetToGPUTarget(GPU_Target *target, SpritesetInfo *spr
 	bool any      = blur || mask || breakup || pixelate || warp;
 
 	auto &ssim     = rm & REFRESH_BEFORESCENE_MODE ? spriteset->im : spriteset->imAfterscene;
-	GPU_Image *src = ssim.image;
+	RenderImage *src = ssim.image;
 	PooledGPUImage toDraw;
 	if (any) {
 		if (blur)
@@ -594,7 +594,7 @@ void ONScripter::drawSpritesetToGPUTarget(GPU_Target *target, SpritesetInfo *spr
 	}
 }
 
-void ONScripter::drawSpecialScrollable(GPU_Target *target, AnimationInfo *info, int refresh_mode, GPU_Rect *clip) {
+void ONScripter::drawSpecialScrollable(RenderTarget *target, AnimationInfo *info, int refresh_mode, RenderRect *clip) {
 	if (!info->scrollableInfo.isSpecialScrollable)
 		return;
 
@@ -602,10 +602,10 @@ void ONScripter::drawSpecialScrollable(GPU_Target *target, AnimationInfo *info, 
 	// This breaks mouseover for some buttons sometimes somehow and is not needed anymore (because we check in dynprop.apply()
 	//refreshButtonHoverState();
 
-	GPU_Rect canvasPos = info->pos;
+	RenderRect canvasPos = info->pos;
 	canvasPos.x += camera.center_pos.x;
 	canvasPos.y += camera.center_pos.y;
-	GPU_Rect localClip = clip ? *clip : canvasPos;
+	RenderRect localClip = clip ? *clip : canvasPos;
 	doClipping(&localClip, &canvasPos);
 	GPU_SetClipRect(target, localClip);
 
@@ -628,7 +628,7 @@ void ONScripter::drawSpecialScrollable(GPU_Target *target, AnimationInfo *info, 
 
 		float w = si.elementWidth ? si.elementWidth : info->pos.w;
 		float h = si.elementHeight;
-		GPU_Rect elemRect{0, 0, w, h};
+		RenderRect elemRect{0, 0, w, h};
 		setRectForScrollableElement(&elem, elemRect);
 		if (elemRect.y - scroll_y > info->pos.h) {
 			// we're off the bottom of the visible area, break
@@ -651,7 +651,7 @@ void ONScripter::drawSpecialScrollable(GPU_Target *target, AnimationInfo *info, 
 		// DEBUG: Draw debug highlight
 		/*if (si.hoveredElement == elementIndex) {
             GPU_FlushBlitBuffer();
-            GPU_Rect rect { info->pos.x+xLeft, info->pos.y+yTop, elemRect.w, elemRect.h };
+            RenderRect rect { info->pos.x+xLeft, info->pos.y+yTop, elemRect.w, elemRect.h };
             GPU_SetClipRect(target, rect);
             GPU_ClearRGBA(target, 255, 0, 0, 255);
             GPU_SetClipRect(target, localClip);
@@ -659,7 +659,7 @@ void ONScripter::drawSpecialScrollable(GPU_Target *target, AnimationInfo *info, 
 
 		// Draw element background if any
 		if (spriteBg) {
-			GPU_Rect bg_rect{0, 0, spriteBg->pos.w, spriteBg->pos.h};
+			RenderRect bg_rect{0, 0, spriteBg->pos.w, spriteBg->pos.h};
 			if (spriteBg->num_of_cells > 1 && si.hoveredElement == elementIndex) {
 				// May need to be expanded to allow for elements you can set into a state (e.g. "playing") and then move away from
 				// e.g. selectedElement field (seems confuseable with hoveredElement lol)
@@ -784,7 +784,7 @@ void ONScripter::calculateDynamicElementHeight(StringTree &element, int width, i
 	fi.changeStyle().wrap_limit  = width;
 	std::string &text            = element.has("log") ? script_h.logState.logEntryIndexToDialogueData(std::stoi(element["log"].value)).text : element["text"].value;
 	char *txt                    = const_cast<char *>(text.data());
-	GPU_Rect bounds;
+	RenderRect bounds;
 	dlgCtrl.renderToTarget(nullptr, &bounds, txt, &fi, false, tightlyFit); // dummy draw; get size
 	element["height"].value = std::to_string(bounds.y + bounds.h);
 }
@@ -803,7 +803,7 @@ void ONScripter::changeScrollableHoveredElement(AnimationInfo *info, Direction d
 		}
 		float w = si.elementWidth ? si.elementWidth : info->pos.w;
 		float h = si.elementHeight;
-		GPU_Rect elemRect{0, 0, w, h};
+		RenderRect elemRect{0, 0, w, h};
 		setRectForScrollableElement(&tree[*it], elemRect);
 		if (elemRect.y - info->scrollable.y >= info->pos.h - si.lastMargin) {
 			// we're off the bottom of the visible area, break
@@ -843,7 +843,7 @@ void ONScripter::changeScrollableHoveredElement(AnimationInfo *info, Direction d
 
 		float w = si.elementWidth ? si.elementWidth : info->pos.w;
 		float h = si.elementHeight;
-		GPU_Rect elemRect{0, 0, w, h};
+		RenderRect elemRect{0, 0, w, h};
 		int dividerH = si.divider ? si.divider->orig_pos.h : 0;
 		setRectForScrollableElement(&tree.getById(si.hoveredElement), elemRect);
 
@@ -887,7 +887,7 @@ void ONScripter::snapScrollableByOffset(AnimationInfo *info, int rowsDownwards) 
 				firstVisibleElemId = elemId;
 			float w = si.elementWidth ? si.elementWidth : info->pos.w;
 			float h = si.elementHeight;
-			GPU_Rect elemRect{0, 0, w, h};
+			RenderRect elemRect{0, 0, w, h};
 			setRectForScrollableElement(&tree[*it], elemRect);
 			if (elemRect.y - info->scrollable.y >= info->pos.h - si.lastMargin) {
 				// we're off the bottom of the visible area, break
@@ -923,7 +923,7 @@ void ONScripter::snapScrollableToElement(AnimationInfo *info, long elementId, An
 	si.snapType                       = snapType;
 	float w                           = si.elementWidth ? si.elementWidth : info->pos.w;
 	float h                           = si.elementHeight;
-	GPU_Rect elemRect{0, 0, w, h};
+	RenderRect elemRect{0, 0, w, h};
 	setRectForScrollableElement(&tree.getById(elementId), elemRect);
 	int dividerH  = si.divider ? si.divider->orig_pos.h : 0;
 	float dstYTop = snapType == AnimationInfo::ScrollSnap::TOP ? elemRect.y - dividerH - si.firstMargin : elemRect.y + elemRect.h - info->pos.h + si.lastMargin + dividerH;
@@ -964,7 +964,7 @@ std::vector<std::string>::iterator ONScripter::getScrollableElementsVisibleAt(An
 	return res;
 }
 
-void ONScripter::setRectForScrollableElement(StringTree *elem, GPU_Rect &rect) {
+void ONScripter::setRectForScrollableElement(StringTree *elem, RenderRect &rect) {
 	if (elem->has("x"))
 		rect.x = std::stoi((*elem)["x"].value);
 	if (elem->has("y"))
@@ -985,7 +985,7 @@ void ONScripter::mouseOverSpecialScrollable(int aiSpriteNo, int x, int y) {
 		StringTree &elem = tree[*it];
 		float w          = si->elementWidth;
 		float h          = si->elementHeight;
-		GPU_Rect elemRect{0, 0, w, h};
+		RenderRect elemRect{0, 0, w, h};
 		setRectForScrollableElement(&elem, elemRect);
 		if (elemRect.y > y) {
 			// Went too far down, found nothing
@@ -1013,8 +1013,8 @@ void ONScripter::mouseOverSpecialScrollable(int aiSpriteNo, int x, int y) {
 	si->mouseCursorIsOverHoveredElement = false;
 }
 
-void ONScripter::drawBigImage(GPU_Target *target, AnimationInfo *info, int /*refresh_mode*/, GPU_Rect *clip, bool centre_coordinates) {
-	GPU_Rect targetClip = clip ? *clip : GPU_Rect{-camera.center_pos.x, -camera.center_pos.y, static_cast<float>(window.canvas_width), static_cast<float>(window.canvas_height)};
+void ONScripter::drawBigImage(RenderTarget *target, AnimationInfo *info, int /*refresh_mode*/, RenderRect *clip, bool centre_coordinates) {
+	RenderRect targetClip = clip ? *clip : RenderRect{-camera.center_pos.x, -camera.center_pos.y, static_cast<float>(window.canvas_width), static_cast<float>(window.canvas_height)};
 
 	float scale_x     = info->scale_x / 100.0;
 	float scale_y     = info->scale_y / 100.0;
@@ -1024,7 +1024,7 @@ void ONScripter::drawBigImage(GPU_Target *target, AnimationInfo *info, int /*ref
 	int cell_off_x = info->vertical_cells ? 0 : info->pos.w * info->current_cell;
 	int cell_off_y = info->vertical_cells ? info->pos.h * info->current_cell : 0;
 
-	GPU_Rect bounding_rect = info->bounding_rect;
+	RenderRect bounding_rect = info->bounding_rect;
 	if (info->scrollable.h > 0) {
 		cell_off_y += info->scrollable.y;
 		bounding_rect.h = info->scrollable.h;
@@ -1034,8 +1034,8 @@ void ONScripter::drawBigImage(GPU_Target *target, AnimationInfo *info, int /*ref
 		bounding_rect.w = info->scrollable.w;
 	}
 
-	GPU_Image *sprite_transformation_image{nullptr};
-	GPU_Rect sourceClip = info->pos;
+	RenderImage *sprite_transformation_image{nullptr};
+	RenderRect sourceClip = info->pos;
 
 	if (scale_x == 1 && scale_y == 1) {
 		// sourceClip has script coordinates
@@ -1058,7 +1058,7 @@ void ONScripter::drawBigImage(GPU_Target *target, AnimationInfo *info, int /*ref
 		sourceClip.x = cell_off_x;
 		sourceClip.y = cell_off_y;
 
-		GPU_Rect tmp = bounding_rect;
+		RenderRect tmp = bounding_rect;
 
 		// We are working with canvas then let's use canvas coordinates for lower calculations
 		tmp.x += camera.center_pos.x;
@@ -1171,7 +1171,7 @@ void ONScripter::drawBigImage(GPU_Target *target, AnimationInfo *info, int /*ref
 		gpu.giveCanvasImage(sprite_transformation_image);
 }
 
-void ONScripter::drawToGPUTarget(GPU_Target *target, AnimationInfo *info, int refresh_mode, GPU_Rect *clip, bool centre_coordinates) {
+void ONScripter::drawToGPUTarget(RenderTarget *target, AnimationInfo *info, int refresh_mode, RenderRect *clip, bool centre_coordinates) {
 	if (!target) {
 		sendToLog(LogLevel::Error, "drawToGPUTarget has no proper target\n");
 		return;
@@ -1185,16 +1185,16 @@ void ONScripter::drawToGPUTarget(GPU_Target *target, AnimationInfo *info, int re
 		return;
 	}
 
-	GPU_Rect real_clip{0, 0, static_cast<float>(target->w), static_cast<float>(target->h)};
+	RenderRect real_clip{0, 0, static_cast<float>(target->w), static_cast<float>(target->h)};
 	if (clip) {
 		real_clip = *clip;
 		real_clip.x += camera.center_pos.x;
 		real_clip.y += camera.center_pos.y;
 	}
 
-	GPU_Image *sprite_transformation_image = nullptr;
-	GPU_Image *subimage_compositing_image  = nullptr;
-	GPU_Image *src                         = nullptr;
+	RenderImage *sprite_transformation_image = nullptr;
+	RenderImage *subimage_compositing_image  = nullptr;
+	RenderImage *src                         = nullptr;
 
 	bool opacityTransform = info->darkenHue.r < 255 || info->darkenHue.g < 255 ||
 	                        info->darkenHue.b < 255 || info->trans < 255;
@@ -1291,7 +1291,7 @@ void ONScripter::drawToGPUTarget(GPU_Target *target, AnimationInfo *info, int re
 
 		src = info->gpu_image;
 
-		GPU_Rect clip_rect{0, 0, info->pos.w, info->pos.h};
+		RenderRect clip_rect{0, 0, info->pos.w, info->pos.h};
 		if (info->num_of_cells > 1 && info->current_cell != 0) {
 			if (!info->vertical_cells)
 				clip_rect.x += info->pos.w * info->current_cell;
@@ -1354,8 +1354,8 @@ void ONScripter::drawToGPUTarget(GPU_Target *target, AnimationInfo *info, int re
 			}
 		}
 
-		GPU_Target *dst    = sprite_transformation_image ? sprite_transformation_image->target : target;
-		GPU_Rect *dst_clip = sprite_transformation_image ? nullptr : &real_clip;
+		RenderTarget *dst    = sprite_transformation_image ? sprite_transformation_image->target : target;
+		RenderRect *dst_clip = sprite_transformation_image ? nullptr : &real_clip;
 		float scale_x      = (info->flip & FLIP_HORIZONTALLY ? -1 : 1) * (info->scale_x ? info->scale_x / 100.0 : 1);
 		float scale_y      = (info->flip & FLIP_VERTICALLY ? -1 : 1) * (info->scale_y ? info->scale_y / 100.0 : 1);
 
@@ -1532,14 +1532,14 @@ void ONScripter::stopCursorAnimation(int click) {
 	if (cursor_info[no].gpu_image == nullptr)
 		return;
 
-	GPU_Rect dst_rect = cursor_info[no].pos;
+	RenderRect dst_rect = cursor_info[no].pos;
 
 	if (!cursor_info[no].abs_flag) {
 		dst_rect.x += sentence_font.x();
 		dst_rect.y += sentence_font.y();
 	}
 
-	GPU_Rect empty_rect{0, 0, 0, 0};
+	RenderRect empty_rect{0, 0, 0, 0};
 	flushDirect(empty_rect, dst_rect, refreshMode());
 }
 

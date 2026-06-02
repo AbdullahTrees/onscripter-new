@@ -15,7 +15,7 @@
 #import <UIKit/UIKit.h>
 
 #include <objc/runtime.h>
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 
 bool backupDisable(const char *path) {
 	NSString *nspath = [[NSString alloc] initWithCString:path encoding:NSUTF8StringEncoding];
@@ -144,7 +144,7 @@ static NSArray *keyCommands(id * /* that */, SEL /* sel */) {
 		auto event = new SDL_Event{};
 		event->type = SDL_KEYUP;
 		event->key.state = SDL_RELEASED;
-		event->key.keysym.scancode = (SDL_Scancode)[[keyMap objectForKey:currentPressed] intValue];
+		onsKeyboardScancode(event->key) = (SDL_Scancode)[[keyMap objectForKey:currentPressed] intValue];
 		keySender(event);
 		
 		currentPressed = nil;
@@ -161,7 +161,7 @@ static void keyHandle(id * /* that */, SEL /* sel */, UIKeyCommand *key) {
 		auto event = new SDL_Event{};
 		event->type = SDL_KEYDOWN;
 		event->key.state = SDL_PRESSED;
-		event->key.keysym.scancode = (SDL_Scancode)[keyCode intValue];
+		onsKeyboardScancode(event->key) = (SDL_Scancode)[keyCode intValue];
 		keySender(event);
 	} else {
 		NSLog(@"Unrecognised key %@", input);

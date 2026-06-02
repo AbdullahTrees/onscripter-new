@@ -199,6 +199,10 @@ configopts_win32=(
     '--extra-libs=-static'
     '--extra-cflags=--static'
     '--disable-hwaccels'
+    '--disable-d3d11va'
+    '--disable-dxva2'
+    '--disable-mediafoundation'
+    '--disable-cuda-llvm'
     '--disable-decoders'
 )
 

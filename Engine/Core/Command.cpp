@@ -16,7 +16,7 @@
 #include "Resources/Support/Version.hpp"
 #include "Support/FileIO.hpp"
 
-#include <SDL2/SDL_thread.h>
+#include "Support/SDLCompat.hpp"
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -49,11 +49,11 @@ int ONScripter::yesnoboxCommand() {
 	if (!answer_dialog_with_yes_ok) {
 		SDL_MessageBoxButtonData buttons[2];
 
-		buttons[0].buttonid = 1;
+		onsMessageBoxButtonId(buttons[0]) = 1;
 		buttons[0].flags    = SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT;
 		buttons[0].text     = positive;
 
-		buttons[1].buttonid = 0;
+		onsMessageBoxButtonId(buttons[1]) = 0;
 		buttons[1].flags    = SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT;
 		buttons[1].text     = negative;
 
@@ -532,12 +532,18 @@ int ONScripter::sp_rgb_gradationCommand() {
 	if (surface == nullptr)
 		return RET_CONTINUE; //FIXME: alloc image instead?
 
-	SDL_PixelFormat *fmt = surface->format;
+	const Uint8 rloss  = onsSurfaceRloss(surface);
+	const Uint8 gloss  = onsSurfaceGloss(surface);
+	const Uint8 bloss  = onsSurfaceBloss(surface);
+	const Uint8 rshift = onsSurfaceRshift(surface);
+	const Uint8 gshift = onsSurfaceGshift(surface);
+	const Uint8 bshift = onsSurfaceBshift(surface);
+	const Uint8 ashift = onsSurfaceAshift(surface);
 
-	ONSBuf key_mask = (key_r >> fmt->Rloss) << fmt->Rshift |
-	                  (key_g >> fmt->Gloss) << fmt->Gshift |
-	                  (key_b >> fmt->Bloss) << fmt->Bshift;
-	ONSBuf rgb_mask = fmt->Rmask | fmt->Gmask | fmt->Bmask;
+	ONSBuf key_mask = (key_r >> rloss) << rshift |
+	                  (key_g >> gloss) << gshift |
+	                  (key_b >> bloss) << bshift;
+	ONSBuf rgb_mask = onsSurfaceRmask(surface) | onsSurfaceGmask(surface) | onsSurfaceBmask(surface);
 
 	// check upper and lower bound
 	int i, j;
@@ -563,15 +569,15 @@ int ONScripter::sp_rgb_gradationCommand() {
 		ONSBuf *buf     = static_cast<ONSBuf *>(surface->pixels) + surface->w * i;
 		uint8_t *alphap = reinterpret_cast<uint8_t *>(buf) + 3;
 
-		uint32_t color = alpha << surface->format->Ashift;
+		uint32_t color = alpha << ashift;
 		if (upper_bound != lower_bound) {
-			color |= (((lower_r - upper_r) * (i - upper_bound) / (lower_bound - upper_bound) + upper_r) >> fmt->Rloss) << fmt->Rshift;
-			color |= (((lower_g - upper_g) * (i - upper_bound) / (lower_bound - upper_bound) + upper_g) >> fmt->Gloss) << fmt->Gshift;
-			color |= (((lower_b - upper_b) * (i - upper_bound) / (lower_bound - upper_bound) + upper_b) >> fmt->Bloss) << fmt->Bshift;
+			color |= (((lower_r - upper_r) * (i - upper_bound) / (lower_bound - upper_bound) + upper_r) >> rloss) << rshift;
+			color |= (((lower_g - upper_g) * (i - upper_bound) / (lower_bound - upper_bound) + upper_g) >> gloss) << gshift;
+			color |= (((lower_b - upper_b) * (i - upper_bound) / (lower_bound - upper_bound) + upper_b) >> bloss) << bshift;
 		} else {
-			color |= (upper_r >> fmt->Rloss) << fmt->Rshift;
-			color |= (upper_g >> fmt->Gloss) << fmt->Gshift;
-			color |= (upper_b >> fmt->Bloss) << fmt->Bshift;
+			color |= (upper_r >> rloss) << rshift;
+			color |= (upper_g >> gloss) << gshift;
+			color |= (upper_b >> bloss) << bshift;
 		}
 
 		for (j = 0; j < surface->w; j++, buf++) {
@@ -796,7 +802,7 @@ int ONScripter::setwindow2Command() {
 
 		//Extra name param
 		if (script_h.hasMoreArgs()) {
-			GPU_Image *image = loadGpuImage(script_h.readFilePath());
+			RenderImage *image = loadGpuImage(script_h.readFilePath());
 			if (image) {
 				GPU_SetBlending(image, false);
 				GPU_GetTarget(sentence_font_info.gpu_image);
@@ -1043,7 +1049,7 @@ int ONScripter::savescreenshotCommand() {
 
 	const char *ext = std::strrchr(filename, '.');
 	if (ext) {
-		GPU_FileFormatEnum format = GPU_FILE_AUTO;
+		RenderFileFormat format = GPU_FILE_AUTO;
 		if (equalstr(ext + 1, "PNG") || equalstr(ext + 1, "png")) {
 			format = GPU_FILE_PNG;
 		} else if (equalstr(ext + 1, "BMP") || equalstr(ext + 1, "bmp")) {
@@ -1054,7 +1060,7 @@ int ONScripter::savescreenshotCommand() {
 
 		if (format != GPU_FILE_AUTO) {
 			if (screenshot_gpu == nullptr) {
-				sendToLog(LogLevel::Error, "savescreenshot: no screenshot buffer, creating a blank 1x1 GPU_Image.\n");
+				sendToLog(LogLevel::Error, "savescreenshot: no screenshot buffer, creating a blank 1x1 RenderImage.\n");
 				screenshot_gpu = gpu.createImage(1, 1, 4);
 				GPU_GetTarget(screenshot_gpu);
 				gpu.clearWholeTarget(screenshot_gpu->target);
@@ -1066,8 +1072,14 @@ int ONScripter::savescreenshotCommand() {
 
 			FILE *fp = FileIO::openFile(filename, "wb", script_h.save_path);
 			if (fp) {
+#if defined(ONS_USE_SDL3)
+				std::fclose(fp);
+				const std::string screenshotPath = std::string(script_h.save_path ? script_h.save_path : "") + filename;
+				GPU_SaveImage(screenshot_gpu, screenshotPath.c_str(), format);
+#else
 				auto rwops = SDL_RWFromFP(fp, SDL_TRUE);
 				GPU_SaveImage_RW(screenshot_gpu, rwops, true, format);
+#endif
 			} else {
 				sendToLog(LogLevel::Error, "savescreenshot: failed to save the screenshot.\n");
 			}
@@ -2248,7 +2260,7 @@ int ONScripter::getscreenshotCommand() {
 		GPU_GetTarget(screenshot_gpu);
 	}
 
-	GPU_Image *script_image = gpu.createImage(window.script_width, window.script_height, 3);
+	RenderImage *script_image = gpu.createImage(window.script_width, window.script_height, 3);
 	GPU_GetTarget(script_image);
 	auto combined_camera = camera.center_pos;
 	combined_camera.x -= camera.pos.x;
@@ -2798,7 +2810,7 @@ int ONScripter::drawspCommand() {
 	int old_cell_no = si.current_cell;
 	si.visible      = true;
 	si.setCell(cell_no);
-	GPU_Rect pos{si.current_cell * si.pos.w, 0, si.pos.w, si.pos.h};
+	RenderRect pos{si.current_cell * si.pos.w, 0, si.pos.w, si.pos.h};
 	if (alpha < 255)
 		GPU_SetRGBA(si.gpu_image, alpha, alpha, alpha, alpha);
 	gpu.copyGPUImage(si.gpu_image, &pos, nullptr, draw_gpu->target, x, y);
@@ -3294,7 +3306,7 @@ int ONScripter::btnwaitCommand() {
 		// Set buttons to default state as specified by exbtn_d. Moved after visibility set in case the default state sets some buttons invisible. Hopefully this will not cause problems.
 		if (is_exbtn_enabled && exbtn_d_button_link.exbtn_ctl) {
 			//should not be canvas, right?
-			GPU_Rect check_src_rect{0, 0, static_cast<float>(window.script_width), static_cast<float>(window.script_height)};
+			RenderRect check_src_rect{0, 0, static_cast<float>(window.script_width), static_cast<float>(window.script_height)};
 			decodeExbtnControl(exbtn_d_button_link.exbtn_ctl, &check_src_rect);
 		}
 		refreshButtonHoverState();
@@ -3480,7 +3492,7 @@ int ONScripter::btnareaCommand() {
 }
 
 int ONScripter::btnCommand() {
-	GPU_Rect src_rect;
+	RenderRect src_rect;
 
 	ButtonLink *button = new ButtonLink();
 
@@ -3559,7 +3571,7 @@ int ONScripter::bltCommand() {
 
 	//if (sw == dw && sw > 0 && sh == dh && sh > 0) {
 
-	GPU_Rect src_rect{static_cast<float>(sx), static_cast<float>(sy), static_cast<float>(sw), static_cast<float>(sh)};
+	RenderRect src_rect{static_cast<float>(sx), static_cast<float>(sy), static_cast<float>(sw), static_cast<float>(sh)};
 	//SDL_Rect dst_rect {(short)dx,(short)dy,(uint16_t)dw,(uint16_t)dh};
 
 	gpu.copyGPUImage(btndef_info.gpu_image, &src_rect, nullptr, screen_target);

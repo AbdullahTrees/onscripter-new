@@ -12,10 +12,10 @@
 #include "Engine/Graphics/Common.hpp"
 #include "Engine/Core/ONScripter.hpp"
 
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 #ifdef WIN32
 #include <windows.h>
-#include <SDL2/SDL_syswm.h>
+#include "Support/SDLSysWMCompat.hpp"
 #include "Resources/Support/WinRes.hpp"
 #endif
 
@@ -60,11 +60,11 @@ bool WindowController::showMessageBox(uint32_t flags, const char *title, const c
 	data.numbuttons  = numbuttons;
 	data.buttons     = buttons;
 	data.colorScheme = nullptr;
-	return SDL_ShowMessageBox(&data, &res) == 0;
+	return onsShowMessageBox(&data, &res);
 }
 
 bool WindowController::showSimpleMessageBox(uint32_t flags, const char *title, const char *message) {
-	return SDL_ShowSimpleMessageBox(flags, title, message, window) == 0;
+	return onsShowSimpleMessageBox(flags, title, message, window);
 }
 
 void WindowController::setMousePosition(int x, int y) {
@@ -82,7 +82,7 @@ void WindowController::setActiveState(bool activate) {
 	SDL_GL_MakeCurrent(window, activate ? glcontext : nullptr);
 }
 
-void WindowController::setMainTarget(GPU_Target *target) {
+void WindowController::setMainTarget(RenderTarget *target) {
 	window    = SDL_GetWindowFromID(target->context->windowID);
 	glcontext = SDL_GL_GetCurrentContext();
 }
@@ -97,7 +97,7 @@ void WindowController::setIcon(SDL_Surface *icon) {
 		return;
 	}
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(ONS_USE_SDL3)
 	//use the (first) Windows icon resource
 	const HANDLE wicon[2]{
 	    LoadImage(GetModuleHandle(nullptr), MAKEINTRESOURCE(ONSCRICON), IMAGE_ICON,
@@ -115,7 +115,7 @@ void WindowController::setIcon(SDL_Surface *icon) {
 #endif
 }
 
-void WindowController::translateRendering(float &x, float &y, GPU_Rect *&clip) {
+void WindowController::translateRendering(float &x, float &y, RenderRect *&clip) {
 	if (fullscreen_mode) {
 		x += fullscript_offset_x;
 		y += fullscript_offset_y;
@@ -177,26 +177,26 @@ bool WindowController::updateDisplayData(bool getpos) {
 	if (getpos)
 		SDL_GetWindowPosition(window, &window_x, &window_y);
 
-	int displays{SDL_GetNumVideoDisplays()};
+	int displays{onsGetNumVideoDisplays()};
 	displayData.clear();
 	displayData.displays.resize(displays);
 	displayData.displaysByArea.resize(displays);
 
-	GPU_Rect windowRegion{static_cast<float>(window_x), static_cast<float>(window_y), static_cast<float>(screen_width), static_cast<float>(screen_height)};
+	RenderRect windowRegion{static_cast<float>(window_x), static_cast<float>(window_y), static_cast<float>(screen_width), static_cast<float>(screen_height)};
 
 	for (int d = 0; d < displays; d++) {
 		SDL_DisplayMode video_mode;
-		SDL_GetDesktopDisplayMode(d, &video_mode);
+		onsGetDesktopDisplayMode(d, &video_mode);
 		auto &display         = displayData.displays[d];
 		display.id            = d;
 		display.native_width  = video_mode.w;
 		display.native_height = video_mode.h;
-		SDL_GetDisplayBounds(d, &display.region);
+		onsGetDisplayBounds(d, &display.region);
 
 		// Determine the size of the portion of the window visible on this display
 		SDL_Rect &r = display.region;
-		GPU_Rect displayRegion{static_cast<float>(r.x), static_cast<float>(r.y), static_cast<float>(r.w), static_cast<float>(r.h)};
-		GPU_Rect visibleWindowRegion = windowRegion;
+		RenderRect displayRegion{static_cast<float>(r.x), static_cast<float>(r.y), static_cast<float>(r.w), static_cast<float>(r.h)};
+		RenderRect visibleWindowRegion = windowRegion;
 		int area                     = doClipping(&visibleWindowRegion, &displayRegion) ? 0 :
 		                                                              static_cast<int>(visibleWindowRegion.w) * static_cast<int>(visibleWindowRegion.h);
 		display.visibleArea = area;
@@ -296,9 +296,9 @@ bool WindowController::changeMode(bool perform, bool correct, int mode) {
 			gpu.setVirtualResolution(fullscript_width, fullscript_height);
 
 			int mouse_x, mouse_y;
-			SDL_GetMouseState(&mouse_x, &mouse_y);
+			onsGetMouseState(&mouse_x, &mouse_y);
 			//Fullscreen set
-			SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+			onsSetWindowFullscreen(window, true);
 			//We need to correct a shifted mouse
 			//sendToLog(LogLevel::Info, "Going to fullscreen. Before: %u, %u\n", mouse_x, mouse_y);
 			mouse_x = (mouse_x * fullscreen_width / windowed_screen_width) + ((screen_width / static_cast<float>(script_width)) * fullscript_offset_x);
@@ -308,7 +308,7 @@ bool WindowController::changeMode(bool perform, bool correct, int mode) {
 			ons.screen_target = GPU_GetContextTarget();
 			fullscreen_mode   = true;
 		} else {
-			SDL_SetWindowFullscreen(window, 0);
+			onsSetWindowFullscreen(window, false);
 			ons.screen_target = GPU_GetContextTarget();
 			fullscreen_mode   = false;
 		}
@@ -325,7 +325,7 @@ bool WindowController::changeMode(bool perform, bool correct, int mode) {
 			screen_height = windowed_screen_height;
 
 			int mouse_x, mouse_y;
-			SDL_GetMouseState(&mouse_x, &mouse_y);
+			onsGetMouseState(&mouse_x, &mouse_y);
 			//We need to correct a shifted mouse
 			//sendToLog(LogLevel::Info, "Going to windowed. Before: %u, %u\n", mouse_x, mouse_y);
 			mouse_x = ((mouse_x - (screen_width / static_cast<float>(script_width)) * fullscript_offset_x) * windowed_screen_width / fullscreen_width);

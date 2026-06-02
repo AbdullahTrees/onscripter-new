@@ -15,7 +15,7 @@
 #include "Engine/Graphics/PNG.hpp"
 #include "Engine/Graphics/Pool.hpp"
 
-#include <SDL2/SDL_thread.h>
+#include "Support/SDLCompat.hpp"
 
 #include <new>
 #include <string>
@@ -52,7 +52,7 @@ void ONScripter::dropCache(int *id, const std::string &filename_str) {
 	}
 }
 
-GPU_Image *ONScripter::loadGpuImage(const char *file_name, bool allow_rgb) {
+RenderImage *ONScripter::loadGpuImage(const char *file_name, bool allow_rgb) {
 	//This function is unable to handle archives
 
 	if (!file_name) {
@@ -67,7 +67,7 @@ GPU_Image *ONScripter::loadGpuImage(const char *file_name, bool allow_rgb) {
 		return nullptr;
 	}
 
-	GPU_Image *img = gpu.copyImageFromSurface(input_surface);
+	RenderImage *img = gpu.copyImageFromSurface(input_surface);
 
 	if (!img) {
 		sendToLog(LogLevel::Error, "loadGpuImage: File %s cannot be opened!\n", file_name);
@@ -95,8 +95,8 @@ SDL_Surface *ONScripter::loadImage(const char *filename, bool *has_alpha, bool a
 		if (r && r->surface) {
 			if (has_alpha)
 				*has_alpha = r->has_alpha;
-			if (!allow_rgb && r->surface->format->BitsPerPixel == 24) {
-				SDL_Surface *ret = SDL_ConvertSurfaceFormat(r->surface, pixel_format_enum_32bpp, SDL_SWSURFACE);
+			if (!allow_rgb && onsSurfaceBitsPerPixel(r->surface) == 24) {
+				SDL_Surface *ret = onsConvertSurfaceFormat(r->surface, pixel_format_enum_32bpp, SDL_SWSURFACE);
 				// Allow the 24-bit r->surface to be freed by the wrapped surface destruction
 				return ret;
 			}
@@ -120,11 +120,11 @@ SDL_Surface *ONScripter::loadImage(const char *filename, bool *has_alpha, bool a
 	uint32_t colorkey = 0;
 
 	if (has_alpha) {
-		*has_alpha = (tmp->format->Amask != 0);
-		if (!(*has_alpha) && !SDL_GetColorKey(tmp, &colorkey)) {
+		*has_alpha = (onsSurfaceAmask(tmp) != 0);
+		if (!(*has_alpha) && onsGetColorKey(tmp, &colorkey)) {
 			has_colorkey = true;
 
-			if (tmp->format->palette) {
+			if (onsSurfacePalette(tmp)) {
 				//palette will be converted to RGBA, so don't do colorkey check
 				has_colorkey = false;
 			}
@@ -132,7 +132,7 @@ SDL_Surface *ONScripter::loadImage(const char *filename, bool *has_alpha, bool a
 		}
 	}
 
-	uint32_t format  = SDL_MasksToPixelFormatEnum(tmp->format->BitsPerPixel, tmp->format->Rmask, tmp->format->Gmask, tmp->format->Bmask, tmp->format->Amask);
+	uint32_t format  = onsSurfacePixelFormatEnum(tmp);
 	SDL_Surface *ret = tmp;
 
 	bool conversionRequired = !(
@@ -142,7 +142,7 @@ SDL_Surface *ONScripter::loadImage(const char *filename, bool *has_alpha, bool a
 	);
 
 	if (conversionRequired) {
-		ret = SDL_ConvertSurfaceFormat(tmp, pixel_format_enum_32bpp, SDL_SWSURFACE);
+		ret = onsConvertSurfaceFormat(tmp, pixel_format_enum_32bpp, SDL_SWSURFACE);
 		SDL_FreeSurface(tmp);
 	}
 
@@ -170,8 +170,9 @@ SDL_Surface *ONScripter::loadImage(const char *filename, bool *has_alpha, bool a
 		if (png_mask_type == PNG_MASK_USE_NSCRIPTER)
 			*has_alpha = false;
 		else if (png_mask_type == PNG_MASK_AUTODETECT) {
-			const uint32_t aval = *static_cast<uint32_t *>(ret->pixels) & ret->format->Amask;
-			if (aval == ret->format->Amask) {
+			const uint32_t amask = onsSurfaceAmask(ret);
+			const uint32_t aval  = *static_cast<uint32_t *>(ret->pixels) & amask;
+			if (aval == amask) {
 				*has_alpha = false;
 				for (int y = 0; y < ret->h; ++y) {
 					uint32_t *pixbuf = reinterpret_cast<uint32_t *>(static_cast<char *>(ret->pixels) + y * ret->pitch);
@@ -181,7 +182,7 @@ SDL_Surface *ONScripter::loadImage(const char *filename, bool *has_alpha, bool a
 						// code, since != is higher-precedence than &, but this
 						// version is obviously what I intended when I wrote this.
 						// Has this been broken all along?  :/  -- Haeleth
-						if ((*pixbuf & ret->format->Amask) != aval) {
+						if ((*pixbuf & amask) != aval) {
 							*has_alpha = true;
 							return ret;
 						}
@@ -191,14 +192,15 @@ SDL_Surface *ONScripter::loadImage(const char *filename, bool *has_alpha, bool a
 
 			if (!*has_alpha && has_colorkey) {
 				// has a colorkey, so run a match against rgb values
-				const uint32_t aval = colorkey & ~(ret->format->Amask);
-				if (aval == (*static_cast<uint32_t *>(ret->pixels) & ~(ret->format->Amask)))
+				const uint32_t amask = onsSurfaceAmask(ret);
+				const uint32_t aval  = colorkey & ~amask;
+				if (aval == (*static_cast<uint32_t *>(ret->pixels) & ~amask))
 					return ret;
 				*has_alpha = false;
 				for (int y = 0; y < ret->h; ++y) {
 					uint32_t *pixbuf = reinterpret_cast<uint32_t *>(static_cast<char *>(ret->pixels) + y * ret->pitch);
 					for (int x = ret->w; x > 0; --x, ++pixbuf) {
-						if ((*pixbuf & ~(ret->format->Amask)) == aval) {
+						if ((*pixbuf & ~amask) == aval) {
 							*has_alpha = true;
 							return ret;
 						}
@@ -246,7 +248,7 @@ SDL_Surface *ONScripter::createRectangleSurface(const char *filename) {
 		while (filename[c] == ' ' || filename[c] == '\t') c++;
 	}
 
-	SDL_Surface *tmp = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h,
+	SDL_Surface *tmp = onsCreateRGBSurface(SDL_SWSURFACE, w, h,
 	                                        32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000);
 
 	c = c2;
@@ -263,7 +265,7 @@ SDL_Surface *ONScripter::createRectangleSurface(const char *filename) {
 		if (i == n - 1)
 			rect.w = w - rect.x;
 		rect.h = h;
-		SDL_FillRect(tmp, &rect, SDL_MapRGBA(tmp->format, col.x, col.y, col.z, 0xff));
+		SDL_FillRect(tmp, &rect, onsMapRGBA(tmp, col.x, col.y, col.z, 0xff));
 	}
 
 	return tmp;
@@ -329,7 +331,7 @@ SDL_Surface *ONScripter::createSurfaceFromFile(const char *filename) {
 	return tmp;
 }
 
-void ONScripter::effectBlendToCombinedImage(GPU_Image *mask_gpu, int trans_mode, uint32_t mask_value, GPU_Image *image) {
+void ONScripter::effectBlendToCombinedImage(RenderImage *mask_gpu, int trans_mode, uint32_t mask_value, RenderImage *image) {
 	if (image == pre_screen_gpu)
 		pre_screen_render = true;
 
@@ -369,15 +371,15 @@ void ONScripter::effectBlendToCombinedImage(GPU_Image *mask_gpu, int trans_mode,
 	effectBlendGPU(mask_gpu, trans_mode, mask_value, nullptr, combined_effect_src_gpu, combined_effect_dst_gpu, image);
 }
 
-void ONScripter::effectBlendGPU(GPU_Image *mask_gpu, int trans_mode,
-                                uint32_t mask_value, GPU_Rect *clip,
-                                GPU_Image *src1, GPU_Image *src2, GPU_Image *dst) {
+void ONScripter::effectBlendGPU(RenderImage *mask_gpu, int trans_mode,
+                                uint32_t mask_value, RenderRect *clip,
+                                RenderImage *src1, RenderImage *src2, RenderImage *dst) {
 	if (!src1 || !src2 || !dst) {
 		sendToLog(LogLevel::Error, "Invalid effectBlendGPU arguments\n");
 		return;
 	}
 
-	GPU_Rect fullclip{0, 0, static_cast<float>(window.script_width), static_cast<float>(window.script_height)};
+	RenderRect fullclip{0, 0, static_cast<float>(window.script_width), static_cast<float>(window.script_height)};
 	if (!clip)
 		clip = &fullclip;
 
@@ -417,26 +419,26 @@ bool ONScripter::colorGlyph(const GlyphParams *key, GlyphValues *glyph, SDL_Colo
 
 	// is atlas a place we are blitting from
 	bool src_atlas     = ((!border && glyph->glyph_pos.has()) || (border && glyph->border_pos.has()));
-	GPU_Image *src_img = src_atlas ? glyphAtlas.atlas : (border ? glyph->border_gpu : glyph->glyph_gpu);
-	GPU_Rect *src_rect = !src_atlas ? nullptr : (border ? &glyph->border_pos.get() : &glyph->glyph_pos.get());
-	std::unique_ptr<GPU_Rect> dst_rect;
+	RenderImage *src_img = src_atlas ? glyphAtlas.atlas : (border ? glyph->border_gpu : glyph->glyph_gpu);
+	RenderRect *src_rect = !src_atlas ? nullptr : (border ? &glyph->border_pos.get() : &glyph->glyph_pos.get());
+	std::unique_ptr<RenderRect> dst_rect;
 
 	if (src_img == nullptr || color == nullptr) {
 		return true;
 	}
 
 	GPU_GetTarget(src_img);
-	GPU_Target *target = src_img->target; // case 2
+	RenderTarget *target = src_img->target; // case 2
 
 	float x = src_img->w / 2.0, y = src_img->h / 2.0; // cases 2 & 4
-	GPU_Image *tmp{nullptr};
+	RenderImage *tmp{nullptr};
 	bool atlas_ok{true};
 
 	if (src_atlas && atlas) { // case 1
 		tmp = gpu.createImage(src_rect->w, src_rect->h, 4);
 		GPU_GetTarget(tmp);
 		target   = tmp->target;
-		dst_rect = std::make_unique<GPU_Rect>();
+		dst_rect = std::make_unique<RenderRect>();
 		if (atlas->add(tmp->w + 2, tmp->h + 2, *dst_rect)) {
 			x = dst_rect->x + tmp->w / 2.0;
 			y = dst_rect->y + tmp->h / 2.0;
@@ -445,7 +447,7 @@ bool ONScripter::colorGlyph(const GlyphParams *key, GlyphValues *glyph, SDL_Colo
 			atlas_ok = false;
 		}
 	} else if (!src_rect && atlas) { // case 3
-		dst_rect = std::make_unique<GPU_Rect>();
+		dst_rect = std::make_unique<RenderRect>();
 		if (atlas->add(src_img->w + 2, src_img->h + 2, *dst_rect)) {
 			x = dst_rect->x + dst_rect->w / 2.0;
 			y = dst_rect->y + dst_rect->h / 2.0;
@@ -454,7 +456,7 @@ bool ONScripter::colorGlyph(const GlyphParams *key, GlyphValues *glyph, SDL_Colo
 			atlas_ok = false;
 		}
 	} else if (src_rect && !atlas) { // case 4
-		GPU_Image *image = (border ? glyph->border_gpu : glyph->glyph_gpu);
+		RenderImage *image = (border ? glyph->border_gpu : glyph->glyph_gpu);
 		GPU_GetTarget(image);
 		target = image->target;
 	}
@@ -466,7 +468,7 @@ bool ONScripter::colorGlyph(const GlyphParams *key, GlyphValues *glyph, SDL_Colo
 	}
 
 	bool src_needs_copy   = src_img->target == target && !gpu.render_to_self;
-	GPU_Image *actual_src = src_img;
+	RenderImage *actual_src = src_img;
 
 	if (key->is_gradient && !border) {
 		if (src_needs_copy) {
@@ -543,7 +545,7 @@ bool ONScripter::colorGlyph(const GlyphParams *key, GlyphValues *glyph, SDL_Colo
 	return true;
 }
 
-void ONScripter::makeNegaTarget(GPU_Target *target, GPU_Rect clip) {
+void ONScripter::makeNegaTarget(RenderTarget *target, RenderRect clip) {
 	if (target == nullptr || target->image == nullptr) {
 		sendToLog(LogLevel::Error, "makeNegaTarget@Target has no image\n");
 		return;
@@ -562,7 +564,7 @@ void ONScripter::makeNegaTarget(GPU_Target *target, GPU_Rect clip) {
 	gpu.unsetShaderProgram();
 }
 
-void ONScripter::makeMonochromeTarget(GPU_Target *target, GPU_Rect clip, bool before_scene) {
+void ONScripter::makeMonochromeTarget(RenderTarget *target, RenderRect clip, bool before_scene) {
 	if (target == nullptr || target->image == nullptr) {
 		sendToLog(LogLevel::Error, "makeMonochromeTarget@Target has no image\n");
 		return;
@@ -582,7 +584,7 @@ void ONScripter::makeMonochromeTarget(GPU_Target *target, GPU_Rect clip, bool be
 	gpu.unsetShaderProgram();
 }
 
-void ONScripter::makeBlurTarget(GPU_Target *target, GPU_Rect clip, bool before_scene) {
+void ONScripter::makeBlurTarget(RenderTarget *target, RenderRect clip, bool before_scene) {
 	if (target == nullptr || target->image == nullptr) {
 		sendToLog(LogLevel::Error, "makeBlurTarget@Target has no image\n");
 		return;
@@ -597,7 +599,7 @@ void ONScripter::makeBlurTarget(GPU_Target *target, GPU_Rect clip, bool before_s
 	gpu.copyGPUImage(toDraw.image, nullptr, &clip, target);
 }
 
-void ONScripter::makeWarpedTarget(GPU_Target *target, GPU_Rect clip, bool /*before_scene*/) {
+void ONScripter::makeWarpedTarget(RenderTarget *target, RenderRect clip, bool /*before_scene*/) {
 	if (target == nullptr || target->image == nullptr) {
 		sendToLog(LogLevel::Error, "makeWarpedTarget@Target has no image\n");
 		return;
@@ -614,7 +616,7 @@ void ONScripter::makeWarpedTarget(GPU_Target *target, GPU_Rect clip, bool /*befo
 }
 
 //Adds to correct dirty rect by z level
-void ONScripter::dirtyRectForZLevel(int num, GPU_Rect &rect) {
+void ONScripter::dirtyRectForZLevel(int num, RenderRect &rect) {
 	DirtyRect *dirty = (num <= z_order_hud) ? &before_dirty_rect_hud : &before_dirty_rect_scene;
 	dirty->add(rect);
 	dirty = (num <= z_order_hud) ? &dirty_rect_hud : &dirty_rect_scene;
@@ -632,7 +634,7 @@ void ONScripter::dirtySpriteRect(int num, bool lsp2, bool before) {
 	DirtyRect *dirty   = (num <= z_order_hud) ? (before ? &before_dirty_rect_hud : &dirty_rect_hud) : (before ? &before_dirty_rect_scene : &dirty_rect_scene);
 	AnimationInfo *spr = lsp2 ? &sprite2_info[num] : &sprite_info[num];
 	spr                = (before && spr->old_ai) ? spr->old_ai : spr;
-	GPU_Rect toAdd{0, 0, 0, 0};
+	RenderRect toAdd{0, 0, 0, 0};
 
 	if (spr->parentImage.no != -1) {
 		bool parentIsLsp2        = spr->parentImage.lsp2;
@@ -761,7 +763,7 @@ void ONScripter::setupZLevels(int refresh_mode) {
 }
 
 // Helper function for refreshSceneTo & refreshHudTo.
-void ONScripter::drawSpritesBetween(int upper_inclusive, int lower_exclusive, GPU_Target *target, GPU_Rect *clip_dst, int refresh_mode) {
+void ONScripter::drawSpritesBetween(int upper_inclusive, int lower_exclusive, RenderTarget *target, RenderRect *clip_dst, int refresh_mode) {
 	for (int i = upper_inclusive; i > lower_exclusive; i--) {
 		if (refresh_mode & REFRESH_SAYA_MODE && i <= 9)
 			return;
@@ -792,7 +794,7 @@ void ONScripter::drawSpritesBetween(int upper_inclusive, int lower_exclusive, GP
 }
 
 // This function rebuilds the game screen and blits it to the target.
-void ONScripter::refreshSceneTo(GPU_Target *target, GPU_Rect *passed_script_clip_dst, int refresh_mode) {
+void ONScripter::refreshSceneTo(RenderTarget *target, RenderRect *passed_script_clip_dst, int refresh_mode) {
 
 	int &rm = refresh_mode; // We'll be passing this around a lot, let's make it short
 
@@ -821,7 +823,7 @@ void ONScripter::refreshSceneTo(GPU_Target *target, GPU_Rect *passed_script_clip
 
 	setupZLevels(rm);
 
-	GPU_Rect script_clip_dst = full_script_clip;
+	RenderRect script_clip_dst = full_script_clip;
 	if (passed_script_clip_dst)
 		if (doClipping(&script_clip_dst, passed_script_clip_dst))
 			return;
@@ -854,10 +856,10 @@ void ONScripter::refreshSceneTo(GPU_Target *target, GPU_Rect *passed_script_clip
 				// (if it does exist, it will be up-to-date, because the image is deleted by cleanSpritesetCache if spriteset or any of its elements change)
 				auto &ssim = rm & REFRESH_BEFORESCENE_MODE ? spritesets[spritesetNo].im : spritesets[spritesetNo].imAfterscene;
 				if (!ssim.image) {
-					GPU_Image *spritesetImage = gpu.getCanvasImage();
+					RenderImage *spritesetImage = gpu.getCanvasImage();
 					if (spritesetNo != 0)
 						gpu.clearWholeTarget(spritesetImage->target, 0, 0, 0, 255); // give black bg to all spritesets except 0 (0 would just be illogical, it would prevent bg and ld entirely)
-					GPU_Rect full_rect = full_script_clip;
+					RenderRect full_rect = full_script_clip;
 					drawSpritesBetween(startZ, endZ, spritesetImage->target, &full_rect, rm);
 					(rm & REFRESH_BEFORESCENE_MODE ? spritesets[spritesetNo].im : spritesets[spritesetNo].imAfterscene) = GPUTransformableCanvasImage(spritesetImage);
 				}
@@ -886,7 +888,7 @@ void ONScripter::refreshSceneTo(GPU_Target *target, GPU_Rect *passed_script_clip
 	//sendToLog(LogLevel::Info, "enddraw\n");
 }
 
-void ONScripter::refreshHudTo(GPU_Target *target, GPU_Rect *passed_script_clip_dst, int refresh_mode) {
+void ONScripter::refreshHudTo(RenderTarget *target, RenderRect *passed_script_clip_dst, int refresh_mode) {
 
 	/* a) make sure textwindow renders properly and according to its position. 
 Including leaveTextMode and enterTextMode (all the sprites that should be 
@@ -922,12 +924,12 @@ use buttons & text this way */
 		return;
 	}
 
-	GPU_Rect script_clip_dst = full_script_clip;
+	RenderRect script_clip_dst = full_script_clip;
 	if (passed_script_clip_dst)
 		if (doClipping(&script_clip_dst, passed_script_clip_dst))
 			return;
 
-	GPU_Rect canvas_clip_dst = script_clip_dst;
+	RenderRect canvas_clip_dst = script_clip_dst;
 	canvas_clip_dst.x += camera.center_pos.x;
 	canvas_clip_dst.y += camera.center_pos.y;
 
@@ -937,7 +939,7 @@ use buttons & text this way */
 	GPU_UnsetClip(target);
 
 	//canvas_clip_dst is used for text only which doesn't occupy the whole canvas
-	GPU_Rect middle_of_canvas{camera.center_pos.x, camera.center_pos.y, static_cast<float>(window.script_width), static_cast<float>(window.script_height)};
+	RenderRect middle_of_canvas{camera.center_pos.x, camera.center_pos.y, static_cast<float>(window.script_width), static_cast<float>(window.script_height)};
 	doClipping(&canvas_clip_dst, &middle_of_canvas);
 
 	drawSpritesBetween(z_order_hud, z_order_window, target, &script_clip_dst, rm);
@@ -995,8 +997,8 @@ use buttons & text this way */
 }
 
 void ONScripter::refreshSprite(int sprite_no, bool active_flag,
-                               int cell_no, GPU_Rect *check_src_rect,
-                               GPU_Rect *check_dst_rect) {
+                               int cell_no, RenderRect *check_src_rect,
+                               RenderRect *check_dst_rect) {
 	if ((sprite_info[sprite_no].image_name ||
 	     ((sprite_info[sprite_no].trans_mode == AnimationInfo::TRANS_STRING) &&
 	      sprite_info[sprite_no].file_name)) &&

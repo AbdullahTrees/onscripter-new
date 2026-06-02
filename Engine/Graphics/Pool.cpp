@@ -18,7 +18,7 @@ SDL_Surface *TempImagePool::getImage() {
 	auto i = std::find_if(pool.begin(), pool.end(), [](const std::unordered_map<SDL_Surface *, bool>::value_type &e) { return !e.second; });
 	// If we found one, return that, otherwise make a new one
 	SDL_Surface *r = i != pool.end() ? i->first :
-	                                   SDL_CreateRGBSurface(SDL_SWSURFACE, size.x, size.y, 24,
+	                                   onsCreateRGBSurface(SDL_SWSURFACE, size.x, size.y, 24,
 	                                                        0x000000ff, 0x0000ff00, 0x00ff0000, 0);
 	pool[r] = true;
 	return r;
@@ -33,7 +33,7 @@ void TempImagePool::addImages(int n) {
 	Lock lock(this);
 	SDL_Surface *im;
 	for (int i = 0; i < n; i++) {
-		im       = SDL_CreateRGBSurface(SDL_SWSURFACE, size.x, size.y, 24,
+		im       = onsCreateRGBSurface(SDL_SWSURFACE, size.x, size.y, 24,
                                   0x000000ff, 0x0000ff00, 0x00ff0000, 0);
 		pool[im] = false;
 	}

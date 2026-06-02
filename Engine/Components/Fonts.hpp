@@ -12,7 +12,7 @@
 #include "External/Compatibility.hpp"
 #include "Engine/Components/Base.hpp"
 
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H

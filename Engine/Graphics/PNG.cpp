@@ -11,6 +11,8 @@
 #include "Engine/Graphics/Common.hpp"
 #include "Engine/Graphics/GPU.hpp"
 
+#include <array>
+
 PNGLoader::PNGLoader() {
 	this->png_create_info_struct  = ::png_create_info_struct;
 	this->png_create_read_struct  = ::png_create_read_struct;
@@ -45,7 +47,7 @@ int PNGLoader::isPng(SDL_RWops *src) {
 
 	start  = SDL_RWtell(src);
 	is_PNG = 0;
-	if (SDL_RWread(src, magic, 1, sizeof(magic)) == sizeof(magic)) {
+	if (onsRWread(src, magic, 1, sizeof(magic)) == sizeof(magic)) {
 		if (magic[0] == 0x89 &&
 		    magic[1] == 'P' &&
 		    magic[2] == 'N' &&
@@ -61,7 +63,7 @@ void PNGLoader::png_read_data(png_structp ctx, png_bytep area, png_size_t size) 
 	SDL_RWops *src;
 
 	src = static_cast<SDL_RWops *>(::png_get_io_ptr(ctx));
-	SDL_RWread(src, area, size, 1);
+	onsRWread(src, area, size, 1);
 }
 
 SDL_Surface *PNGLoader::loadPng(SDL_RWops *src) {
@@ -198,7 +200,7 @@ SDL_Surface *PNGLoader::loadPng(SDL_RWops *src) {
 
 	gpu.scheduleLoadImage(width, height);
 
-	surface = SDL_CreateRGBSurface(SDL_SWSURFACE, width, height,
+	surface = onsCreateRGBSurface(SDL_SWSURFACE, width, height,
 	                               bit_depth * num_channels, Rmask, Gmask, Bmask, Amask);
 	if (surface == nullptr) {
 		error = SDL_GetError();
@@ -208,12 +210,12 @@ SDL_Surface *PNGLoader::loadPng(SDL_RWops *src) {
 	if (ckey != -1) {
 		if (color_type != PNG_COLOR_TYPE_PALETTE) {
 			//FIXME: Should these be truncated or shifted down?
-			ckey = SDL_MapRGB(surface->format,
+			ckey = onsMapRGB(surface,
 			                  static_cast<uint8_t>(transv->red),
 			                  static_cast<uint8_t>(transv->green),
 			                  static_cast<uint8_t>(transv->blue));
 		}
-		SDL_SetColorKey(surface, SDL_TRUE, ckey);
+		onsSetColorKey(surface, true, ckey);
 	}
 
 	/* Create the array of pointers to image data */
@@ -238,26 +240,32 @@ SDL_Surface *PNGLoader::loadPng(SDL_RWops *src) {
 	 */
 
 	/* Load the palette, if any */
-	palette = surface->format->palette;
+	palette = onsSurfacePalette(surface);
 	if (palette) {
 		int png_num_palette;
 		png_colorp png_palette;
+		std::array<SDL_Color, 256> colors{};
+		int color_count = 0;
 		this->png_get_PLTE(png_ptr, info_ptr, &png_palette, &png_num_palette);
 		if (color_type == PNG_COLOR_TYPE_GRAY) {
-			palette->ncolors = 256;
+			color_count = 256;
 			for (i = 0; i < 256; i++) {
-				palette->colors[i].r = i;
-				palette->colors[i].g = i;
-				palette->colors[i].b = i;
+				colors[i].r = i;
+				colors[i].g = i;
+				colors[i].b = i;
+				colors[i].a = SDL_ALPHA_OPAQUE;
 			}
 		} else if (png_num_palette > 0) {
-			palette->ncolors = png_num_palette;
+			color_count = png_num_palette;
 			for (i = 0; i < png_num_palette; ++i) {
-				palette->colors[i].b = png_palette[i].blue;
-				palette->colors[i].g = png_palette[i].green;
-				palette->colors[i].r = png_palette[i].red;
+				colors[i].b = png_palette[i].blue;
+				colors[i].g = png_palette[i].green;
+				colors[i].r = png_palette[i].red;
+				colors[i].a = SDL_ALPHA_OPAQUE;
 			}
 		}
+		if (color_count > 0)
+			onsSetPaletteColors(palette, colors.data(), 0, color_count);
 	}
 
 done: /* Clean up and return */

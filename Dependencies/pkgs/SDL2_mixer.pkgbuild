@@ -1,25 +1,21 @@
 pkgname=SDL2_mixer
-pkgver=2.0.2
-pkgrel=3
-depends=('SDL2' 'libogg' 'libvorbis' 'smpeg2')
-# TODO: Upgrade SDL2_mixer in some future:
-# 2.0.3 release is not available for downloading
-# 2.0.4 dropped smpeg (mp3) support in favour of smpeg123,
-#       which we do not have in dependencies (yet).
+pkgver=2.8.2
+pkgrel=1
+depends=('SDL2' 'libogg' 'libvorbis')
 sources=(
-    "https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/$pkgname-$pkgver.tar.gz"
+    "https://www.libsdl.org/projects/SDL_mixer/release/$pkgname-$pkgver.tar.gz"
     'SDL2_mixer-no-programs.patch'
     'SDL2_mixer-no-locks.patch'
 )
 hashes=(
-    '4e615e27efca4f439df9af6aa2c6de84150d17cbfd12174b54868c12f19c83bb'
-    'e76692f6fa21a7327e35203e38346aa2f30f169486ac399bae3c703d17586bf7'
-    '161173d801e429175accf8e6370fb092427917fddf373c7a64e12b60b017608d'
+    '938dff531d00ace2296557a6599abe6f34599e2f34f0a4a08a397e2ccac8b8f7'
+    '80ccad9083f13d442f3c64b173e65b6166bcf2ed88dbd5964e7194cd94aa9205'
+    '28be2fc1c07cbb2db602e3d29bc5784705a91729ac03e67fcb0e83cdade7eba2'
 )
 
 cflags="-O3"
-cflags_win32="-I$outdir/include -I$outdir/include/smpeg2 -I$outdir/include/vorbis -I$outdir/include/ogg -I$outdir/include/SDL2"
-cppflags_win32="-I$outdir/include -I$outdir/include/smpeg2 -I$outdir/include/vorbis -I$outdir/include/ogg -I$outdir/include/SDL2"
+cflags_win32="-I$outdir/include -I$outdir/include/vorbis -I$outdir/include/ogg -I$outdir/include/SDL2"
+cppflags_win32="-I$outdir/include -I$outdir/include/vorbis -I$outdir/include/ogg -I$outdir/include/SDL2"
 
 #FIXME: Is this still needed?
 if [ "$(getTarget)" != "droid" ] && [ "$(getTarget)" != "darwin-macOS" ] && [ "$(getTarget)" != "darwin-iOS" ]; then
@@ -31,22 +27,36 @@ fi
 configopts=(
     '--disable-dependency-tracking'
     '--disable-shared'
+    '--enable-static'
+    '--enable-music-wave'
     '--disable-music-cmd'
     '--disable-music-mod'
     '--disable-music-mod-modplug'
     '--disable-music-mod-modplug-shared'
-    '--disable-music-mod-mikmod-shared'
+    '--disable-music-mod-xmp'
+    '--disable-music-mod-xmp-shared'
     '--disable-music-midi'
     '--disable-music-midi-timidity'
     '--disable-music-midi-native'
     '--disable-music-midi-fluidsynth'
+    '--disable-music-gme'
+    '--disable-music-gme-shared'
     '--disable-music-flac'
-    '--disable-music-flac-shared'
-    '--disable-music-ogg-shared'
+    '--disable-music-flac-libflac'
+    '--disable-music-flac-libflac-shared'
+    '--enable-music-ogg'
+    '--disable-music-ogg-stb'
+    '--enable-music-ogg-vorbis'
+    '--disable-music-ogg-vorbis-shared'
+    '--enable-music-mp3'
+    '--enable-music-mp3-minimp3'
+    '--disable-music-mp3-mpg123'
+    '--disable-music-mp3-mpg123-shared'
+    '--disable-music-opus'
+    '--disable-music-opus-shared'
+    '--disable-music-wavpack'
+    '--disable-music-wavpack-shared'
     '--disable-sdltest'
-    '--disable-smpegtest'
-    '--disable-music-mp3-smpeg-shared'
-    "--with-smpeg-prefix=$outdir"
     "--libdir=$outdir/lib"
     "--with-sdl-prefix=$outdir"
 )
@@ -54,14 +64,16 @@ configopts=(
 prebuild() {
     pushd "$pkgname-$pkgver" &>/dev/null
 
-    autogen
-
     apply_patch "${sources[1]}"
 
     # This was introduced in https://hg.libsdl.org/SDL_mixer/diff/92882ef2ab81/mixer.c
     # It causes severe stuttering all over the game, for example right before d41020.
     # Reproducible on macOS, Windows, iOS and possibly all the other platforms.
     apply_patch "${sources[2]}"
+
+    export PKG_CONFIG_PATH="$outdir/lib/pkgconfig:$outdir/share/pkgconfig:$PKG_CONFIG_PATH"
+    export VORBIS_CFLAGS="-I$outdir/include"
+    export VORBIS_LIBS="-L$outdir/lib -lvorbisfile -lvorbis -logg"
 }
 
 # Special version of this to ignore errors in extraction
@@ -69,24 +81,23 @@ prebuild() {
 extract_sources() {
     msg "Extracting sources"
     pushd $srcdir &>/dev/null
-    
+
     local netfile
     for netfile in "${sources[@]}"; do
         local file=$(get_filename "$netfile")
         if in_array "$file" "${noextract[@]}"; then
             continue
         fi
-        
+
         local filetype=$(file -bzL --mime "$file")
         local ext=${file##*.}
         local cmd=''
-        local cmd_flags=''
 
         case "$filetype" in
             *application/x-tar*)
                 cmd='tar -xf';;
-            *application/x-zip*)
-                cmd='unzip';;
+            *application/x-zip*|*application/zip*)
+                cmd='unzip -q';;
             *)
                 # MinGW32 has broken mime types in 'file' command, fall back on the
                 # extension to work around
@@ -94,6 +105,9 @@ extract_sources() {
                     bz2|gz|tar|xz)
                         # should look one more level in, to see if tar is there...
                         cmd='tar -xf';;
+                    zip)
+                        # should look one more level in, to see if tar is there...
+                        cmd='unzip -q';;
                     *)
                         continue;;
                 esac;;

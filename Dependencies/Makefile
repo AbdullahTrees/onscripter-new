@@ -5,7 +5,7 @@ BUILDPKG=./build.sh
 # dependency resolution system, using info in the .pkgbuild
 # files themselves.
 
-PROGRAMS=freetype-config libpng14-config libpng-config sdl-config smpeg-config
+PROGRAMS=freetype-config libpng14-config libpng-config sdl-config
 
 ARCFILES = $(patsubst %,$(OUTDIR)/bin/%,$(PROGRAMS)) \
 	$(OUTDIR)/include \

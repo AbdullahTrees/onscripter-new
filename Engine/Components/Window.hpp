@@ -12,7 +12,7 @@
 #include "External/Compatibility.hpp"
 #include "Engine/Components/Base.hpp"
 
-#include <SDL2/SDL_gpu.h>
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <vector>
 
@@ -58,7 +58,7 @@ class WindowController : public BaseController {
 	// Actual size of the window when in fullscreen mode. (May vary if multiple monitors are in use.)
 	int fullscreen_width{0}, fullscreen_height{0};
 	// Actual fullscreen rendering area. (Fixes graphical glitches on the edges of some drivers/resolutions.)
-	GPU_Rect fullscreen_reduced_clip{};
+	RenderRect fullscreen_reduced_clip{};
 	bool fullscreen_reduce_clip{false};
 	// Fullscreen offsets (for image centering) (in the script_width coordinate system)
 	int fullscript_offset_x{0}, fullscript_offset_y{0};
@@ -91,11 +91,11 @@ public:
 	void setMousePosition(int x, int y);
 	void setMinimize(bool hide);
 	void setActiveState(bool activate);
-	void setMainTarget(GPU_Target *target);
+	void setMainTarget(RenderTarget *target);
 	void setTitle(const char *title);
 	void setIcon(SDL_Surface *icon = nullptr);
 
-	void translateRendering(float &x, float &y, GPU_Rect *&clip);
+	void translateRendering(float &x, float &y, RenderRect *&clip);
 	void translateWindowToScriptCoords(int &x, int &y);
 	void translateScriptToWindowCoords(int &x, int &y);
 

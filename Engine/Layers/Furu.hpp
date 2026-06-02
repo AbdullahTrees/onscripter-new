@@ -26,7 +26,7 @@ public:
 	~FuruLayer() override;
 	bool update(bool /*old*/) override;
 	char *message(const char *message, int &ret_int) override;
-	void refresh(GPU_Target *target, GPU_Rect &clip, float x, float y, bool centre_coordinates, int /*rm*/, float scalex = 1.0, float scaley = 1.0) override;
+	void refresh(RenderTarget *target, RenderRect &clip, float x, float y, bool centre_coordinates, int /*rm*/, float scalex = 1.0, float scaley = 1.0) override;
 	BlendModeId blendingMode(int /*rm*/) override {
 		return BlendModeId::ADD;
 	}

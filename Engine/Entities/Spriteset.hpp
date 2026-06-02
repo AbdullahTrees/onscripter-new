@@ -18,7 +18,7 @@ class SpritesetInfo {
 
 public:
 	int id{0};
-	GPU_Rect pos{0, 0, 0, 0};
+	RenderRect pos{0, 0, 0, 0};
 	int maskSpriteNumber{-1};
 	int trans{255};
 	int blur{0};

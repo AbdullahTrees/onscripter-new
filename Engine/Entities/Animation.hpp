@@ -14,9 +14,9 @@
 #include "Support/Camera.hpp"
 #include "Support/Clock.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
-#include <SDL2/SDL_gpu.h>
+#include "Support/SDLCompat.hpp"
+#include "Support/SDLImageCompat.hpp"
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <utility>
 #include <map>
@@ -183,9 +183,9 @@ public:
 	bool has_z_order_override{false};
 	int z_order_override;
 
-	GPU_Rect orig_pos{0, 0, 0, 0}; //Mion: position and size of the image before resizing
-	GPU_Rect pos{0, 0, 0, 0};      // position and size of the current cell
-	GPU_Rect scrollable{0, 0, 0, 0};
+	RenderRect orig_pos{0, 0, 0, 0}; //Mion: position and size of the image before resizing
+	RenderRect pos{0, 0, 0, 0};      // position and size of the current cell
+	RenderRect scrollable{0, 0, 0, 0};
 
 	SpriteIdentifier parentImage;
 
@@ -196,7 +196,7 @@ public:
 
 	// Normal sprite
 	SDL_Surface *image_surface{nullptr};
-	GPU_Image *gpu_image{nullptr};
+	RenderImage *gpu_image{nullptr};
 	SpriteTransforms spriteTransforms;
 
 	// Scrollable
@@ -214,7 +214,7 @@ public:
 	float rot{0};
 	int mat[2][2]{{1024, 0}, {0, 1024}};
 	float corner_xy[4][2]{};
-	GPU_Rect bounding_rect{};
+	RenderRect bounding_rect{};
 
 	bool has_hotspot{false};
 	bool has_scale_center{false};
@@ -249,16 +249,16 @@ public:
 	int getDuration(int i);
 
 	void setCell(int cell);
-	float2 findOpaquePoint(GPU_Rect *clip = nullptr);
+	float2 findOpaquePoint(RenderRect *clip = nullptr);
 	int getPixelAlpha(int x, int y);
 
 	void calcAffineMatrix(int script_width, int script_height);
 
 	void calculateImage(int w, int h);
-	void copySurface(SDL_Surface *surface, GPU_Rect *src_rect = nullptr, GPU_Rect *dst_rect = nullptr);
+	void copySurface(SDL_Surface *surface, RenderRect *src_rect = nullptr, RenderRect *dst_rect = nullptr);
 	void fill(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 	SDL_Surface *setupImageAlpha(SDL_Surface *surface, SDL_Surface *surface_m, bool has_alpha);
-	void setImage(GPU_Image *image);
+	void setImage(RenderImage *image);
 	void setSurface(SDL_Surface *surface);
 	void setBigImage(GPUBigImage *image);
 

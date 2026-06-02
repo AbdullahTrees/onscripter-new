@@ -1,0 +1,173 @@
+pkgname=SDL3_mixer
+pkgver=3.2.2
+pkgrel=1
+depends=('SDL3' 'libogg' 'libvorbis')
+sources=("https://www.libsdl.org/projects/SDL_mixer/release/$pkgname-$pkgver.tar.gz")
+hashes=('cdb6d2a9f01bb3c1b98c957ee12109dd6ec1a1157682c9bc8523b0fe8ab2da1e')
+
+cflags="-O3"
+
+cmakeopts=(
+    '-DCMAKE_BUILD_TYPE=Release'
+    '-DCMAKE_INSTALL_LIBDIR=lib'
+    '-DBUILD_SHARED_LIBS=OFF'
+    '-DSDLMIXER_INSTALL=ON'
+    '-DSDLMIXER_INSTALL_MAN=OFF'
+    '-DSDLMIXER_INSTALL_CPACK=OFF'
+    '-DSDLMIXER_DEPS_SHARED=OFF'
+    '-DSDLMIXER_VENDORED=OFF'
+    '-DSDLMIXER_STRICT=ON'
+    '-DSDLMIXER_TESTS=OFF'
+    '-DSDLMIXER_EXAMPLES=OFF'
+    '-DSDLMIXER_AIFF=OFF'
+    '-DSDLMIXER_WAVE=ON'
+    '-DSDLMIXER_VOC=OFF'
+    '-DSDLMIXER_AU=OFF'
+    '-DSDLMIXER_FLAC=OFF'
+    '-DSDLMIXER_GME=OFF'
+    '-DSDLMIXER_MOD=OFF'
+    '-DSDLMIXER_MP3=ON'
+    '-DSDLMIXER_MP3_DRMP3=ON'
+    '-DSDLMIXER_MP3_MPG123=OFF'
+    '-DSDLMIXER_MIDI=OFF'
+    '-DSDLMIXER_OPUS=OFF'
+    '-DSDLMIXER_VORBIS_STB=OFF'
+    '-DSDLMIXER_VORBIS_VORBISFILE=ON'
+    '-DSDLMIXER_VORBIS_VORBISFILE_SHARED=OFF'
+    '-DSDLMIXER_VORBIS_TREMOR=OFF'
+    '-DSDLMIXER_WAVPACK=OFF'
+)
+
+cmake_command() {
+    if command -v cmake >/dev/null 2>&1; then
+        echo cmake
+        return
+    fi
+    if [ -x "/c/Program Files/CMake/bin/cmake.exe" ]; then
+        echo "/c/Program Files/CMake/bin/cmake.exe"
+        return
+    fi
+    error_out "cmake is required to build %s" "$pkgname"
+}
+
+cmake_generator() {
+    if command -v ninja >/dev/null 2>&1; then
+        echo Ninja
+    elif [ "$(getHost)" == "win32" ]; then
+        echo "MSYS Makefiles"
+    else
+        echo "Unix Makefiles"
+    fi
+}
+
+configure() {
+    msg "Running cmake"
+
+    local ret=0
+    local logfile="$logdir/$pkgname.cmake.log"
+    local lcf="$CFLAGS ${cflags[@]} $CFLAGS_EXTRA"
+    local lcxf="$CPPFLAGS ${cppflags[@]} ${cflags[@]} $CPPFLAGS_EXTRA $CFLAGS_EXTRA"
+    local llf="$LDFLAGS ${ldflags[@]} $LDFLAGS_EXTRA"
+    local cmake_outdir="$outdir"
+
+    rm -rf build
+
+    if [ "$(getHost)" == "win32" ]; then
+        cmake_outdir="$(cygpath -m "$outdir")"
+        lcf="${lcf//$outdir/$cmake_outdir}"
+        lcxf="${lcxf//$outdir/$cmake_outdir}"
+        llf="${llf//$outdir/$cmake_outdir}"
+    fi
+
+    export PKG_CONFIG_PATH="$outdir/lib/pkgconfig:$outdir/share/pkgconfig:$PKG_CONFIG_PATH"
+
+    local cmake_cmd="$(cmake_command)"
+    local generator="$(cmake_generator)"
+
+    "$cmake_cmd" -S . -B build -G "$generator" \
+        -DCMAKE_INSTALL_PREFIX="$cmake_outdir" \
+        -DCMAKE_PREFIX_PATH="$cmake_outdir" \
+        -DCMAKE_C_COMPILER="$(getCC)" \
+        -DCMAKE_C_FLAGS="$lcf" \
+        -DCMAKE_EXE_LINKER_FLAGS="$llf" \
+        "${cmakeopts[@]}" &>"$logfile" || ret=$?
+
+    if (( ret )); then
+        tail -n 20 "$logfile"
+        error "CMake setup %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
+}
+
+compile() {
+    local logfile="$logdir/$pkgname.build.log"
+    local ret=0
+    if [ -f build/build.ninja ]; then
+        ninja -C build &>"$logfile" || ret=$?
+    else
+        make -C build $MAKEOPTS &>"$logfile" || ret=$?
+    fi
+    if (( ret )); then
+        tail -n 20 "$logfile"
+        error "Compiling %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
+}
+
+copy() {
+    local logfile="$logdir/$pkgname.install.log"
+    local ret=0
+    local cmake_cmd="$(cmake_command)"
+    "$cmake_cmd" --install build &>"$logfile" || ret=$?
+    if (( ret )); then
+        tail -n 20 "$logfile"
+        error "Installing %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
+}
+
+# Official SDL archives contain symlinks that are not always creatable in
+# Windows/MSYS2 worktrees. They are not required by this dependency build.
+extract_sources() {
+    msg "Extracting sources"
+    pushd $srcdir &>/dev/null
+
+    local netfile
+    for netfile in "${sources[@]}"; do
+        local file=$(get_filename "$netfile")
+        if in_array "$file" "${noextract[@]}"; then
+            continue
+        fi
+
+        local filetype=$(file -bzL --mime "$file")
+        local ext=${file##*.}
+        local cmd=''
+
+        case "$filetype" in
+            *application/x-tar*) cmd='tar -xf' ;;
+            *application/x-zip*|*application/zip*) cmd='unzip -q' ;;
+            *)
+                case "$ext" in
+                    bz2|gz|tar|xz) cmd='tar -xf' ;;
+                    zip) cmd='unzip -q' ;;
+                    *) continue ;;
+                esac
+                ;;
+        esac
+
+        local ret=0
+        msg2 "Extracting %s with %s" "$file" "$cmd"
+        $cmd "$file" || ret=$?
+
+        if (( ret )); then
+            warn "Errors while extracting %s; plowing ahead" "$file"
+        fi
+    done
+
+    popd &>/dev/null
+}
+
+# vim: set syntax=sh:

@@ -11,7 +11,7 @@
 #include "Engine/Core/ONScripter.hpp"
 #include "Engine/Components/Async.hpp"
 
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 
 #include <stdexcept>
 #include <cassert>
@@ -182,7 +182,7 @@ bool MediaProcController::loadVideo(const char *filename, unsigned audioStream, 
 	return !hasStream(AudioEntry) || static_cast<AudioDecoder *>(decoders[AudioEntry].get())->initSwrContext(audioSpec);
 }
 
-bool MediaProcController::loadPresentation(const GPU_Rect &rect, bool loop) {
+bool MediaProcController::loadPresentation(const RenderRect &rect, bool loop) {
 	loopVideo = loop;
 
 	int nworkers = 0;
@@ -455,7 +455,7 @@ void MediaProcController::applySubtitles(MediaFrame &frame) {
 bool MediaProcController::Decoder::enqueueFrame(MediaEntries index, std::unique_ptr<MediaFrame> vf) {
 	if (!vf || vf->has()) {
 		bool exiting = false;
-		while (SDL_SemWaitTimeout(media.frameQueueSem[index], 10)) {
+		while (!onsWaitSemaphoreTimeout(media.frameQueueSem[index], 10)) {
 			if (async.threadShutdownRequested || shouldFinish.load(std::memory_order_acquire)) {
 				exiting = true;
 				break;

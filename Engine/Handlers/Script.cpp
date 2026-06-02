@@ -21,6 +21,7 @@
 #endif
 
 #include <algorithm>
+#include <limits>
 #include <vector>
 #include <unordered_map>
 

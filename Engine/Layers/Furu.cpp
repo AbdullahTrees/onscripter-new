@@ -175,7 +175,7 @@ static SDL_Surface *loadImage(char *file_name, bool *has_alpha, SDL_Surface *sur
 		SDL_RWclose(src);
 	}
 	if (tmp && has_alpha)
-		*has_alpha = tmp->format->Amask;
+		*has_alpha = onsSurfaceAmask(tmp);
 
 	freearr(&buffer);
 	if (!tmp) {
@@ -183,7 +183,7 @@ static SDL_Surface *loadImage(char *file_name, bool *has_alpha, SDL_Surface *sur
 		return nullptr;
 	}
 
-	SDL_Surface *ret = SDL_ConvertSurface(tmp, surface->format, SDL_SWSURFACE);
+	SDL_Surface *ret = onsConvertSurfaceLike(tmp, surface, SDL_SWSURFACE);
 	SDL_FreeSurface(tmp);
 	return ret;
 }
@@ -248,7 +248,7 @@ char *FuruLayer::message(const char *message, int &ret_int) {
 	//Image loading
 	if (!std::strncmp(message, "i|", 2)) {
 		max_sp_w                 = 0;
-		SDL_Surface *ref_surface = SDL_CreateRGBSurface(SDL_SWSURFACE, 1, 1, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000);
+		SDL_Surface *ref_surface = onsCreateRGBSurface(SDL_SWSURFACE, 1, 1, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000);
 		if (tumbling) {
 			// "Hana"
 			if (std::sscanf(message, "i|%d,%d,%d,%d,%d,%d",
@@ -305,7 +305,7 @@ char *FuruLayer::message(const char *message, int &ret_int) {
 					SDL_Surface *img    = loadImage(&buf[i][0], &has_alpha, ref_surface, *reader);
 					AnimationInfo *anim = new AnimationInfo();
 					anim->num_of_cells  = 1;
-					firstpix            = *(static_cast<uint32_t *>(img->pixels)) & ~(img->format->Amask);
+					firstpix            = *(static_cast<uint32_t *>(img->pixels)) & ~(onsSurfaceAmask(img));
 					if (firstpix > 0) {
 						anim->trans_mode = AnimationInfo::TRANS_TOPLEFT;
 					} else {
@@ -406,7 +406,7 @@ char *FuruLayer::message(const char *message, int &ret_int) {
 	return ret_str;
 }
 
-void FuruLayer::refresh(GPU_Target *target, GPU_Rect &clip, float x, float y, bool /*centre_coordinates*/, int /*rm*/, float /*scalex*/, float /*scaley*/) {
+void FuruLayer::refresh(RenderTarget *target, RenderRect &clip, float x, float y, bool /*centre_coordinates*/, int /*rm*/, float /*scalex*/, float /*scaley*/) {
 	if (initialized) {
 		const int virt_w = width + max_sp_w;
 		for (auto &element : elements) {

@@ -11,20 +11,20 @@
 
 #include "External/Compatibility.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_gpu.h>
+#include "Support/SDLCompat.hpp"
+#include "Engine/Graphics/RendererBackend.hpp"
 
 struct DirtyRect {
-	void setDimension(const SDL_Point &canvas, const GPU_Rect &camera_center);
-	void add(GPU_Rect src);
+	void setDimension(const SDL_Point &canvas, const RenderRect &camera_center);
+	void add(RenderRect src);
 	void clear();
 	void fill(int w, int h);
 	bool isEmpty();
 
-	GPU_Rect calcBoundingBox(GPU_Rect src1, GPU_Rect &src2);
+	RenderRect calcBoundingBox(RenderRect src1, RenderRect &src2);
 
 	SDL_Point canvas_dim{};
-	GPU_Rect camera_center_pos{};
-	GPU_Rect bounding_box{};
-	GPU_Rect bounding_box_script{};
+	RenderRect camera_center_pos{};
+	RenderRect bounding_box{};
+	RenderRect bounding_box_script{};
 };

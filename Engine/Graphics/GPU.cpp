@@ -21,7 +21,7 @@
 GPUController gpu;
 
 int GPUController::ownInit() {
-	GPU_InitFlagEnum gpuFlags = GPU_DEFAULT_INIT_FLAGS;
+	RenderInitFlags gpuFlags = GPU_DEFAULT_INIT_FLAGS;
 
 #ifdef WIN32
 	int swap_interval{1};
@@ -49,7 +49,7 @@ int GPUController::ownInit() {
 	return 0;
 }
 
-GPU_Target *GPUController::rendererInitWithInfo(GPURendererInfo &info, uint16_t w, uint16_t h, GPU_WindowFlagEnum SDL_flags) {
+RenderTarget *GPUController::rendererInitWithInfo(GPURendererInfo &info, uint16_t w, uint16_t h, RenderWindowFlags SDL_flags) {
 	current_renderer = &info;
 	sendToLog(LogLevel::Info, "Trying to initialise %s renderer\n", current_renderer->name);
 
@@ -98,7 +98,7 @@ GPU_Target *GPUController::rendererInitWithInfo(GPURendererInfo &info, uint16_t 
 	return nullptr;
 }
 
-GPU_Target *GPUController::rendererInit(GPU_WindowFlagEnum SDL_flags) {
+RenderTarget *GPUController::rendererInit(RenderWindowFlags SDL_flags) {
 	GPU_SetDebugLevel(GPU_DEBUG_LEVEL_MAX);
 
 	auto it = ons.ons_cfg_options.find("render-self");
@@ -179,7 +179,7 @@ void GPUController::popBlendMode() {
 	blend_mode.pop();
 }
 
-void GPUController::setBlendMode(GPU_Image *image) {
+void GPUController::setBlendMode(RenderImage *image) {
 #if 0
 	// We perform these checks earlier
 	if (!image)
@@ -261,7 +261,7 @@ void GPUController::createShader(const char *filename) {
 	}
 
 	// Make the shader of appropriate type according to file extension (does not read from file yet)
-	GPU_ShaderEnum shaderType;
+	RenderShaderType shaderType;
 	uint32_t shader;
 	SDL_RWops *shaderData;
 	try {
@@ -278,13 +278,13 @@ void GPUController::createShader(const char *filename) {
 	if (r && r->size != 0) {
 		shaderData = SDL_RWFromConstMem(static_cast<const void *>(r->buffer), static_cast<int>(r->size));
 		shader     = GPU_CompileShader_RW(shaderType, shaderData, false);
-		shaderData->close(shaderData);
+		SDL_RWclose(shaderData);
 	} else { // We couldn't find it in the binary, better try searching external paths
 		shaderData = SDL_RWFromFile(filename, "rb");
 		if (!shaderData)
 			return;
 		shader = GPU_CompileShader_RW(shaderType, shaderData, false);
-		shaderData->close(shaderData);
+		SDL_RWclose(shaderData);
 	}
 
 	// Let's just check that the shader compiled properly.
@@ -320,7 +320,7 @@ void GPUController::linkProgram(const char *programAlias, uint32_t prog) {
 	gpu.programs[programAlias] = prog;
 }
 
-GPU_ShaderEnum GPUController::getShaderTypeByExtension(const char *filename) {
+RenderShaderType GPUController::getShaderTypeByExtension(const char *filename) {
 	std::string myString(filename);
 	size_t pos     = myString.find_last_of('.');
 	auto extension = myString.substr(pos + 1);
@@ -332,7 +332,7 @@ GPU_ShaderEnum GPUController::getShaderTypeByExtension(const char *filename) {
 	throw std::invalid_argument("Not a shader");
 }
 
-void GPUController::bindImageToSlot(GPU_Image *image, int slot_number) {
+void GPUController::bindImageToSlot(RenderImage *image, int slot_number) {
 	int32_t texLoc;
 	switch (slot_number) {
 		case 0: texLoc = getUniformLoc("tex"); break;
@@ -379,7 +379,7 @@ void GPUController::setShaderProgram(const char *programAlias) {
 	}
 
 	currentProgram              = p->second;
-	GPU_ShaderBlock shaderBlock = GPU_LoadShaderBlock(currentProgram, "gpu_Vertex", "gpu_TexCoord", "gpu_Color", "gpu_ModelViewProjectionMatrix");
+	RenderShaderBlock shaderBlock = GPU_LoadShaderBlock(currentProgram, "gpu_Vertex", "gpu_TexCoord", "gpu_Color", "gpu_ModelViewProjectionMatrix");
 	GPU_ActivateShaderProgram(currentProgram, &shaderBlock);
 	//sendToLog(LogLevel::Info, "current_program %d %d\n",currentProgram,GPU_GetContextTarget()->context->current_shader_program);
 	//sendToLog(LogLevel::Info, "shaderBlock %d %d %d %d\n",shaderBlock.color_loc,shaderBlock.position_loc,shaderBlock.texcoord_loc,shaderBlock.modelViewProjection_loc);
@@ -422,7 +422,7 @@ void GPUController::setShaderVar(const char *name, const SDL_Color &color) {
 	GPU_SetUniformfv(getUniformLoc(name), 4, 1, colour);
 }
 
-void GPUController::multiplyAlpha(GPU_Image *image, GPU_Rect *dst_clip) {
+void GPUController::multiplyAlpha(RenderImage *image, RenderRect *dst_clip) {
 	if (image->format == GPU_FORMAT_RGB)
 		return;
 
@@ -451,11 +451,11 @@ void GPUController::multiplyAlpha(GPU_Image *image, GPU_Rect *dst_clip) {
 	}
 }
 
-void GPUController::mergeAlpha(GPU_Image *image, GPU_Rect *imageRect, GPU_Image *mask, GPU_Rect *maskRect, SDL_Surface *src) {
+void GPUController::mergeAlpha(RenderImage *image, RenderRect *imageRect, RenderImage *mask, RenderRect *maskRect, SDL_Surface *src) {
 	GPU_GetTarget(image);
 	GPU_GetTarget(mask);
 
-	GPU_Image *tmp{nullptr};
+	RenderImage *tmp{nullptr};
 	if (render_to_self) {
 		tmp = image;
 	} else {
@@ -480,7 +480,7 @@ void GPUController::mergeAlpha(GPU_Image *image, GPU_Rect *imageRect, GPU_Image 
 		gpu.freeImage(tmp);
 }
 
-void GPUController::copyGPUImage(GPU_Image *img, GPU_Rect *src_rect, GPU_Rect *clip_rect, GPU_Target *target, float x, float y, float ratio_x, float ratio_y, float angle, bool centre_coordinates) {
+void GPUController::copyGPUImage(RenderImage *img, RenderRect *src_rect, RenderRect *clip_rect, RenderTarget *target, float x, float y, float ratio_x, float ratio_y, float angle, bool centre_coordinates) {
 	//printClock("copyGPUImage");
 
 	if (!target) {
@@ -550,14 +550,14 @@ void GPUController::copyGPUImage(GPU_Image *img, GPU_Rect *src_rect, GPU_Rect *c
 	// printClock("end copyGPUImage");
 }
 
-void GPUController::copyGPUImage(GPU_Image *img, GPU_Rect *src_rect, GPU_Rect *clip_rect, GPUBigImage *bigImage, float x, float y) {
+void GPUController::copyGPUImage(RenderImage *img, RenderRect *src_rect, RenderRect *clip_rect, GPUBigImage *bigImage, float x, float y) {
 
 	if (!bigImage) {
 		ons.errorAndExit("copyGPUImage has null bigImage");
 		return; //dummy
 	}
 
-	GPU_Rect dst_clip{0, 0, static_cast<float>(bigImage->w), static_cast<float>(bigImage->h)};
+	RenderRect dst_clip{0, 0, static_cast<float>(bigImage->w), static_cast<float>(bigImage->h)};
 	if (clip_rect)
 		doClipping(&dst_clip, clip_rect);
 
@@ -570,24 +570,24 @@ void GPUController::copyGPUImage(GPU_Image *img, GPU_Rect *src_rect, GPU_Rect *c
 
 	for (auto &image : images) {
 		// Blit time...
-		GPU_Target *target = image.first->target;
+		RenderTarget *target = image.first->target;
 		dst_clip.w         = image.second.w;
 		dst_clip.h         = image.second.h;
 		copyGPUImage(img, src_rect, nullptr, target, x - image.second.x - off_x, y - image.second.y - off_y);
 	}
 }
 
-void GPUController::updateImage(GPU_Image *image, const GPU_Rect *image_rect, SDL_Surface *surface, const GPU_Rect *surface_rect, bool finish) {
+void GPUController::updateImage(RenderImage *image, const RenderRect *image_rect, SDL_Surface *surface, const RenderRect *surface_rect, bool finish) {
 	if (finish)
 		(this->*current_renderer->syncRendererState)();
 	GPU_UpdateImage(image, image_rect, surface, surface_rect);
 }
 
-void GPUController::convertNV12ToRGB(GPU_Image *image, GPU_Image **imgs, GPU_Rect &rect, uint8_t *planes[4], int *linesizes, bool masked) {
+void GPUController::convertNV12ToRGB(RenderImage *image, RenderImage **imgs, RenderRect &rect, uint8_t *planes[4], int *linesizes, bool masked) {
 
 	// 2 planes: Y, UV
 
-	GPU_Rect realPlane = rect;
+	RenderRect realPlane = rect;
 	if (masked)
 		realPlane.h *= 2;
 
@@ -620,11 +620,11 @@ void GPUController::convertNV12ToRGB(GPU_Image *image, GPU_Image **imgs, GPU_Rec
 	GPU_SetBlending(image, true);
 }
 
-void GPUController::convertYUVToRGB(GPU_Image *image, GPU_Image **imgs, GPU_Rect &rect, uint8_t *planes[4], int *linesizes, bool masked) {
+void GPUController::convertYUVToRGB(RenderImage *image, RenderImage **imgs, RenderRect &rect, uint8_t *planes[4], int *linesizes, bool masked) {
 
 	// 3 planes: Y, U, V
 
-	GPU_Rect realPlane = rect;
+	RenderRect realPlane = rect;
 	if (masked)
 		realPlane.h *= 2;
 
@@ -661,7 +661,7 @@ void GPUController::convertYUVToRGB(GPU_Image *image, GPU_Image **imgs, GPU_Rect
 	GPU_SetBlending(image, true);
 }
 
-void GPUController::simulateRead(GPU_Image *image) {
+void GPUController::simulateRead(RenderImage *image) {
 	if (simulate_reads) {
 		// Uncomment to see the actual bug.
 		// Basically VMware drivers seem to apply various texture writes on read attempt, and sometimes fail to
@@ -704,14 +704,14 @@ void GPUController::simulateRead(GPU_Image *image) {
 	}
 }
 
-GPU_Image *GPUController::loadGPUImageByChunks(SDL_Surface *s, GPU_Rect *r) {
+RenderImage *GPUController::loadGPUImageByChunks(SDL_Surface *s, RenderRect *r) {
 	auto &loader = ons.imageLoader = GPUImageChunkLoader();
 	loader.src                     = s;
 	loader.src_area                = r;
 
 	auto w     = r ? r->w : s->w;
 	auto h     = r ? r->h : s->h;
-	auto bpp   = s->format->BytesPerPixel;
+	auto bpp   = onsSurfaceBytesPerPixel(s);
 	loader.dst = gpu.createImage(w, h, bpp);
 
 	auto pixels = max_chunk / bpp;
@@ -743,7 +743,7 @@ GPU_Image *GPUController::loadGPUImageByChunks(SDL_Surface *s, GPU_Rect *r) {
 	// The basic difference is what has a higher priority: fps or image loading speed
 	/*ons.imageLoader = GPUImageChunkLoader();
 	ons.imageLoader.src = s;
-	ons.imageLoader.dst = gpu.createImage(s->w, s->h, s->format->BytesPerPixel);
+	ons.imageLoader.dst = gpu.createImage(s->w, s->h, onsSurfaceBytesPerPixel(s));
 	GPU_GetTarget(ons.imageLoader.dst);
 	ons.imageLoader.isActive = true;
 	while (!ons.imageLoader.isLoaded) {
@@ -752,7 +752,7 @@ GPU_Image *GPUController::loadGPUImageByChunks(SDL_Surface *s, GPU_Rect *r) {
 	return ons.imageLoader.dst;*/
 }
 
-void GPUController::clearWholeTarget(GPU_Target *target, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+void GPUController::clearWholeTarget(RenderTarget *target, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
 	if (target->use_clip_rect && (target->clip_rect.x != 0 || target->clip_rect.y != 0 || target->clip_rect.w != target->w || target->clip_rect.h != target->h)) {
 		GPU_UnsetClip(target);
 	}
@@ -775,7 +775,7 @@ void GPUImageChunkLoader::loadChunk(bool finish) {
 	int w = src_area ? src_area->w : src->w;
 	int h = src_area ? src_area->h : src->h;
 
-	GPU_Rect srcLoad{x_start + x_off, y_start + y_off, static_cast<float>(chunkWidth), static_cast<float>(chunkHeight)};
+	RenderRect srcLoad{x_start + x_off, y_start + y_off, static_cast<float>(chunkWidth), static_cast<float>(chunkHeight)};
 	int xovershoot = x_off + srcLoad.w - w;
 	int yovershoot = y_off + srcLoad.h - h;
 	if (xovershoot > 0)
@@ -783,7 +783,7 @@ void GPUImageChunkLoader::loadChunk(bool finish) {
 	if (yovershoot > 0)
 		srcLoad.h -= yovershoot;
 
-	GPU_Rect dstLoad{x_off, y_off, srcLoad.w, srcLoad.h};
+	RenderRect dstLoad{x_off, y_off, srcLoad.w, srcLoad.h};
 
 	gpu.updateImage(dst, &dstLoad, src, &srcLoad, finish);
 
@@ -802,7 +802,7 @@ void GPUImageChunkLoader::loadChunk(bool finish) {
 // **  GPUTransformableCanvasImage  **
 // ***********************************
 
-void GPUTransformableCanvasImage::setImage(GPU_Image *_canvas) {
+void GPUTransformableCanvasImage::setImage(RenderImage *_canvas) {
 	clearImage();
 	image = _canvas;
 }
@@ -840,7 +840,7 @@ PooledGPUImage GPUController::getBlurredImage(GPUTransformableCanvasImage &im, i
 	size.x /= sizeDivisor;
 	size.y /= sizeDivisor;
 
-	GPU_Image *src = nullptr;
+	RenderImage *src = nullptr;
 	if (!im.pooledDownscaledImages.count(size)) {
 		im.pooledDownscaledImages.emplace(size, getPooledImage(size.x, size.y));
 		src = im.pooledDownscaledImages.at(size).image;
@@ -876,7 +876,7 @@ PooledGPUImage GPUController::getBlurredImage(GPUTransformableCanvasImage &im, i
 	return newImage;
 }
 
-PooledGPUImage GPUController::getMaskedImage(GPUTransformableCanvasImage &im, GPU_Image *mask) {
+PooledGPUImage GPUController::getMaskedImage(GPUTransformableCanvasImage &im, RenderImage *mask) {
 	PooledGPUImage newImage = getPooledImage(window.canvas_width, window.canvas_height);
 
 	if (!im.image) {
@@ -913,7 +913,7 @@ static void paramsToBreakupDirectionFlagset(const char *params, int &breakupDire
 	}
 }
 
-void GPUController::breakUpImage(BreakupID id, GPU_Image *src, GPU_Rect *src_rect, GPU_Target *target,
+void GPUController::breakUpImage(BreakupID id, RenderImage *src, RenderRect *src_rect, RenderTarget *target,
                                  int breakupFactor,
                                  int breakupDirectionFlagset, const char *params, float dstX, float dstY) {
 	if (!src) {
@@ -980,7 +980,7 @@ void GPUController::breakUpImage(BreakupID id, GPU_Image *src, GPU_Rect *src_rec
 		for (int n = 0; n < data.numCellsX * data.numCellsY; ++n) {
 			//int s = myCells[n].state;
 			//if (s<300) std::fprintf(stderr, "%u,%u;", myCells[n].cell_x, myCells[n].cell_y);
-			GPU_Rect rect{static_cast<float>(myCells[n].cell_x) * BREAKUP_CELLWIDTH, static_cast<float>(myCells[n].cell_y) * BREAKUP_CELLWIDTH, BREAKUP_CELLWIDTH, BREAKUP_CELLWIDTH};
+			RenderRect rect{static_cast<float>(myCells[n].cell_x) * BREAKUP_CELLWIDTH, static_cast<float>(myCells[n].cell_y) * BREAKUP_CELLWIDTH, BREAKUP_CELLWIDTH, BREAKUP_CELLWIDTH};
 			if (myCells[n].radius > 0)
 				copyGPUImage(src, &rect, nullptr, target,
 				             rect.x + myCells[n].disp_x,
@@ -1051,7 +1051,7 @@ PooledGPUImage GPUController::getBrokenUpImage(GPUTransformableCanvasImage &im, 
 	return newImage;
 }
 
-void GPUController::glassSmashImage(GPU_Image *src, GPU_Target *target, int smashFactor) {
+void GPUController::glassSmashImage(RenderImage *src, RenderTarget *target, int smashFactor) {
 	if (!src) {
 		sendToLog(LogLevel::Error, "No image to glass smash!\n");
 		return;
@@ -1434,11 +1434,11 @@ PooledGPUImage GPUController::getPooledImage(int w, int h) {
 	return PooledGPUImage(pool);
 }
 
-GPU_Image *TempGPUImagePool::getImage() {
+RenderImage *TempGPUImagePool::getImage() {
 	// Look for unused temp image
-	auto i = std::find_if(pool.begin(), pool.end(), [](const std::unordered_map<GPU_Image *, bool>::value_type &e) { return !e.second; });
+	auto i = std::find_if(pool.begin(), pool.end(), [](const std::unordered_map<RenderImage *, bool>::value_type &e) { return !e.second; });
 	// If we found one, return that, otherwise make a new one
-	GPU_Image *r;
+	RenderImage *r;
 	if (i != pool.end()) {
 		r = i->first;
 		gpu.clearWholeTarget(r->target);
@@ -1451,13 +1451,13 @@ GPU_Image *TempGPUImagePool::getImage() {
 	return r;
 }
 
-void TempGPUImagePool::giveImage(GPU_Image *im) {
+void TempGPUImagePool::giveImage(RenderImage *im) {
 	pool[im] = false;
 	gpu.clearWholeTarget(im->target);
 }
 
 void TempGPUImagePool::addImages(int n) {
-	GPU_Image *im;
+	RenderImage *im;
 	for (int i = 0; i < n; i++) {
 		im       = gpu.createImage(size.x, size.y, 4);
 		pool[im] = false;
@@ -1482,8 +1482,8 @@ void TempGPUImagePool::clearUnused(bool require_empty) {
 	}
 }
 
-GPU_Image *CombinedImagePool::get(int w, int h, int channels, bool store) {
-	GPU_FormatEnum format;
+RenderImage *CombinedImagePool::get(int w, int h, int channels, bool store) {
+	RenderFormat format;
 
 	switch (channels) {
 		case 1:
@@ -1516,7 +1516,7 @@ GPU_Image *CombinedImagePool::get(int w, int h, int channels, bool store) {
 	auto itI = requested.begin();
 	while (itI != requested.end()) {
 		if ((*itI)->w == w && (*itI)->h == h && (*itI)->format == format) {
-			GPU_Image *ret = *itI;
+			RenderImage *ret = *itI;
 			if (!store)
 				requested.erase(itI);
 			return ret;
@@ -1531,7 +1531,7 @@ GPU_Image *CombinedImagePool::get(int w, int h, int channels, bool store) {
 
 	std::shared_ptr<Wrapped_GPU_Image> res = existent.get(diff);
 	if (res) {
-		GPU_Image *img = res->img;
+		RenderImage *img = res->img;
 		res->img       = nullptr;
 		existent.remove(diff);
 		if (store) {
@@ -1543,7 +1543,7 @@ GPU_Image *CombinedImagePool::get(int w, int h, int channels, bool store) {
 		return img;
 	}
 
-	GPU_Image *img = GPU_CreateImage(w, h, format);
+	RenderImage *img = GPU_CreateImage(w, h, format);
 	if (store)
 		requested.push_back(img);
 
@@ -1568,12 +1568,12 @@ bool CombinedImagePool::generate() {
 
 void GPUBigImage::create(SDL_Surface *surface) {
 	auto s = gpu.max_texture;
-	GPU_Rect tmp{0, 0, 0, 0};
+	RenderRect tmp{0, 0, 0, 0};
 	while (tmp.y < h) {
 		tmp.w = w - tmp.x > s ? s : w - tmp.x;
 		tmp.h = h - tmp.y > s ? s : h - tmp.y;
 
-		GPU_Image *chunk{nullptr};
+		RenderImage *chunk{nullptr};
 		if (surface) {
 #if !defined(IOS) && !defined(DROID) // There is some issue with loadGPUImageByChunks on iOS
 			if (!(ons.skip_mode & ONScripter::SKIP_SUPERSKIP)) {
@@ -1607,7 +1607,7 @@ GPUBigImage::GPUBigImage(SDL_Surface *surface) {
 
 	w        = surface->w;
 	h        = surface->h;
-	channels = surface->format->BytesPerPixel;
+	channels = onsSurfaceBytesPerPixel(surface);
 
 	create(surface);
 }
@@ -1620,11 +1620,11 @@ GPUBigImage::GPUBigImage(uint16_t w_, uint16_t h_, int channels_)
 	create();
 }
 
-std::vector<std::pair<GPU_Image *, GPU_Rect>> GPUBigImage::getImagesForArea(GPU_Rect &area) {
+std::vector<std::pair<RenderImage *, RenderRect>> GPUBigImage::getImagesForArea(RenderRect &area) {
 	if (area.w < 1 || area.h < 1)
 		return {};
 
-	std::vector<std::pair<GPU_Image *, GPU_Rect>> seq;
+	std::vector<std::pair<RenderImage *, RenderRect>> seq;
 
 	float s = gpu.max_texture;
 
@@ -1641,7 +1641,7 @@ std::vector<std::pair<GPU_Image *, GPU_Rect>> GPUBigImage::getImagesForArea(GPU_
 	int y_end = std::ceil((area.y + area.h) / s - 1);
 	int x_num = std::ceil(w / s - 1) + 1;
 
-	std::pair<GPU_Image *, GPU_Rect> tmp;
+	std::pair<RenderImage *, RenderRect> tmp;
 
 	while (y_off <= y_end) {
 		while (x_off <= x_end) {
@@ -1667,18 +1667,18 @@ bool GPUImageDiff::operator==(const GPUImageDiff &two) const {
 #ifdef DEBUG
 
 void dbgSaveImg(void *ptr) {
-	GPU_SaveImage(static_cast<GPU_Image *>(ptr), "/Users/user/Desktop/1.png", GPU_FILE_AUTO);
+	GPU_SaveImage(static_cast<RenderImage *>(ptr), "/Users/user/Desktop/1.png", GPU_FILE_AUTO);
 }
 
 void dbgSaveTgt(void *ptr) {
-	GPU_SaveImage(GPU_CopyImageFromTarget(static_cast<GPU_Target *>(ptr)), "/Users/user/Desktop/1.png", GPU_FILE_AUTO);
+	GPU_SaveImage(GPU_CopyImageFromTarget(static_cast<RenderTarget *>(ptr)), "/Users/user/Desktop/1.png", GPU_FILE_AUTO);
 }
 
-void dbgSaveImgR(GPU_Image *ptr) {
+void dbgSaveImgR(RenderImage *ptr) {
 	GPU_SaveImage(ptr, "/Users/user/Desktop/1.png", GPU_FILE_AUTO);
 }
 
-void dbgSaveTgtR(GPU_Target *ptr) {
+void dbgSaveTgtR(RenderTarget *ptr) {
 	GPU_SaveImage(GPU_CopyImageFromTarget(ptr), "/Users/user/Desktop/1.png", GPU_FILE_AUTO);
 }
 

@@ -14,7 +14,7 @@
 #include "Support/KeyState.hpp"
 #include "Support/Clock.hpp"
 
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 
 #include <unordered_set>
 #include <deque>
@@ -45,7 +45,7 @@ const std::unordered_set<int> inputEventList{
     SDL_MOUSEWHEEL,
     SDL_FINGERDOWN,
     SDL_FINGERUP,
-    SDL_MULTIGESTURE,
+    ONS_MULTIGESTURE_EVENT,
     SDL_MOUSEBUTTONDOWN,
     SDL_MOUSEBUTTONUP,
     SDL_KEYDOWN,

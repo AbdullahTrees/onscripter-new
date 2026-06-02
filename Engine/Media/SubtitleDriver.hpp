@@ -21,7 +21,7 @@ extern "C" {
 #include <ass/ass.h>
 }
 
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 
 #include <vector>
 #include <memory>

@@ -16,8 +16,8 @@
 #include "Support/AudioBridge.hpp"
 #include "Support/Clock.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_gpu.h>
+#include "Support/SDLCompat.hpp"
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <array>
 #include <algorithm>
@@ -35,7 +35,7 @@ public:
 	bool loadPresentation(bool alphaMasked, bool loop, std::string &sub_file);
 	void startProcessing();
 	bool update(bool /*old*/) override;
-	void refresh(GPU_Target *target, GPU_Rect &clip, float x, float y, bool centre_coordinates, int rm, float scalex = 1.0, float scaley = 1.0) override;
+	void refresh(RenderTarget *target, RenderRect &clip, float x, float y, bool centre_coordinates, int rm, float scalex = 1.0, float scaley = 1.0) override;
 	BlendModeId blendingMode(int rm) override {
 		return blendingModeSupported(rm);
 	}
@@ -54,16 +54,16 @@ private:
 	// Frame representation
 	float wFactor{1}, hFactor{1};   // required multipliers to match the scaled area
 	SDL_Rect scaleRect{0, 0, 0, 0}; // scaled video frame size
-	GPU_Rect videoRect{0, 0, 0, 0}; // calculated source video frame size
+	RenderRect videoRect{0, 0, 0, 0}; // calculated source video frame size
 	uint64_t nanosPerFrame{0};
 
 	std::unique_ptr<AudioBridge> audioBridge;
 	// Video variables
 	static constexpr size_t DefFrame{0};
 	static constexpr size_t NewFrame{1};
-	GPU_Image *frame_gpu[2]{nullptr, nullptr}; // main frame
-	GPU_Image *mask_gpu{nullptr};              // separated mask (temporary)
-	GPU_Image *planes_gpu[4]{nullptr};         // storage for planar color buffers
+	RenderImage *frame_gpu[2]{nullptr, nullptr}; // main frame
+	RenderImage *mask_gpu{nullptr};              // separated mask (temporary)
+	RenderImage *planes_gpu[4]{nullptr};         // storage for planar color buffers
 
 	enum VideoState {
 		VS_OFFLINE       = 0,

@@ -29,11 +29,10 @@
 #include "External/slre.h"
 #endif
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
-#include <SDL2/SDL_mixer.h>
-#include <SDL2/SDL_gpu.h>
-#include <smpeg2/smpeg.h>
+#include "Support/SDLCompat.hpp"
+#include "Support/SDLImageCompat.hpp"
+#include "Support/SDLMixerCompat.hpp"
+#include "Engine/Graphics/RendererBackend.hpp"
 #include <unistd.h>
 
 #include <string>
@@ -770,7 +769,7 @@ private:
 
 	SDL_Scancode last_keypress;
 	int last_wheelscroll{0};
-	GPU_Rect last_touchswipe{};
+	RenderRect last_touchswipe{};
 	uint32_t last_touchswipe_time{0};
 
 public:
@@ -803,18 +802,18 @@ private:
 	uint32_t pixel_format_enum_32bpp{0};
 	uint32_t pixel_format_enum_24bpp{0};
 
-	GPU_Image *accumulation_gpu{nullptr};
-	GPU_Image *hud_gpu{nullptr};
-	GPU_Image *pre_screen_gpu{nullptr};
+	RenderImage *accumulation_gpu{nullptr};
+	RenderImage *hud_gpu{nullptr};
+	RenderImage *pre_screen_gpu{nullptr};
 
-	GPU_Image *screenshot_gpu{nullptr}, *draw_gpu{nullptr}, *draw_screen_gpu{nullptr};
-	GPU_Image *tmp_image{nullptr};
+	RenderImage *screenshot_gpu{nullptr}, *draw_gpu{nullptr}, *draw_screen_gpu{nullptr};
+	RenderImage *tmp_image{nullptr};
 
 	// Pooled canvas images, need to be canvas sized for quake during effects
-	GPU_Image *combined_effect_src_gpu{nullptr}, *combined_effect_dst_gpu{nullptr};
-	GPU_Image *effect_src_gpu{nullptr}, *hud_effect_src_gpu{nullptr};
-	GPU_Image *effect_dst_gpu{nullptr}, *hud_effect_dst_gpu{nullptr};
-	GPU_Image *onion_alpha_gpu{nullptr};
+	RenderImage *combined_effect_src_gpu{nullptr}, *combined_effect_dst_gpu{nullptr};
+	RenderImage *effect_src_gpu{nullptr}, *hud_effect_src_gpu{nullptr};
+	RenderImage *effect_dst_gpu{nullptr}, *hud_effect_dst_gpu{nullptr};
+	RenderImage *onion_alpha_gpu{nullptr};
 
 public:
 #ifdef IOS
@@ -825,11 +824,11 @@ public:
 #else
 	static constexpr bool canvasTextWindow{false};
 #endif
-	GPU_Image *text_gpu{nullptr};   // Contains rendered text after dlgCtrl is deactivated
-	GPU_Image *window_gpu{nullptr}; // Contains old text window if dlgCtrl is deactivated and wndCtrl is on
-	GPU_Image *cursor_gpu{nullptr};
+	RenderImage *text_gpu{nullptr};   // Contains rendered text after dlgCtrl is deactivated
+	RenderImage *window_gpu{nullptr}; // Contains old text window if dlgCtrl is deactivated and wndCtrl is on
+	RenderImage *cursor_gpu{nullptr};
 
-	GPU_Target *screen_target{nullptr};
+	RenderTarget *screen_target{nullptr};
 
 private:
 	SDL_Cursor *cursor{nullptr};
@@ -863,8 +862,8 @@ private:
 		int sprite_no{0};
 		char *exbtn_ctl{nullptr};
 		bool show_flag{false}; // 0...show nothing, 1... show anim
-		GPU_Rect select_rect{};
-		GPU_Rect image_rect{};
+		RenderRect select_rect{};
+		RenderRect image_rect{};
 		AnimationInfo *anim{};
 
 		~ButtonLink() {
@@ -961,9 +960,9 @@ private:
 	void processTextButtonInfo();
 	void deleteTextButtonInfo();
 	void refreshButtonHoverState(bool forced = false);
-	void refreshSprite(int sprite_no, bool active_flag, int cell_no, GPU_Rect *check_src_rect, GPU_Rect *check_dst_rect);
+	void refreshSprite(int sprite_no, bool active_flag, int cell_no, RenderRect *check_src_rect, RenderRect *check_dst_rect);
 
-	void decodeExbtnControl(const char *ctl_str, GPU_Rect *check_src_rect = nullptr, GPU_Rect *check_dst_rect = nullptr);
+	void decodeExbtnControl(const char *ctl_str, RenderRect *check_src_rect = nullptr, RenderRect *check_dst_rect = nullptr);
 
 	void disableGetButtonFlag();
 	int getNumberFromBuffer(const char **buf);
@@ -1051,7 +1050,7 @@ private:
 	/* Camera related variables */
 
 	Camera camera;
-	GPU_Rect full_script_clip;
+	RenderRect full_script_clip;
 
 	enum class VideoSkip {
 		NotPlaying,
@@ -1162,7 +1161,7 @@ private:
 
 public: // DialogueController wants access to this
 	void resetGlyphCache();
-	void renderGlyphValues(const GlyphValues &values, GPU_Rect *dst_clip, TextRenderingState::TextRenderingDst dst, float x, float y, float r, bool render_border, int alpha);
+	void renderGlyphValues(const GlyphValues &values, RenderRect *dst_clip, TextRenderingState::TextRenderingDst dst, float x, float y, float r, bool render_border, int alpha);
 	const GlyphValues *renderUnicodeGlyph(Font *font, GlyphParams *key);
 	const GlyphValues *measureUnicodeGlyph(Font *font, GlyphParams *key);
 	bool isAlphanumeric(char16_t codepoint);
@@ -1184,7 +1183,7 @@ private:
 	void enterTextDisplayMode();
 	void leaveTextDisplayMode(bool force_leave_flag = false, bool perform_effect = true);
 
-	void renderDynamicTextWindow(GPU_Target *target, GPU_Rect *canvas_clip_dst, int refresh_mode, bool useCamera = true);
+	void renderDynamicTextWindow(RenderTarget *target, RenderRect *canvas_clip_dst, int refresh_mode, bool useCamera = true);
 
 	bool doClickEnd();
 	bool clickWait();
@@ -1248,7 +1247,7 @@ private:
 
 	void dirtySpriteRect(AnimationInfo *ai, bool before = false);
 	void dirtySpriteRect(int num, bool lsp2, bool before = false);
-	void dirtyRectForZLevel(int num, GPU_Rect &rect);
+	void dirtyRectForZLevel(int num, RenderRect &rect);
 	int getAIno(AnimationInfo *info, bool old_ai, bool &lsp2);
 	bool isHudAI(AnimationInfo *info, bool before = false);
 
@@ -1262,7 +1261,7 @@ private:
 	bool constantRefreshEffect(EffectLink *effect, bool clear_dirty_rect_when_done, bool async = false, int refresh_mode_src = -1, int refresh_mode_dst = -1);
 	bool setEffect();
 	bool doEffect();
-	void mergeForEffect(GPU_Image *dst, GPU_Rect *scene_rect, GPU_Rect *hud_rect, int refresh_mode);
+	void mergeForEffect(RenderImage *dst, RenderRect *scene_rect, RenderRect *hud_rect, int refresh_mode);
 	void sendToPreScreen(bool refreshSrc, std::function<PooledGPUImage(GPUTransformableCanvasImage &)> applyTransform, int refresh_mode_src, int refresh_mode_dst);
 	void effectTrvswave(const char *params, int duration);
 	void effectWhirl(const char *params, int duration);
@@ -1289,12 +1288,12 @@ private:
 
 	std::unordered_map<BreakupID, BreakupData> breakupData;
 
-	GPU_Image *breakup_cellforms_gpu{nullptr}, *breakup_cellform_index_grid{nullptr};
+	RenderImage *breakup_cellforms_gpu{nullptr}, *breakup_cellform_index_grid{nullptr};
 	SDL_Surface *breakup_cellform_index_surface{nullptr};
 
 	void buildBreakupCellforms();
 	bool breakupInitRequired(BreakupID id);
-	void initBreakup(BreakupID id, GPU_Image *src, GPU_Rect *src_rect);
+	void initBreakup(BreakupID id, RenderImage *src, RenderRect *src_rect);
 	void deinitBreakup(BreakupID id);
 	void oncePerBreakupEffectBreakupSetup(BreakupID id, int breakupDirectionFlagset, int numCellsX, int numCellsY);
 
@@ -1452,13 +1451,13 @@ private:
 public:
 	bool isBuiltInCommand(const char *cmd);
 	int evaluateBuiltInCommand(const char *cmd);
-	void flush(int refresh_mode, GPU_Rect *scene_rect = nullptr, GPU_Rect *hud_rect = nullptr, bool clear_dirty_flag = true, bool direct_flag = false, bool wait_for_cr = false);
-	void flushDirect(GPU_Rect &scene_rect, GPU_Rect &hud_rect, int refresh_mode);
+	void flush(int refresh_mode, RenderRect *scene_rect = nullptr, RenderRect *hud_rect = nullptr, bool clear_dirty_flag = true, bool direct_flag = false, bool wait_for_cr = false);
+	void flushDirect(RenderRect &scene_rect, RenderRect &hud_rect, int refresh_mode);
 	int game_fps{0};
 	bool should_flip{true};
 
 private:
-	void combineWithCamera(GPU_Image *scene, GPU_Image *hud, GPU_Target *dst, GPU_Rect &scene_rect, GPU_Rect &hud_rect, int refresh_mode);
+	void combineWithCamera(RenderImage *scene, RenderImage *hud, RenderTarget *dst, RenderRect &scene_rect, RenderRect &hud_rect, int refresh_mode);
 	bool constant_refresh_executed{false};
 	bool pre_screen_render{false};
 	int constant_refresh_mode{REFRESH_NONE_MODE};
@@ -1476,7 +1475,7 @@ private:
 	/* Animation */
 	int proceedAnimation();
 	int proceedCursorAnimation();
-	int estimateNextDuration(AnimationInfo *anim, GPU_Rect &rect, int minimum, bool old_ai = false);
+	int estimateNextDuration(AnimationInfo *anim, RenderRect &rect, int minimum, bool old_ai = false);
 	void advanceAIclocks(uint64_t ns);
 	void advanceSpecificAIclocks(uint64_t ns, int i, int type, bool old_ai = false);
 
@@ -1492,20 +1491,20 @@ private:
 	bool treatAsSameImage(const AnimationInfo &anim1, const AnimationInfo &anim2);
 	void parseTaggedString(AnimationInfo *anim, bool is_mask = false);
 	void cleanSpritesetCache(SpritesetInfo *spriteset, bool before);
-	void drawSpritesetToGPUTarget(GPU_Target *target, SpritesetInfo *spriteset, GPU_Rect *clip, int rm);
+	void drawSpritesetToGPUTarget(RenderTarget *target, SpritesetInfo *spriteset, RenderRect *clip, int rm);
 	void layoutSpecialScrollable(AnimationInfo *info); // doesn't belonggggggggggggggggg
 	void calculateDynamicElementHeight(StringTree &element, int width, int tightlyFit);
 	std::vector<std::string>::iterator getScrollableElementsVisibleAt(AnimationInfo::ScrollableInfo *si, StringTree &tree, int y);
-	void setRectForScrollableElement(StringTree *elem, GPU_Rect &rect);
+	void setRectForScrollableElement(StringTree *elem, RenderRect &rect);
 	void mouseOverSpecialScrollable(int aiSpriteNo, int x, int y);
 	void changeScrollableHoveredElement(AnimationInfo *info, Direction d);
 	void snapScrollableByOffset(AnimationInfo *info, int rowsDownwards);
 	void snapScrollableToElement(AnimationInfo *info, long elementId, AnimationInfo::ScrollSnap snapType, bool instant = false);
-	void drawSpecialScrollable(GPU_Target *target, AnimationInfo *info, int refresh_mode, GPU_Rect *clip);
-	void drawBigImage(GPU_Target *target, AnimationInfo *info, int refresh_mode, GPU_Rect *clip, bool centre_coordinates = false);
-	void drawToGPUTarget(GPU_Target *target, AnimationInfo *info, int refresh_mode, GPU_Rect *clip, bool centre_coordinates = false);
+	void drawSpecialScrollable(RenderTarget *target, AnimationInfo *info, int refresh_mode, RenderRect *clip);
+	void drawBigImage(RenderTarget *target, AnimationInfo *info, int refresh_mode, RenderRect *clip, bool centre_coordinates = false);
+	void drawToGPUTarget(RenderTarget *target, AnimationInfo *info, int refresh_mode, RenderRect *clip, bool centre_coordinates = false);
 	void stopCursorAnimation(int click);
-	void createScreenshot(GPU_Image *first, GPU_Rect *first_r, GPU_Image *second = nullptr, GPU_Rect *second_r = nullptr);
+	void createScreenshot(RenderImage *first, RenderRect *first_r, RenderImage *second = nullptr, RenderRect *second_r = nullptr);
 
 	/* ---------------------------------------- */
 	/* File I/O */
@@ -1578,31 +1577,31 @@ private:
 	void loadImageIntoCache(int id, const std::string &filename_str, bool allow_rgb = false);
 	void dropCache(int *id, const std::string &filename_str);
 	SDL_Surface *loadImage(const char *filename, bool *has_alpha = nullptr, bool allow_rgb = false);
-	GPU_Image *loadGpuImage(const char *file_name, bool allow_rgb = false);
+	RenderImage *loadGpuImage(const char *file_name, bool allow_rgb = false);
 	SDL_Surface *createRectangleSurface(const char *filename);
 	SDL_Surface *createSurfaceFromFile(const char *filename);
 
 	void shiftHoveredButtonInDirection(int diff);
 
-	void effectBlendToCombinedImage(GPU_Image *mask_gpu, int trans_mode, uint32_t mask_value, GPU_Image *image);
-	void effectBlendGPU(GPU_Image *mask_gpu, int trans_mode,
-	                    uint32_t mask_value = 255, GPU_Rect *clip = nullptr,
-	                    GPU_Image *src1 = nullptr, GPU_Image *src2 = nullptr,
-	                    GPU_Image *dst = nullptr);
+	void effectBlendToCombinedImage(RenderImage *mask_gpu, int trans_mode, uint32_t mask_value, RenderImage *image);
+	void effectBlendGPU(RenderImage *mask_gpu, int trans_mode,
+	                    uint32_t mask_value = 255, RenderRect *clip = nullptr,
+	                    RenderImage *src1 = nullptr, RenderImage *src2 = nullptr,
+	                    RenderImage *dst = nullptr);
 	bool colorGlyph(const GlyphParams *key, GlyphValues *glyph, SDL_Color *color, bool border = false, GlyphAtlasController *atlas = nullptr);
 
 	bool use_text_gradients, use_text_gradients_for_sprites;
 
-	void makeNegaTarget(GPU_Target *target, GPU_Rect clip);
-	void makeMonochromeTarget(GPU_Target *target, GPU_Rect clip, bool before_scene);
-	void makeBlurTarget(GPU_Target *target, GPU_Rect clip, bool before_scene);
-	void makeWarpedTarget(GPU_Target *target, GPU_Rect clip, bool before_scene);
+	void makeNegaTarget(RenderTarget *target, RenderRect clip);
+	void makeMonochromeTarget(RenderTarget *target, RenderRect clip, bool before_scene);
+	void makeBlurTarget(RenderTarget *target, RenderRect clip, bool before_scene);
+	void makeWarpedTarget(RenderTarget *target, RenderRect clip, bool before_scene);
 
-	void refreshSceneTo(GPU_Target *target, GPU_Rect *passed_script_clip_dst, int refresh_mode = REFRESH_NORMAL_MODE);
-	void refreshHudTo(GPU_Target *target, GPU_Rect *passed_script_clip_dst, int refresh_mode = REFRESH_NORMAL_MODE);
+	void refreshSceneTo(RenderTarget *target, RenderRect *passed_script_clip_dst, int refresh_mode = REFRESH_NORMAL_MODE);
+	void refreshHudTo(RenderTarget *target, RenderRect *passed_script_clip_dst, int refresh_mode = REFRESH_NORMAL_MODE);
 
 	void setupZLevels(int refresh_mode);
-	void drawSpritesBetween(int upper_inclusive, int lower_exclusive, GPU_Target *target, GPU_Rect *clip_dst, int refresh_mode);
+	void drawSpritesBetween(int upper_inclusive, int lower_exclusive, RenderTarget *target, RenderRect *clip_dst, int refresh_mode);
 	void loadBreakupCellforms();
 	void createBackground();
 	void loadDrawImages();
@@ -1619,7 +1618,7 @@ private:
 	void executeSystemReset();
 	void executeSystemEnd();
 
-	void updateButtonsToDefaultState(GPU_Rect &check_src_rect, GPU_Rect &check_dst_rect);
+	void updateButtonsToDefaultState(RenderRect &check_src_rect, RenderRect &check_dst_rect);
 
 	void doHoverButton(bool hovering, int buttonNumber, int buttonLinkIndex, ButtonLink *buttonLink);
 

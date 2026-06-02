@@ -295,13 +295,13 @@ void AnimationInfo::setCell(int cell) {
 	current_cell = cell;
 }
 
-float2 AnimationInfo::findOpaquePoint(GPU_Rect *clip) {
+float2 AnimationInfo::findOpaquePoint(RenderRect *clip) {
 	//find the first opaque-enough pixel position for transbtn
 	if (!image_surface)
 		image_surface = GPU_CopySurfaceFromImage(gpu_image);
 	int cell_width    = vertical_cells ? image_surface->w : image_surface->w / num_of_cells;
 	int cell_height   = vertical_cells ? image_surface->h / num_of_cells : image_surface->h;
-	GPU_Rect cliprect = {0, 0, static_cast<float>(cell_width), static_cast<float>(cell_height)};
+	RenderRect cliprect = {0, 0, static_cast<float>(cell_width), static_cast<float>(cell_height)};
 	if (clip)
 		cliprect = *clip;
 
@@ -454,15 +454,15 @@ void AnimationInfo::calculateImage(int w, int h) {
 	pos.h      = static_cast<float>(vertical_cells ? h / num_of_cells : h);
 }
 
-void AnimationInfo::copySurface(SDL_Surface *surface, GPU_Rect *src_rect, GPU_Rect *dst_rect) {
+void AnimationInfo::copySurface(SDL_Surface *surface, RenderRect *src_rect, RenderRect *dst_rect) {
 	if (!image_surface || !surface)
 		return;
 
-	GPU_Rect _dst_rect = {0, 0, static_cast<float>(image_surface->w), static_cast<float>(image_surface->h)};
+	RenderRect _dst_rect = {0, 0, static_cast<float>(image_surface->w), static_cast<float>(image_surface->h)};
 	if (dst_rect)
 		_dst_rect = *dst_rect;
 
-	GPU_Rect _src_rect = {0, 0, static_cast<float>(surface->w), static_cast<float>(surface->h)};
+	RenderRect _src_rect = {0, 0, static_cast<float>(surface->w), static_cast<float>(surface->h)};
 	if (src_rect)
 		_src_rect = *src_rect;
 
@@ -514,8 +514,6 @@ SDL_Surface *AnimationInfo::setupImageAlpha(SDL_Surface *surface,
 	if (!surface)
 		return nullptr;
 
-	SDL_PixelFormat *fmt = surface->format;
-
 	int w          = surface->w;
 	int h          = surface->h;
 	int cell_w     = vertical_cells ? w : w / num_of_cells;
@@ -532,9 +530,9 @@ SDL_Surface *AnimationInfo::setupImageAlpha(SDL_Surface *surface,
 	} else if (trans_mode == TRANS_TOPRIGHT) {
 		ref_color = *(buffer + surface->w - 1);
 	} else if (trans_mode == TRANS_DIRECT) {
-		ref_color = direct_color.x << fmt->Rshift |
-		            direct_color.y << fmt->Gshift |
-		            direct_color.z << fmt->Bshift;
+		ref_color = direct_color.x << onsSurfaceRshift(surface) |
+		            direct_color.y << onsSurfaceGshift(surface) |
+		            direct_color.z << onsSurfaceBshift(surface);
 	}
 	ref_color &= RGBMASK;
 
@@ -543,8 +541,9 @@ SDL_Surface *AnimationInfo::setupImageAlpha(SDL_Surface *surface,
 		const int mask_cell_w = cell_w / 2;
 		const int mask_w      = mask_cell_w * cell_num_w;
 		orig_pos.w            = mask_w;
-		SDL_Surface *surface2 = SDL_CreateRGBSurface(SDL_SWSURFACE, mask_w, h,
-		                                             fmt->BitsPerPixel, fmt->Rmask, fmt->Gmask, fmt->Bmask, fmt->Amask);
+		SDL_Surface *surface2 = onsCreateRGBSurface(SDL_SWSURFACE, mask_w, h,
+		                                            onsSurfaceBitsPerPixel(surface), onsSurfaceRmask(surface),
+		                                            onsSurfaceGmask(surface), onsSurfaceBmask(surface), onsSurfaceAmask(surface));
 		uint32_t *buffer2     = static_cast<uint32_t *>(surface2->pixels);
 		alphap                = static_cast<uint8_t *>(surface2->pixels) + 3;
 
@@ -620,7 +619,7 @@ SDL_Surface *AnimationInfo::setupImageAlpha(SDL_Surface *surface,
 	return surface;
 }
 
-void AnimationInfo::setImage(GPU_Image *image) {
+void AnimationInfo::setImage(RenderImage *image) {
 	if (!image)
 		return;
 

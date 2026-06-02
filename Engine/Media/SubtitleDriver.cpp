@@ -12,7 +12,7 @@
 #include "Engine/Components/Async.hpp"
 #include "Support/FileIO.hpp"
 
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 
 /* libass debug log function */
 static void ass_msg_callback(int level, const char *fmt, va_list va, void * /*data*/) {
@@ -43,7 +43,7 @@ static void ass_sw_blend(SDL_Surface *frame, ASS_Image *img) {
 		uint8_t *src;
 		uint8_t *dst;
 
-		int32_t Bpp = frame->format->BytesPerPixel;
+		int32_t Bpp = onsSurfaceBytesPerPixel(frame);
 
 		src = img->bitmap;
 		dst = static_cast<uint8_t *>(frame->pixels) + img->dst_y * frame->pitch + img->dst_x * Bpp;

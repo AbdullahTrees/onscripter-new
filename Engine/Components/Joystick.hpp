@@ -12,7 +12,7 @@
 #include "External/Compatibility.hpp"
 #include "Engine/Components/Base.hpp"
 
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 
 #if !defined(USE_LIBUSB) && (defined(LINUX) || defined(WIN32) || defined(MACOSX))
 #define USE_LIBUSB 1

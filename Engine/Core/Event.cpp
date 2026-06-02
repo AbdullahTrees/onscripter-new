@@ -235,15 +235,15 @@ void ONScripter::fetchEventsToQueue() {
 			//			event->type == SDL_FINGERUP ? "up" : "down",
 			//			event->common.timestamp, event->tfinger.touchId, event->tfinger.x, event->tfinger.y,
 			//			event->tfinger.dx, event->tfinger.dy, event->tfinger.pressure,
-			//			finger ? finger->common.timestamp : -1, finger ? (uint32_t)finger->tfinger.fingerId : 0);
+			//			finger ? finger->common.timestamp : -1, finger ? (uint32_t)onsTouchFingerId(finger->tfinger) : 0);
 			if (finger && finger->common.timestamp + MAX_TOUCH_TAP_TIMESPAN >= event->common.timestamp) {
-				finger->tfinger.fingerId++;
+				onsTouchFingerId(finger->tfinger)++;
 			} else {
 				if (finger)
 					pushFingerEvents(true);
 				finger = std::move(event);
 				event.reset(new SDL_Event);
-				finger->tfinger.fingerId = 1;
+				onsTouchFingerId(finger->tfinger) = 1;
 			}
 
 			if (SDL_PeepEvents(event.get(), 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT) <= 0) {
@@ -330,7 +330,7 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		if (allow_rendering && !(skip_mode & SKIP_SUPERSKIP) && !deferredLoadingEnabled) {
 			if (cursor_gpu) {
 				int x, y;
-				SDL_GetMouseState(&x, &y);
+				onsGetMouseState(&x, &y);
 				gpu.copyGPUImage(cursor_gpu, nullptr, nullptr, screen_target, x, y);
 			}
 
@@ -638,18 +638,21 @@ bool ONScripter::touchEvent(SDL_Event &event, EventProcessingState &state) {
 	bool btn_left   = false;
 	bool btn_right  = false;
 	bool btn_middle = false;
-	bool type_up    = event.type == SDL_FINGERUP || event.type == SDL_MULTIGESTURE;
+	bool type_up    = event.type == SDL_FINGERUP || event.type == ONS_MULTIGESTURE_EVENT;
 	bool type_down  = event.type == SDL_FINGERDOWN;
 	float event_x = 0, event_y = 0;
 
 	auto sendKeyEvent = [this](SDL_Scancode c) {
 		auto k                 = new SDL_Event;
-		k->key.keysym.scancode = c;
+		onsKeyboardScancode(k->key) = c;
 		k->type                = SDL_KEYUP;
 		localEventQueue.emplace_front(k);
 	};
 
-	if (event.type == SDL_MULTIGESTURE) {
+	if (event.type == ONS_MULTIGESTURE_EVENT) {
+#if defined(ONS_USE_SDL3)
+		return false;
+#else
 		SDL_MultiGestureEvent &gesture = event.mgesture;
 
 		//sendToLog(LogLevel::Error, "Multiguesture %d last %d, num %d (%f, %f)\n",
@@ -694,19 +697,20 @@ bool ONScripter::touchEvent(SDL_Event &event, EventProcessingState &state) {
 			}
 		}
 		return false;
+#endif
 	}
 
 	//sendToLog(LogLevel::Error, "Finger prevention %d %d (num %d)\n",
-	//			last_touchswipe_time, event.tfinger.timestamp, event.tfinger.fingerId);
+	//			last_touchswipe_time, event.tfinger.timestamp, onsTouchFingerId(event.tfinger));
 
 	// Prevent extra clicks right after scrolling
 	if (last_touchswipe_time + MAX_TOUCH_SWIPE_TIMESPAN >= event.tfinger.timestamp)
 		return false;
 
 	// fingerId contains grouped finger amount after tapping
-	if (event.tfinger.fingerId == 1)
+	if (onsTouchFingerId(event.tfinger) == 1)
 		btn_left = true;
-	else if (event.tfinger.fingerId == 2)
+	else if (onsTouchFingerId(event.tfinger) == 2)
 		btn_right = true;
 	else
 		btn_middle = true;
@@ -817,27 +821,27 @@ int ONScripter::getTotalButtonCount() const {
 // returns true if should break out of the event loop
 bool ONScripter::keyDownEvent(SDL_KeyboardEvent &event, EventProcessingState &state) {
 	if (event_mode & WAIT_BUTTON_MODE)
-		last_keypress = event.keysym.scancode;
+		last_keypress = onsKeyboardScancode(event);
 
 	int last_ctrl_status = state.keyState.ctrl;
 
 	// keyState.ctrl assignment can't be completely deferred due to caller requiring it; must at least pass the updates to caller
-	switch (event.keysym.scancode) {
+	switch (onsKeyboardScancode(event)) {
 #ifdef MACOSX
 		case SDL_SCANCODE_LGUI:
 		case SDL_SCANCODE_RGUI:
 			if (!ons_cfg_options.count("skip-on-cmd"))
 				break;
-			if (event.keysym.scancode == SDL_SCANCODE_LGUI || event.keysym.scancode == SDL_SCANCODE_RGUI) {
+			if (onsKeyboardScancode(event) == SDL_SCANCODE_LGUI || onsKeyboardScancode(event) == SDL_SCANCODE_RGUI) {
 				state.keyState.apple |= 1;
-				event.keysym.scancode = SDL_SCANCODE_LCTRL;
+				onsKeyboardScancode(event) = SDL_SCANCODE_LCTRL;
 			}
 #endif
 		case SDL_SCANCODE_RCTRL:
 		case SDL_SCANCODE_LCTRL:
-			if (event.keysym.scancode == SDL_SCANCODE_LCTRL || event.keysym.scancode == SDL_SCANCODE_RCTRL)
+			if (onsKeyboardScancode(event) == SDL_SCANCODE_LCTRL || onsKeyboardScancode(event) == SDL_SCANCODE_RCTRL)
 				if (skipIsAllowed()) {
-					state.keyState.ctrl |= (event.keysym.scancode == SDL_SCANCODE_LCTRL ? 0x02 : 0x01);
+					state.keyState.ctrl |= (onsKeyboardScancode(event) == SDL_SCANCODE_LCTRL ? 0x02 : 0x01);
 					internal_slowdown_counter = 0; //maybe a slightly wrong place to do it
 				}
 			if (!skipIsAllowed())
@@ -889,9 +893,9 @@ bool ONScripter::keyDownEvent(SDL_KeyboardEvent &event, EventProcessingState &st
 
 void ONScripter::keyUpEvent(SDL_KeyboardEvent &event, EventProcessingState &state) {
 	if (event_mode & WAIT_BUTTON_MODE)
-		last_keypress = event.keysym.scancode;
+		last_keypress = onsKeyboardScancode(event);
 
-	switch (event.keysym.scancode) {
+	switch (onsKeyboardScancode(event)) {
 #ifdef MACOSX
 		case SDL_SCANCODE_LGUI:
 		case SDL_SCANCODE_RGUI:
@@ -933,8 +937,8 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 
 	if (event.type == SDL_KEYUP) {
 		//'m' is for mute (toggle)
-		if (((event.keysym.scancode == SDL_SCANCODE_M && state.keyState.opt) ||
-		     event.keysym.scancode == ONS_SCANCODE_MUTE) &&
+		if (((onsKeyboardScancode(event) == SDL_SCANCODE_M && state.keyState.opt) ||
+		     onsKeyboardScancode(event) == ONS_SCANCODE_MUTE) &&
 		    !state.keyState.ctrl) {
 			addToPostponedEventChanges("setVolumeMute", [this]() {
 				if (!script_mute) {
@@ -947,8 +951,8 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 			});
 		}
 
-		if ((event.keysym.scancode == SDL_SCANCODE_E && state.keyState.opt) ||
-		    event.keysym.scancode == ONS_SCANCODE_SCREEN) {
+		if ((onsKeyboardScancode(event) == SDL_SCANCODE_E && state.keyState.opt) ||
+		    onsKeyboardScancode(event) == ONS_SCANCODE_SCREEN) {
 			needs_screenshot = true;
 		}
 	}
@@ -956,38 +960,38 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 	// 's', Return, Enter, or Space will clear (regular) skip mode
 	// Yes, just 's' without the modifiers to make it easier.
 	if ((event.type == SDL_KEYUP) &&
-	    (event.keysym.scancode == SDL_SCANCODE_RETURN ||
-	     event.keysym.scancode == SDL_SCANCODE_KP_ENTER ||
-	     event.keysym.scancode == SDL_SCANCODE_SPACE ||
-	     event.keysym.scancode == SDL_SCANCODE_S ||
-	     event.keysym.scancode == ONS_SCANCODE_SKIP)) {
+	    (onsKeyboardScancode(event) == SDL_SCANCODE_RETURN ||
+	     onsKeyboardScancode(event) == SDL_SCANCODE_KP_ENTER ||
+	     onsKeyboardScancode(event) == SDL_SCANCODE_SPACE ||
+	     onsKeyboardScancode(event) == SDL_SCANCODE_S ||
+	     onsKeyboardScancode(event) == ONS_SCANCODE_SKIP)) {
 		if (checkClearSkip(state))
 			return true;
 	}
 
 	// i to spew some debug information
-	/*if (event.type == SDL_KEYUP && event.keysym.scancode == SDL_SCANCODE_i) {
+	/*if (event.type == SDL_KEYUP && onsKeyboardScancode(event) == SDL_SCANCODE_i) {
 		sendToLog(LogLevel::Error, "Last executed command lines:\n");
 		for (auto &log : script_h.debugCommandLog)
 			sendToLog(LogLevel::Error, "%s\n", log.c_str());
 	}*/
 
-	if (checkClearTrap((event.keysym.scancode == SDL_SCANCODE_RETURN ||
-	                    event.keysym.scancode == SDL_SCANCODE_KP_ENTER ||
-	                    event.keysym.scancode == SDL_SCANCODE_SPACE),
-	                   event.keysym.scancode == SDL_SCANCODE_ESCAPE))
+	if (checkClearTrap((onsKeyboardScancode(event) == SDL_SCANCODE_RETURN ||
+	                    onsKeyboardScancode(event) == SDL_SCANCODE_KP_ENTER ||
+	                    onsKeyboardScancode(event) == SDL_SCANCODE_SPACE),
+	                   onsKeyboardScancode(event) == SDL_SCANCODE_ESCAPE))
 		return true;
 
 	//so many ways to 'left-click' a button
 	if ((event_mode & WAIT_BUTTON_MODE) &&
 	    (((event.type == SDL_KEYUP || btndown_flag) &&
-	      ((!getenter_flag && event.keysym.scancode == SDL_SCANCODE_RETURN) ||
-	       (!getenter_flag && event.keysym.scancode == SDL_SCANCODE_KP_ENTER))) ||
+	      ((!getenter_flag && onsKeyboardScancode(event) == SDL_SCANCODE_RETURN) ||
+	       (!getenter_flag && onsKeyboardScancode(event) == SDL_SCANCODE_KP_ENTER))) ||
 	     ((spclclk_flag || !useescspc_flag) &&
-	      event.keysym.scancode == SDL_SCANCODE_SPACE))) {
-		if (event.keysym.scancode == SDL_SCANCODE_RETURN ||
-		    event.keysym.scancode == SDL_SCANCODE_KP_ENTER ||
-		    (spclclk_flag && event.keysym.scancode == SDL_SCANCODE_SPACE)) {
+	      onsKeyboardScancode(event) == SDL_SCANCODE_SPACE))) {
+		if (onsKeyboardScancode(event) == SDL_SCANCODE_RETURN ||
+		    onsKeyboardScancode(event) == SDL_SCANCODE_KP_ENTER ||
+		    (spclclk_flag && onsKeyboardScancode(event) == SDL_SCANCODE_SPACE)) {
 			state.buttonState.set(hoveringButton ? hoveredButtonNumber : 0);
 			if (event.type == SDL_KEYDOWN)
 				state.buttonState.down_flag = true;
@@ -1014,24 +1018,24 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 	if ((event_mode & (WAIT_INPUT_MODE | WAIT_BUTTON_MODE)) &&
 	    (autoclick_time == 0 || (event_mode & WAIT_BUTTON_MODE))) {
 		//Esc is for 'right-click' (sometimes)
-		if (!useescspc_flag && event.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+		if (!useescspc_flag && onsKeyboardScancode(event) == SDL_SCANCODE_ESCAPE) {
 			state.buttonState.set(-1);
-		} else if (useescspc_flag && event.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+		} else if (useescspc_flag && onsKeyboardScancode(event) == SDL_SCANCODE_ESCAPE) {
 			state.buttonState.set(-10);
-		} else if (!spclclk_flag && useescspc_flag && event.keysym.scancode == SDL_SCANCODE_SPACE) {
+		} else if (!spclclk_flag && useescspc_flag && onsKeyboardScancode(event) == SDL_SCANCODE_SPACE) {
 			state.buttonState.set(-11);
 		}
 		//'h' or left-arrow for page-up
-		else if (((!getcursor_flag && event.keysym.scancode == SDL_SCANCODE_LEFT) ||
-		          event.keysym.scancode == SDL_SCANCODE_H) &&
+		else if (((!getcursor_flag && onsKeyboardScancode(event) == SDL_SCANCODE_LEFT) ||
+		          onsKeyboardScancode(event) == SDL_SCANCODE_H) &&
 		         ((event_mode & WAIT_TEXT_MODE) ||
 		          (usewheel_flag && !getcursor_flag &&
 		           (event_mode & WAIT_BUTTON_MODE)))) {
 			state.buttonState.set(-2);
 		}
 		//'l' or right-arrow for page-down
-		else if (((!getcursor_flag && event.keysym.scancode == SDL_SCANCODE_RIGHT) ||
-		          event.keysym.scancode == SDL_SCANCODE_L) &&
+		else if (((!getcursor_flag && onsKeyboardScancode(event) == SDL_SCANCODE_RIGHT) ||
+		          onsKeyboardScancode(event) == SDL_SCANCODE_L) &&
 		         ((enable_wheeldown_advance_flag &&
 		           (event_mode & WAIT_TEXT_MODE)) ||
 		          (usewheel_flag && (event_mode & WAIT_BUTTON_MODE)))) {
@@ -1042,9 +1046,9 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 			}
 		}
 		//'k', 'p', or up-arrow for shift to mouseover next button
-		else if (((!getcursor_flag && event.keysym.scancode == SDL_SCANCODE_UP) ||
-		          event.keysym.scancode == SDL_SCANCODE_K ||
-		          event.keysym.scancode == SDL_SCANCODE_P) &&
+		else if (((!getcursor_flag && onsKeyboardScancode(event) == SDL_SCANCODE_UP) ||
+		          onsKeyboardScancode(event) == SDL_SCANCODE_K ||
+		          onsKeyboardScancode(event) == SDL_SCANCODE_P) &&
 		         (event_mode & WAIT_BUTTON_MODE)) {
 			addToPostponedEventChanges("shiftHoveredButtonInDirection", [this]() {
 				shiftHoveredButtonInDirection(1);
@@ -1052,73 +1056,73 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 			return false;
 		}
 		//'j', 'n', or down-arrow for shift to mouseover previous button
-		else if (((!getcursor_flag && event.keysym.scancode == SDL_SCANCODE_DOWN) ||
-		          event.keysym.scancode == SDL_SCANCODE_J ||
-		          event.keysym.scancode == SDL_SCANCODE_N) &&
+		else if (((!getcursor_flag && onsKeyboardScancode(event) == SDL_SCANCODE_DOWN) ||
+		          onsKeyboardScancode(event) == SDL_SCANCODE_J ||
+		          onsKeyboardScancode(event) == SDL_SCANCODE_N) &&
 		         (event_mode & WAIT_BUTTON_MODE)) {
 			addToPostponedEventChanges("shiftHoveredButtonInDirection", [this]() {
 				shiftHoveredButtonInDirection(-1);
 			});
 			return false;
-		} else if (getcursor_flag && (event.keysym.scancode == SDL_SCANCODE_UP || event.keysym.scancode == SDL_SCANCODE_DOWN || event.keysym.scancode == SDL_SCANCODE_LEFT || event.keysym.scancode == SDL_SCANCODE_RIGHT) &&
+		} else if (getcursor_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_UP || onsKeyboardScancode(event) == SDL_SCANCODE_DOWN || onsKeyboardScancode(event) == SDL_SCANCODE_LEFT || onsKeyboardScancode(event) == SDL_SCANCODE_RIGHT) &&
 		           ((enable_wheeldown_advance_flag && (event_mode & WAIT_TEXT_MODE)) ||
 		            (usewheel_flag && (event_mode & WAIT_BUTTON_MODE)))) {
 			addToPostponedEventChanges("change scrollable hovered element", [this, event]() {
-				Direction d = getDirection(event.keysym.scancode);
+				Direction d = getDirection(onsKeyboardScancode(event));
 				for (auto sptr : sprites(SPRITE_LSP | SPRITE_LSP2)) {
 					if (sptr->visible && sptr->exists && sptr->scrollableInfo.isSpecialScrollable)
 						changeScrollableHoveredElement(sptr, d);
 				}
 			});
-		} else if (getpageup_flag && (event.keysym.scancode == SDL_SCANCODE_PAGEUP)) {
+		} else if (getpageup_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_PAGEUP)) {
 			state.buttonState.set(-12);
-		} else if (getpagedown_flag && (event.keysym.scancode == SDL_SCANCODE_PAGEDOWN)) {
+		} else if (getpagedown_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_PAGEDOWN)) {
 			state.buttonState.set(-13);
-		} else if ((getenter_flag && (event.keysym.scancode == SDL_SCANCODE_RETURN)) ||
-		           (getenter_flag && (event.keysym.scancode == SDL_SCANCODE_KP_ENTER))) {
+		} else if ((getenter_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_RETURN)) ||
+		           (getenter_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_KP_ENTER))) {
 			state.buttonState.set(-19);
-		} else if (gettab_flag && (event.keysym.scancode == SDL_SCANCODE_TAB)) {
+		} else if (gettab_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_TAB)) {
 			state.buttonState.set(-20);
-		} else if (getcursor_flag && (event.keysym.scancode == SDL_SCANCODE_UP)) {
+		} else if (getcursor_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_UP)) {
 			state.buttonState.set(-40);
-		} else if (getcursor_flag && (event.keysym.scancode == SDL_SCANCODE_RIGHT)) {
+		} else if (getcursor_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_RIGHT)) {
 			state.buttonState.set(-41);
-		} else if (getcursor_flag && (event.keysym.scancode == SDL_SCANCODE_DOWN)) {
+		} else if (getcursor_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_DOWN)) {
 			state.buttonState.set(-42);
-		} else if (getcursor_flag && (event.keysym.scancode == SDL_SCANCODE_LEFT)) {
+		} else if (getcursor_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_LEFT)) {
 			state.buttonState.set(-43);
-		} else if (getinsert_flag && (event.keysym.scancode == SDL_SCANCODE_INSERT)) {
+		} else if (getinsert_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_INSERT)) {
 			state.buttonState.set(-50);
-		} else if (getzxc_flag && (event.keysym.scancode == SDL_SCANCODE_Z)) {
+		} else if (getzxc_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_Z)) {
 			state.buttonState.set(-51);
-		} else if (getzxc_flag && (event.keysym.scancode == SDL_SCANCODE_X)) {
+		} else if (getzxc_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_X)) {
 			state.buttonState.set(-52);
-		} else if (getzxc_flag && (event.keysym.scancode == SDL_SCANCODE_C)) {
+		} else if (getzxc_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_C)) {
 			state.buttonState.set(-53);
 		} else if (getfunction_flag) {
-			if (event.keysym.scancode == SDL_SCANCODE_F1)
+			if (onsKeyboardScancode(event) == SDL_SCANCODE_F1)
 				state.buttonState.set(-21);
-			else if (event.keysym.scancode == SDL_SCANCODE_F2)
+			else if (onsKeyboardScancode(event) == SDL_SCANCODE_F2)
 				state.buttonState.set(-22);
-			else if (event.keysym.scancode == SDL_SCANCODE_F3)
+			else if (onsKeyboardScancode(event) == SDL_SCANCODE_F3)
 				state.buttonState.set(-23);
-			else if (event.keysym.scancode == SDL_SCANCODE_F4)
+			else if (onsKeyboardScancode(event) == SDL_SCANCODE_F4)
 				state.buttonState.set(-24);
-			else if (event.keysym.scancode == SDL_SCANCODE_F5)
+			else if (onsKeyboardScancode(event) == SDL_SCANCODE_F5)
 				state.buttonState.set(-25);
-			else if (event.keysym.scancode == SDL_SCANCODE_F6)
+			else if (onsKeyboardScancode(event) == SDL_SCANCODE_F6)
 				state.buttonState.set(-26);
-			else if (event.keysym.scancode == SDL_SCANCODE_F7)
+			else if (onsKeyboardScancode(event) == SDL_SCANCODE_F7)
 				state.buttonState.set(-27);
-			else if (event.keysym.scancode == SDL_SCANCODE_F8)
+			else if (onsKeyboardScancode(event) == SDL_SCANCODE_F8)
 				state.buttonState.set(-28);
-			else if (event.keysym.scancode == SDL_SCANCODE_F9)
+			else if (onsKeyboardScancode(event) == SDL_SCANCODE_F9)
 				state.buttonState.set(-29);
-			else if (event.keysym.scancode == SDL_SCANCODE_F10)
+			else if (onsKeyboardScancode(event) == SDL_SCANCODE_F10)
 				state.buttonState.set(-30);
-			else if (event.keysym.scancode == SDL_SCANCODE_F11)
+			else if (onsKeyboardScancode(event) == SDL_SCANCODE_F11)
 				state.buttonState.set(-31);
-			else if (event.keysym.scancode == SDL_SCANCODE_F12)
+			else if (onsKeyboardScancode(event) == SDL_SCANCODE_F12)
 				state.buttonState.set(-32);
 		}
 		if (state.buttonState.valid_flag) {
@@ -1131,9 +1135,9 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 	if ((event_mode & WAIT_INPUT_MODE) && !state.keyState.pressedFlag &&
 	    (autoclick_time == 0 || (event_mode & WAIT_BUTTON_MODE))) {
 		//check for "button click"
-		if (event.keysym.scancode == SDL_SCANCODE_RETURN ||
-		    event.keysym.scancode == SDL_SCANCODE_KP_ENTER ||
-		    event.keysym.scancode == SDL_SCANCODE_SPACE) {
+		if (onsKeyboardScancode(event) == SDL_SCANCODE_RETURN ||
+		    onsKeyboardScancode(event) == SDL_SCANCODE_KP_ENTER ||
+		    onsKeyboardScancode(event) == SDL_SCANCODE_SPACE) {
 			state.keyState.pressedFlag = true;
 			skip_effect                = true;
 			if (video_skip_mode == VideoSkip::Normal) {
@@ -1155,13 +1159,13 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 	if ((event_mode & (WAIT_INPUT_MODE | WAIT_TEXTBTN_MODE | WAIT_TEXTOUT_MODE)) &&
 	    !state.keyState.pressedFlag) {
 		//'s' is for skip mode
-		if (((event.keysym.scancode == SDL_SCANCODE_S && state.keyState.opt) || event.keysym.scancode == ONS_SCANCODE_SKIP) &&
+		if (((onsKeyboardScancode(event) == SDL_SCANCODE_S && state.keyState.opt) || onsKeyboardScancode(event) == ONS_SCANCODE_SKIP) &&
 		    !automode_flag && !state.keyState.ctrl && skipIsAllowed()) {
 			if (!(state.skipMode & SKIP_NORMAL))
 				skip_effect = true; // short-circuit a current effect
 			state.skipMode |= SKIP_NORMAL;
 			internal_slowdown_counter = 0; //maybe a slightly wrong place to do it
-			                               //if (event.keysym.scancode == SDL_SCANCODE_D) state.skipMode |= SKIP_SUPERSKIP; // rocket engines engaged
+			                               //if (onsKeyboardScancode(event) == SDL_SCANCODE_D) state.skipMode |= SKIP_SUPERSKIP; // rocket engines engaged
 			//sendToLog(LogLevel::Info, "toggle skip to true\n");
 			state.keyState.pressedFlag = true;
 			if (video_skip_mode == VideoSkip::Normal) {
@@ -1181,7 +1185,7 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 			return true;
 		}
 		//'a' is for automode
-		if (event.keysym.scancode == SDL_SCANCODE_A && !state.keyState.ctrl && mode_ext_flag && !automode_flag) {
+		if (onsKeyboardScancode(event) == SDL_SCANCODE_A && !state.keyState.ctrl && mode_ext_flag && !automode_flag) {
 			addToPostponedEventChanges([this]() { eventCallbackRequired = true; automode_flag = true; });
 			state.skipMode &= ~SKIP_NORMAL;
 			sendToLog(LogLevel::Info, "change to automode\n");
@@ -1195,7 +1199,7 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 
 #if !defined(IOS) && !defined(DROID)
 	//'f' is for fullscreen toggle
-	if (event.keysym.scancode == SDL_SCANCODE_F && !state.keyState.ctrl) {
+	if (onsKeyboardScancode(event) == SDL_SCANCODE_F && !state.keyState.ctrl) {
 		addToPostponedEventChanges("change window mode", []() {
 			window.changeMode(true, false, !window.getFullscreen());
 		});
@@ -1203,27 +1207,27 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 #endif
 
 	//using insani's skippable wait
-	if ((event_mode & WAIT_SLEEP_MODE) && (event.keysym.scancode == SDL_SCANCODE_S || event.keysym.scancode == ONS_SCANCODE_SKIP) && skipIsAllowed()) {
+	if ((event_mode & WAIT_SLEEP_MODE) && (onsKeyboardScancode(event) == SDL_SCANCODE_S || onsKeyboardScancode(event) == ONS_SCANCODE_SKIP) && skipIsAllowed()) {
 		state.skipMode |= SKIP_TO_WAIT;
 		state.skipMode &= ~SKIP_NORMAL;
 		state.keyState.pressedFlag = true;
 	}
 	if ((state.skipMode & SKIP_TO_WAIT) &&
-	    (event.keysym.scancode == SDL_SCANCODE_RETURN ||
-	     event.keysym.scancode == SDL_SCANCODE_KP_ENTER ||
-	     event.keysym.scancode == SDL_SCANCODE_SPACE)) {
+	    (onsKeyboardScancode(event) == SDL_SCANCODE_RETURN ||
+	     onsKeyboardScancode(event) == SDL_SCANCODE_KP_ENTER ||
+	     onsKeyboardScancode(event) == SDL_SCANCODE_SPACE)) {
 		state.skipMode &= ~SKIP_TO_WAIT;
 		state.keyState.pressedFlag = true;
 	}
 	if ((event_mode & WAIT_TEXTOUT_MODE) && skipIsAllowed() &&
-	    (event.keysym.scancode == SDL_SCANCODE_RETURN ||
-	     event.keysym.scancode == SDL_SCANCODE_KP_ENTER ||
-	     event.keysym.scancode == SDL_SCANCODE_SPACE)) {
+	    (onsKeyboardScancode(event) == SDL_SCANCODE_RETURN ||
+	     onsKeyboardScancode(event) == SDL_SCANCODE_KP_ENTER ||
+	     onsKeyboardScancode(event) == SDL_SCANCODE_SPACE)) {
 		state.skipMode |= (SKIP_TO_WAIT | SKIP_TO_EOL);
 		state.keyState.pressedFlag = true;
 	}
 
-	if ((event.keysym.scancode == SDL_SCANCODE_F1) && (version_str != nullptr)) {
+	if ((onsKeyboardScancode(event) == SDL_SCANCODE_F1) && (version_str != nullptr)) {
 		//F1 is for Help (on Windows), so show the About dialog box
 		addToPostponedEventChanges("display message box", [this]() {
 			window.showSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "About", version_str);
@@ -1240,8 +1244,8 @@ void ONScripter::translateKeyDownEvent(SDL_Event &event, EventProcessingState &s
 		return;
 	if (event.key.type == SDL_JOYBUTTONDOWN) {
 		event.key.type            = SDL_KEYDOWN;
-		event.key.keysym.scancode = joyCtrl.transButton(event.jbutton.button, event.jbutton.which);
-		if (event.key.keysym.scancode == SDL_SCANCODE_UNKNOWN)
+		onsKeyboardScancode(event.key) = joyCtrl.transButton(event.jbutton.button, event.jbutton.which);
+		if (onsKeyboardScancode(event.key) == SDL_SCANCODE_UNKNOWN)
 			return;
 	}
 
@@ -1265,13 +1269,13 @@ void ONScripter::translateKeyUpEvent(SDL_Event &event, EventProcessingState &sta
 		return;
 	if (event.key.type == SDL_JOYBUTTONUP) {
 		event.key.type            = SDL_KEYUP;
-		event.key.keysym.scancode = joyCtrl.transButton(event.jbutton.button, event.jbutton.which);
-		if (event.key.keysym.scancode == SDL_SCANCODE_UNKNOWN)
+		onsKeyboardScancode(event.key) = joyCtrl.transButton(event.jbutton.button, event.jbutton.which);
+		if (onsKeyboardScancode(event.key) == SDL_SCANCODE_UNKNOWN)
 			return;
 	} else if (event.key.type == SDL_JOYHATMOTION) {
 		event.key.type            = SDL_KEYUP;
-		event.key.keysym.scancode = joyCtrl.transHat(event.jhat.value, event.jhat.which);
-		if (event.key.keysym.scancode == SDL_SCANCODE_UNKNOWN)
+		onsKeyboardScancode(event.key) = joyCtrl.transHat(event.jhat.value, event.jhat.which);
+		if (onsKeyboardScancode(event.key) == SDL_SCANCODE_UNKNOWN)
 			return;
 	}
 
@@ -1385,7 +1389,7 @@ void ONScripter::constantRefresh() {
 		/*sendToLog(LogLevel::Info, "effect_current: %p, effect_set: %i, effectIsOver: %i, pre_screen_render %i, constant_refresh_mode %i\n", effect_current, effect_set, effectIsOver, pre_screen_render, constant_refresh_mode);*/
 	}
 
-	GPU_Rect *hud_rect, *scene_rect;
+	RenderRect *hud_rect, *scene_rect;
 
 	if (effectIsOver) {
 		hud_rect = scene_rect = nullptr;
@@ -1497,13 +1501,15 @@ void ONScripter::runEventLoop() {
 						break;
 
 #if defined(IOS) || defined(DROID)
-					case SDL_MULTIGESTURE:
+					case ONS_MULTIGESTURE_EVENT:
+#if !defined(ONS_USE_SDL3)
 						// Such a thing called crapdroid sends erratic move events on move attempts
 						// with a distance of less than 0.00X smth. Here we try to ignore them to some level,
 						// since we use gesture events to protect us from accidental r-click (double-tap) during
 						/// the scrolling.
 						if (std::fabs(event->mgesture.dDist) < 0.01 && std::fabs(event->mgesture.dTheta) < 0.01)
 							break;
+#endif
 					case SDL_FINGERDOWN:
 						if (event->type == SDL_FINGERDOWN && !btndown_flag)
 							break;
@@ -1546,7 +1552,7 @@ void ONScripter::runEventLoop() {
 					case SDL_JOYAXISMOTION: {
 #if !defined(IOS) && !defined(DROID)
 						auto ke = joyCtrl.transAxis(event->jaxis);
-						if (ke.key.keysym.scancode != SDL_SCANCODE_UNKNOWN) {
+						if (onsKeyboardScancode(ke.key) != SDL_SCANCODE_UNKNOWN) {
 							if (ke.type == SDL_KEYDOWN)
 								translateKeyDownEvent(ke, state, ret, ctrl_toggle);
 							else
@@ -1620,21 +1626,29 @@ void ONScripter::runEventLoop() {
 							flushEventSub(*event);
 						break;
 
+#if defined(ONS_USE_SDL3)
+					case SDL_WINDOWEVENT_RESTORED:
+					case SDL_WINDOWEVENT_MAXIMIZED:
+					case SDL_WINDOWEVENT_RESIZED:
+					case SDL_WINDOWEVENT_EXPOSED:
+					case SDL_WINDOWEVENT_MOVED:
+#else
 					case SDL_WINDOWEVENT:
+#endif
 #ifdef MACOSX
 						// OS X specific: We are done exiting fullscreen mode and the animation has finished
-						if (event->window.event == SDL_WINDOWEVENT_RESTORED && window.getFullscreenFix() && !window.getFullscreen()) {
+						if (onsWindowEventType(event->window) == SDL_WINDOWEVENT_RESTORED && window.getFullscreenFix() && !window.getFullscreen()) {
 							if (window.changeMode(false, true))
 								fillCanvas(true, true);
 						}
 						// OS X specific: We are done entering fullscreen mode and the animation has finished
 						// Note: this may fail to do its work, if the latter block is not present, but we are guranteed to get
 						// SDL_WINDOWEVENT_MAXIMIZED as a last event in entering fullscreen, so we need it to disable getFullscreenFix()
-						else if (event->window.event == SDL_WINDOWEVENT_MAXIMIZED && window.getFullscreenFix() && window.getFullscreen()) {
+						else if (onsWindowEventType(event->window) == SDL_WINDOWEVENT_MAXIMIZED && window.getFullscreenFix() && window.getFullscreen()) {
 							if (window.changeMode(false, true))
 								fillCanvas(true, true);
 							// OS X specific: We are entering/leaving fullscreen mode and window resizing is in progress
-						} else if (event->window.event == SDL_WINDOWEVENT_RESIZED) { // Fired by SDL when backing scale factor changes
+						} else if (onsWindowEventType(event->window) == SDL_WINDOWEVENT_RESIZED) { // Fired by SDL when backing scale factor changes
 							addToPostponedEventChanges("backing scale factor changed", []() {
 								if (window.changeMode(false, true, window.getFullscreen()))
 									ons.fillCanvas(true, true);
@@ -1642,13 +1656,13 @@ void ONScripter::runEventLoop() {
 						}
 #else
 						// At least Windows and Linux want us to act on SDL_WINDOWEVENT_EXPOSED
-						if (event->window.event == SDL_WINDOWEVENT_EXPOSED && window.getFullscreenFix()) {
+						if (onsWindowEventType(event->window) == SDL_WINDOWEVENT_EXPOSED && window.getFullscreenFix()) {
 							if (window.changeMode(false, true))
 								fillCanvas(true, true);
 						}
 #endif
 						// At least Linux specific: We are showing some window part that was hidden before
-						else if (event->window.event == SDL_WINDOWEVENT_EXPOSED || event->window.event == SDL_WINDOWEVENT_MOVED) {
+						else if (onsWindowEventType(event->window) == SDL_WINDOWEVENT_EXPOSED || onsWindowEventType(event->window) == SDL_WINDOWEVENT_MOVED) {
 							// Now that we have commands like textoff2 we are not allowed to recklessly update hud
 							before_dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 							//fillCanvas(false, true);

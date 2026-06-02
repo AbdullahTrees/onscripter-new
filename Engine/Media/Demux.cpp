@@ -88,7 +88,7 @@ void MediaProcController::MediaDemux::demultiplexStreams(long double videoTimeBa
 }
 
 void MediaProcController::MediaDemux::pushPacket(MediaEntries id, AVPacket *packet, int read_result, bool &demultiplexingComplete, long double videoTimeBase) {
-	while (id >= 0 && id != SubsEntry && SDL_SemWaitTimeout(packetQueueSemSpaces[id], 10)) {
+	while (id >= 0 && id != SubsEntry && !onsWaitSemaphoreTimeout(packetQueueSemSpaces[id], 10)) {
 		if (shouldFinish.load(std::memory_order_acquire) || async.threadShutdownRequested) {
 			return;
 		}

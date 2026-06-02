@@ -11,8 +11,8 @@
 
 #include "External/Compatibility.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_mixer.h>
+#include "Support/SDLCompat.hpp"
+#include "Support/SDLMixerCompat.hpp"
 
 #include <memory>
 #include <atomic>

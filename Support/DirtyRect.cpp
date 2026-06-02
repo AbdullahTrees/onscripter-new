@@ -11,14 +11,14 @@
 
 #include <cmath>
 
-void DirtyRect::setDimension(const SDL_Point &canvas, const GPU_Rect &camera_center) {
+void DirtyRect::setDimension(const SDL_Point &canvas, const RenderRect &camera_center) {
 	canvas_dim        = canvas;
 	camera_center_pos = camera_center;
 	fill(canvas_dim.x, canvas_dim.y);
 }
 
 // src given in offset coordinates with 0,0 corresponding to the top-left corner of camera_center_pos.
-void DirtyRect::add(GPU_Rect src) {
+void DirtyRect::add(RenderRect src) {
 	if (src.w == 0 || src.h == 0)
 		return;
 
@@ -65,7 +65,7 @@ void DirtyRect::add(GPU_Rect src) {
 	bounding_box_script.y -= camera_center_pos.y;
 }
 
-GPU_Rect DirtyRect::calcBoundingBox(GPU_Rect src1, GPU_Rect &src2) {
+RenderRect DirtyRect::calcBoundingBox(RenderRect src1, RenderRect &src2) {
 	if (src2.w == 0 || src2.h == 0)
 		return src1;
 	if (src1.w == 0 || src1.h == 0)

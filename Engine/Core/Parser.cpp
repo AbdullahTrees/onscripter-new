@@ -262,6 +262,8 @@ void ScriptParser::resetDefineFlags() {
 	effect_blank    = 10;
 	effect_cut_flag = false;
 
+	if (effect_links.empty())
+		effect_links.emplace_back();
 	auto &effect    = effect_links.front();
 	effect.no       = 0;
 	effect.effect   = 0;

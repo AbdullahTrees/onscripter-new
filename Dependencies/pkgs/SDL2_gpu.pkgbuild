@@ -1,12 +1,12 @@
 pkgname=SDL2_gpu
 pkgver=0.11.0
-pkgrel=2
+pkgrel=3
 depends=('SDL2')
 sources=(
     'SDL2_gpu-droid-nolibm.patch'
 )
 hashes=(
-    'a5442a599192808d0e815a74e22458947a7b58ca2a38b451115e65058fc9b14a'
+    '336dac08f19aecec8d494a1b0a3f594475ee1f4a1e4c0d94c0ab28354e7536c5'
 )
 # TODO: Use modern 3D API. Currently it leads to black screen during glasssmash
 # effect, supposedly due to once again wrong matrix multiplication logic.
@@ -55,6 +55,11 @@ build() {
     export SDL2DIR=$outdir
     lcf="$CFLAGS ${cflags[@]} $CFLAGS_EXTRA"
     lcxf="$CPPFLAGS ${cppflags[@]} $CPPFLAGS_EXTRA"
+    cmake_policy="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+
+    if [ "$(getTarget)" == "win32" ]; then
+        lcf="$lcf -fcommon"
+    fi
 
     #Enable debug
     #lcf="${lcf/-O/-O0} -g -O0"
@@ -62,9 +67,9 @@ build() {
     case $(getTarget) in
         win32)
             if $CROSS_BUILD; then
-                cmake -G "Unix Makefiles" -DCMAKE_SYSTEM_NAME=Windows -DSDL_gpu_USE_SYSTEM_EPOXY=ON -DSDL_gpu_DISABLE_GLES=OFF -DSDL_gpu_DISABLE_GLES_1=ON -DSDL_gpu_DYNAMIC_GLES_2=ON -DSDL_gpu_DYNAMIC_GLES_3=ON -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" &>"$logfile" || ret=$?
+                cmake -G "Unix Makefiles" "$cmake_policy" -DCMAKE_SYSTEM_NAME=Windows -DSDL_gpu_USE_SYSTEM_EPOXY=ON -DSDL_gpu_DISABLE_GLES=OFF -DSDL_gpu_DISABLE_GLES_1=ON -DSDL_gpu_DYNAMIC_GLES_2=ON -DSDL_gpu_DYNAMIC_GLES_3=ON -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" &>"$logfile" || ret=$?
             else
-                cmake -G "MSYS Makefiles" -DSDL_gpu_USE_SYSTEM_EPOXY=ON -DSDL_gpu_DISABLE_GLES=OFF -DSDL_gpu_DISABLE_GLES_1=ON -DSDL_gpu_DYNAMIC_GLES_2=ON -DSDL_gpu_DYNAMIC_GLES_3=ON -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" &>"$logfile" || ret=$?
+                cmake -G "MSYS Makefiles" "$cmake_policy" -DSDL_gpu_USE_SYSTEM_EPOXY=ON -DSDL_gpu_DISABLE_GLES=OFF -DSDL_gpu_DISABLE_GLES_1=ON -DSDL_gpu_DYNAMIC_GLES_2=ON -DSDL_gpu_DYNAMIC_GLES_3=ON -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" &>"$logfile" || ret=$?
             fi
         ;;
         darwin-macOS)
@@ -78,23 +83,23 @@ build() {
                     cxxstd="-std=c++11 -stdlib=libc++"
                 fi
             fi
-            cmake -G "Unix Makefiles" -DSDL_gpu_USE_SYSTEM_EPOXY=ON -DCMAKE_CXX_COMPILER="$(getCXX)" -DCMAKE_C_COMPILER="$(getCC)" -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf $cxxstd" $target &>"$logfile" || ret=$?
+            cmake -G "Unix Makefiles" "$cmake_policy" -DSDL_gpu_USE_SYSTEM_EPOXY=ON -DCMAKE_CXX_COMPILER="$(getCXX)" -DCMAKE_C_COMPILER="$(getCC)" -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf $cxxstd" $target &>"$logfile" || ret=$?
         ;;
         darwin-iOS)
-            cmake -G "Unix Makefiles" -DCMAKE_OSX_SYSROOT="/" -DCMAKE_OSX_DEPLOYMENT_TARGET="" -DSDL_gpu_DISABLE_OPENGL=ON -DSDL_gpu_DISABLE_GLES=OFF -DCMAKE_CXX_COMPILER="$(getCXX)" -DCMAKE_C_COMPILER="$(getCC)" -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" $target &>"$logfile" || ret=$?
+            cmake -G "Unix Makefiles" "$cmake_policy" -DCMAKE_OSX_SYSROOT="/" -DCMAKE_OSX_DEPLOYMENT_TARGET="" -DSDL_gpu_DISABLE_OPENGL=ON -DSDL_gpu_DISABLE_GLES=OFF -DCMAKE_CXX_COMPILER="$(getCXX)" -DCMAKE_C_COMPILER="$(getCC)" -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" $target &>"$logfile" || ret=$?
         ;;
         droid)
             apply_patch "${sources[0]}"
             if [ "$(getHost)" == "win32" ]; then
-                cmake -G "MSYS Makefiles" -DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_AR="${CROSS_SYS_PREFIX}$(getHostPrefix)-ar" -DCMAKE_RANLIB="${CROSS_SYS_PREFIX}$(getHostPrefix)-ranlib" -DSDL_gpu_DISABLE_OPENGL=ON -DSDL_gpu_DISABLE_GLES=OFF -DSDL_gpu_DYNAMIC_GLES_3=ON -DCMAKE_CXX_COMPILER="$(getCXX)" -DCMAKE_C_COMPILER="$(getCC)" -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" $target &>"$logfile" || ret=$?
+                cmake -G "MSYS Makefiles" "$cmake_policy" -DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_AR="${CROSS_SYS_PREFIX}$(getHostPrefix)-ar" -DCMAKE_RANLIB="${CROSS_SYS_PREFIX}$(getHostPrefix)-ranlib" -DSDL_gpu_DISABLE_OPENGL=ON -DSDL_gpu_DISABLE_GLES=OFF -DSDL_gpu_DYNAMIC_GLES_3=ON -DCMAKE_CXX_COMPILER="$(getCXX)" -DCMAKE_C_COMPILER="$(getCC)" -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" $target &>"$logfile" || ret=$?
             elif [ "$(getHost)" == "linux-like" ]; then
-                cmake -G "Unix Makefiles" -DCMAKE_SYSTEM_NAME=Darwin -DSDL_gpu_DISABLE_OPENGL=ON -DSDL_gpu_DISABLE_GLES=OFF -DSDL_gpu_DYNAMIC_GLES_3=ON -DCMAKE_CXX_COMPILER="$(getCXX)" -DCMAKE_C_COMPILER="$(getCC)" -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" $target &>"$logfile" || ret=$?
+                cmake -G "Unix Makefiles" "$cmake_policy" -DCMAKE_SYSTEM_NAME=Darwin -DSDL_gpu_DISABLE_OPENGL=ON -DSDL_gpu_DISABLE_GLES=OFF -DSDL_gpu_DYNAMIC_GLES_3=ON -DCMAKE_CXX_COMPILER="$(getCXX)" -DCMAKE_C_COMPILER="$(getCC)" -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" $target &>"$logfile" || ret=$?
             else
-                cmake -G "Unix Makefiles" -DSDL_gpu_DISABLE_OPENGL=ON -DSDL_gpu_DISABLE_GLES=OFF -DSDL_gpu_DYNAMIC_GLES_3=ON -DCMAKE_CXX_COMPILER="$(getCXX)" -DCMAKE_C_COMPILER="$(getCC)" -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" $target &>"$logfile" || ret=$?
+                cmake -G "Unix Makefiles" "$cmake_policy" -DSDL_gpu_DISABLE_OPENGL=ON -DSDL_gpu_DISABLE_GLES=OFF -DSDL_gpu_DYNAMIC_GLES_3=ON -DCMAKE_CXX_COMPILER="$(getCXX)" -DCMAKE_C_COMPILER="$(getCC)" -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" $target &>"$logfile" || ret=$?
             fi
         ;;
         linux-like)
-            cmake -G "Unix Makefiles" -DSDL_gpu_USE_SYSTEM_EPOXY=ON -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" &>"$logfile" || ret=$?
+            cmake -G "Unix Makefiles" "$cmake_policy" -DSDL_gpu_USE_SYSTEM_EPOXY=ON -DCMAKE_C_FLAGS="$lcf" -DCMAKE_CXX_FLAGS="$lcxf" &>"$logfile" || ret=$?
         ;;
     esac
     

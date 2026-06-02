@@ -27,7 +27,7 @@ class BaseReader;
 class Layer {
 protected:
 	BlendModeId blendingModeSupported(int rm);
-	void drawLayerToGPUTarget(GPU_Target *target, AnimationInfo *anim, GPU_Rect &clip, float x, float y);
+	void drawLayerToGPUTarget(RenderTarget *target, AnimationInfo *anim, RenderRect &clip, float x, float y);
 
 public:
 	BaseReader **reader{nullptr};
@@ -46,7 +46,7 @@ public:
 	// Refresh the internal frame, old == true equals to old_ai call from estimateNextDuration, did update?
 	virtual bool update(bool old) = 0;
 	// Draw the internal frame to target, rm stands for refresh_mode, transform stands for no blending (copy for transformation)
-	virtual void refresh(GPU_Target *target, GPU_Rect &clip, float x, float y, bool centre_coordinates, int rm, float scalex = 1.0, float scaley = 1.0) = 0;
+	virtual void refresh(RenderTarget *target, RenderRect &clip, float x, float y, bool centre_coordinates, int rm, float scalex = 1.0, float scaley = 1.0) = 0;
 	// Commit the internal state
 	virtual void commit() {}
 	// Standard way of intercommunication: message, return code

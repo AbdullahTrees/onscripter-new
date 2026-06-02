@@ -14,8 +14,8 @@
 #include "Engine/Media/SubtitleDriver.hpp"
 #include "Engine/Readers/Base.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_gpu.h>
+#include "Support/SDLCompat.hpp"
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <atomic>
 #include <deque>
@@ -36,7 +36,7 @@ class SubtitleLayer : public Layer {
 	int subCoordsHandles[SubtitleDriver::NIMGS_MAX];
 	int subColorsHandles[SubtitleDriver::NIMGS_MAX];
 
-	GPU_Image *subImages{nullptr};
+	RenderImage *subImages{nullptr};
 
 	struct SubtitleFrame {
 		uint64_t start_timestamp;
@@ -52,7 +52,7 @@ class SubtitleLayer : public Layer {
 	std::atomic<bool> should_finish{false};
 	bool playback{false};
 
-	GPU_Image *current_frame{nullptr};
+	RenderImage *current_frame{nullptr};
 	int current_frame_format{0};
 	uint64_t current_timestamp{0xFFFFFFFFFFFFFFFF};
 
@@ -65,7 +65,7 @@ public:
 
 	void doDecoding();
 	bool update(bool /*old*/) override;
-	void refresh(GPU_Target *target, GPU_Rect &clip, float x, float y, bool centre_coordinates, int /*rm*/, float /*scalex*/, float /*scaley*/) override;
+	void refresh(RenderTarget *target, RenderRect &clip, float x, float y, bool centre_coordinates, int /*rm*/, float /*scalex*/, float /*scaley*/) override;
 	BlendModeId blendingMode(int rm) override {
 		return blendingModeSupported(rm);
 	}

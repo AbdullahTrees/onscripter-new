@@ -7,7 +7,7 @@
  *  Consult LICENSE file for licensing terms and copyright holders.
  */
 
-#if defined(MACOSX) || defined(LINUX) || defined(WIN32)
+#if !defined(ONS_USE_SDL3) && (defined(MACOSX) || defined(LINUX) || defined(WIN32))
 
 #if !defined(SDL_GPU_USE_EPOXY)
 #define SDL_GPU_USE_EPOXY 1
@@ -18,7 +18,7 @@
 
 #include <SDL2/SDL_gpu_OpenGL_2.h>
 
-GPU_RendererID GPUController::makeRendererIdGL2() {
+RenderDriverId GPUController::makeRendererIdGL2() {
 	return GPU_MakeRendererID("OpenGL 2", GPU_RENDERER_OPENGL_2, 2, 1);
 	;
 }
@@ -26,7 +26,7 @@ GPU_RendererID GPUController::makeRendererIdGL2() {
 void GPUController::initRendererFlagsGL2() {
 }
 
-int GPUController::getImageFormatGL2(GPU_Image *image) {
+int GPUController::getImageFormatGL2(RenderImage *image) {
 	return static_cast<GPU_IMAGE_DATA *>(image->data)->format;
 }
 

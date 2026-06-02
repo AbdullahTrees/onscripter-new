@@ -14,7 +14,7 @@
 #include "Engine/Entities/Font.hpp"
 #include "Support/Unicode.hpp"
 
-#include <SDL2/SDL_gpu.h>
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <utility>
 #include <deque>
@@ -643,7 +643,7 @@ void DialogueController::getRenderingBounds(TextRenderingState &state, bool visi
 	// This may not be optimal but conforms to ONScripter ABI logic: position anything you are asked to
 	// at specified coordinates. Check render(...) function for more info, which uses p.position.x for
 	// x rendering on a target. Also note, how the resulting image is used outside of DialogueController.
-	GPU_Rect max{0, 0, 0, 0};
+	RenderRect max{0, 0, 0, 0};
 	bool first{true};
 
 	int i{0};
@@ -683,13 +683,13 @@ void DialogueController::getRenderingBounds(TextRenderingState &state, bool visi
 	state.bounds = max;
 }
 
-void DialogueController::renderToTarget(GPU_Target *dst, GPU_Rect *dstClip, char *buf, Fontinfo *f_info, bool paddingShift, int tightlyFit) {
+void DialogueController::renderToTarget(RenderTarget *dst, RenderRect *dstClip, char *buf, Fontinfo *f_info, bool paddingShift, int tightlyFit) {
 	std::u16string text;
 	decodeUTF8String(buf, text);
 	renderToTarget(dst, dstClip, text, f_info, paddingShift, tightlyFit);
 }
 
-void DialogueController::renderToTarget(GPU_Target *dst, GPU_Rect *dstClip, std::u16string &text, Fontinfo *f_info, bool paddingShift, int tightlyFit) {
+void DialogueController::renderToTarget(RenderTarget *dst, RenderRect *dstClip, std::u16string &text, Fontinfo *f_info, bool paddingShift, int tightlyFit) {
 	Fontinfo fi = f_info ? *f_info : ons.sentence_font;
 	while (fi.styleStack.size() > 1) fi.styleStack.pop();
 	TextRenderingState state;
@@ -953,8 +953,8 @@ void DialogueController::render(TextRenderingState &state) {
 	}
 }
 
-void DialogueController::renderDialogueToTarget(GPU_Target *dst, GPU_Rect *dstClip, int /*refresh_mode*/, bool camera) {
-	GPU_Rect offset = {0, 0, static_cast<float>(ons.text_gpu->w), static_cast<float>(ons.text_gpu->h)};
+void DialogueController::renderDialogueToTarget(RenderTarget *dst, RenderRect *dstClip, int /*refresh_mode*/, bool camera) {
+	RenderRect offset = {0, 0, static_cast<float>(ons.text_gpu->w), static_cast<float>(ons.text_gpu->h)};
 
 	if (camera) {
 		offset.x += ons.camera.center_pos.x;
@@ -975,7 +975,7 @@ void DialogueController::renderDialogueToTarget(GPU_Target *dst, GPU_Rect *dstCl
 		}
 
 		if (dialogueRenderState.segmentIndex != -1) {
-			//GPU_Rect ourClip {0,0,0,0};
+			//RenderRect ourClip {0,0,0,0};
 			dialogueRenderState.dst.target = dst;
 			//dialogueRenderState.dstClip = &ourClip;
 			dialogueRenderState.offset                         = offset;

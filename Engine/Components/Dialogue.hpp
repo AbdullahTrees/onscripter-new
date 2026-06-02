@@ -18,8 +18,8 @@
 #include "Engine/Handlers/Script.hpp"
 #include "Support/Clock.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_gpu.h>
+#include "Support/SDLCompat.hpp"
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <utility>
 #include <deque>
@@ -85,7 +85,7 @@ struct DialoguePiece {
 	std::vector<RenderBufferGlyph> charRenderBuffer;
 	std::vector<Fontinfo> fontInfos;
 	float horizontalResize{1.0};
-	GPU_Rect position{0, 0, 0, 0}; // where this piece should go when it is blitted
+	RenderRect position{0, 0, 0, 0}; // where this piece should go when it is blitted
 	int borderPadding{0};          // 10 px of padding to be applied to all sides of the piece to make absolutely sure there is enough room for text border
 	int baseline{0};               // where to find the baseline, in pixels counted downwards from the top of the padding
 	float xPxLeft{0}, xPxRight{0};
@@ -174,12 +174,12 @@ struct DialogueClickPart {
 
 struct TextRenderingState {
 	struct TextRenderingDst {
-		GPU_Target *target{nullptr};
+		RenderTarget *target{nullptr};
 		GPUBigImage *bigImage{nullptr};
 	} dst;
-	GPU_Rect *dstClip{nullptr};
-	GPU_Rect bounds{0, 0, 0, 0};
-	GPU_Rect offset{0, 0, 0, 0};
+	RenderRect *dstClip{nullptr};
+	RenderRect bounds{0, 0, 0, 0};
+	RenderRect offset{0, 0, 0, 0};
 	bool shiftSpriteDrawByBorderPadding{true};
 	int tightlyFit{FIT_MODE::FIT_BOTH};
 	int segmentIndex{-1};
@@ -212,8 +212,8 @@ struct TextRenderingState {
 		dstClip                        = nullptr;
 		shiftSpriteDrawByBorderPadding = true;
 		segmentIndex                   = -1;
-		bounds                         = GPU_Rect();
-		offset                         = GPU_Rect();
+		bounds                         = RenderRect();
+		offset                         = RenderRect();
 	}
 };
 
@@ -306,7 +306,7 @@ public:
 	TextRenderingState dialogueRenderState, nameRenderState; //-V730_NOINIT
 	DialogueProcessingState dialogueProcessingState;
 	void render(TextRenderingState &state);
-	void renderDialogueToTarget(GPU_Target *dst, GPU_Rect *dstClip, int refresh_mode, bool camera = true);
+	void renderDialogueToTarget(RenderTarget *dst, RenderRect *dstClip, int refresh_mode, bool camera = true);
 
 	bool isDialogueSegmentRendered(int segment) {
 		bool r{true};
@@ -350,8 +350,8 @@ public:
 	void layoutName();
 	void layoutDialogue();
 	// for specialscrollable rendering
-	void renderToTarget(GPU_Target *dst, GPU_Rect *dstClip, char *buf, Fontinfo *f_info = nullptr, bool paddingShift = true, int tightlyFit = FIT_MODE::FIT_BOTH);
-	void renderToTarget(GPU_Target *dst, GPU_Rect *dstClip, std::u16string &text, Fontinfo *f_info = nullptr, bool paddingShift = true, int tightlyFit = FIT_MODE::FIT_BOTH);
+	void renderToTarget(RenderTarget *dst, RenderRect *dstClip, char *buf, Fontinfo *f_info = nullptr, bool paddingShift = true, int tightlyFit = FIT_MODE::FIT_BOTH);
+	void renderToTarget(RenderTarget *dst, RenderRect *dstClip, std::u16string &text, Fontinfo *f_info = nullptr, bool paddingShift = true, int tightlyFit = FIT_MODE::FIT_BOTH);
 	// for lsp drawing (returns image size and decoded text)
 	void prepareForRendering(const char *buf, Fontinfo &f_info, TextRenderingState &state, uint16_t &w, uint16_t &h);
 

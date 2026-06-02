@@ -269,7 +269,7 @@ int resizeSurface(SDL_Surface *src, SDL_Surface *dst) {
 }
 
 uint32_t getSurfacePixel(SDL_Surface *surface, int x, int y) {
-	int bpp = surface->format->BytesPerPixel;
+	int bpp = onsSurfaceBytesPerPixel(surface);
 	/* Here p is the address to the pixel we want to retrieve */
 	uint8_t *p = static_cast<uint8_t *>(surface->pixels) + y * surface->pitch + x * bpp;
 
@@ -291,7 +291,7 @@ uint32_t getSurfacePixel(SDL_Surface *surface, int x, int y) {
 }
 
 void setSurfacePixel(SDL_Surface *surface, int x, int y, uint32_t pixel) {
-	int bpp = surface->format->BytesPerPixel;
+	int bpp = onsSurfaceBytesPerPixel(surface);
 	/* Here p is the address to the pixel we want to set */
 	uint8_t *p = static_cast<uint8_t *>(surface->pixels) + y * surface->pitch + x * bpp;
 
@@ -322,7 +322,7 @@ void setSurfacePixel(SDL_Surface *surface, int x, int y, uint32_t pixel) {
 	}
 }
 
-int doClipping(GPU_Rect *dst, GPU_Rect *clip, GPU_Rect *clipped) {
+int doClipping(RenderRect *dst, RenderRect *clip, RenderRect *clipped) {
 	if (clipped)
 		clipped->x = clipped->y = 0;
 

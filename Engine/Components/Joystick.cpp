@@ -10,7 +10,7 @@
 #include "Engine/Components/Joystick.hpp"
 #include "Engine/Core/ONScripter.hpp"
 
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 
 #include <array>
 #include <unordered_map>
@@ -684,10 +684,10 @@ int JoystickController::ownInit() {
 		nativeControllers.push_back(std::move(sc));
 #endif
 
-	if (SDL_InitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC) == 0) {
+	if (onsSDLInitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC)) {
 		bool undefinedFound{false};
-		for (int i = 0; i < SDL_NumJoysticks(); i++) {
-			SDL_Joystick *joy = SDL_JoystickOpen(i);
+		for (int i = 0; i < onsNumJoysticks(); i++) {
+			SDL_Joystick *joy = onsJoystickOpenByIndex(i);
 			if (joy) {
 				SDL_JoystickID id = SDL_JoystickInstanceID(joy);
 				if (id >= 0) {
@@ -698,7 +698,7 @@ int JoystickController::ownInit() {
 						undefinedFound = true;
 					}
 
-					sendToLog(LogLevel::Info, "Initialising joystick(%d -> %d): %s\n", i, id, SDL_JoystickNameForIndex(i));
+					sendToLog(LogLevel::Info, "Initialising joystick(%d -> %d): %s\n", i, id, onsJoystickNameForIndex(i));
 
 					joystick[id] = Info{joy, guid};
 
@@ -882,7 +882,7 @@ SDL_Event JoystickController::transAxis(SDL_JoyAxisEvent &axisEvent) {
 	SDL_Event eventbase{};
 	SDL_KeyboardEvent &event = eventbase.key;
 
-	event.keysym.scancode = SDL_SCANCODE_UNKNOWN;
+	onsKeyboardScancode(event) = SDL_SCANCODE_UNKNOWN;
 
 	auto &info = joystick[axisEvent.which];
 	if (info.handler == nullptr) {
@@ -903,16 +903,16 @@ SDL_Event JoystickController::transAxis(SDL_JoyAxisEvent &axisEvent) {
 					// Unpress the button
 					map                   = info.prevAxis == 2 ? KEYMAP[13] : KEYMAP[14];
 					event.type            = SDL_KEYUP;
-					event.keysym.scancode = map;
+					onsKeyboardScancode(event) = map;
 					info.prevAxis         = -1;
 				} else {
 					event.type            = SDL_KEYDOWN;
-					event.keysym.scancode = map;
+					onsKeyboardScancode(event) = map;
 					info.prevAxis         = axisEvent.axis;
 				}
 			} else if (axisEvent.value <= 0 && axisEvent.axis == info.prevAxis) {
 				event.type            = SDL_KEYUP;
-				event.keysym.scancode = map;
+				onsKeyboardScancode(event) = map;
 				info.prevAxis         = -1;
 			}
 		}
@@ -926,10 +926,10 @@ SDL_Event JoystickController::transAxis(SDL_JoyAxisEvent &axisEvent) {
 		if (axis != info.prevAxis) {
 			if (axis == -1) {
 				event.type            = SDL_KEYUP;
-				event.keysym.scancode = axisMap[info.prevAxis];
+				onsKeyboardScancode(event) = axisMap[info.prevAxis];
 			} else {
 				event.type            = SDL_KEYDOWN;
-				event.keysym.scancode = axisMap[axis];
+				onsKeyboardScancode(event) = axisMap[axis];
 			}
 
 			info.prevAxis = axis;

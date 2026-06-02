@@ -11,7 +11,7 @@
 
 #include "External/Compatibility.hpp"
 
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 #include <png.h>
 
 #pragma once

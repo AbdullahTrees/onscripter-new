@@ -72,7 +72,7 @@ int GlyphAtlasController::ownDeinit() {
 	return 0;
 }
 
-bool GlyphAtlasController::add(int w, int h, GPU_Rect &pos) {
+bool GlyphAtlasController::add(int w, int h, RenderRect &pos) {
 	auto rect = root.insert(w, h);
 	if (!rect) {
 		return false;

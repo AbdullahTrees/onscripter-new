@@ -12,8 +12,8 @@
 #include "External/Compatibility.hpp"
 #include "Engine/Components/Base.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_gpu.h>
+#include "Support/SDLCompat.hpp"
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <memory>
 
@@ -46,8 +46,8 @@ public:
 		root.reset(width, height);
 	}
 
-	bool add(int w, int h, GPU_Rect &pos);
+	bool add(int w, int h, RenderRect &pos);
 	void reset();
 
-	GPU_Image *atlas{nullptr};
+	RenderImage *atlas{nullptr};
 };

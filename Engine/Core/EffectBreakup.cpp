@@ -48,7 +48,7 @@ bool ONScripter::breakupInitRequired(BreakupID id) {
 	return breakupData.count(id) == 0;
 }
 
-void ONScripter::initBreakup(BreakupID id, GPU_Image *src, GPU_Rect *src_rect) {
+void ONScripter::initBreakup(BreakupID id, RenderImage *src, RenderRect *src_rect) {
 	//sendToLog(LogLevel::Info,"breakup called with breakup factor %u and canvas_w/h %u %u\n", breakupFactor, ons.canvas_width, ons.canvas_height);
 	int cellFactor = ons.new_breakup_implementation ? BREAKUP_CELLSEPARATION : BREAKUP_CELLWIDTH;
 	int w{0}, h{0};
@@ -81,7 +81,7 @@ void ONScripter::initBreakup(BreakupID id, GPU_Image *src, GPU_Rect *src_rect) {
 		buildBreakupCellforms();
 		if (!breakup_cellform_index_grid) {
 			breakup_cellform_index_grid    = gpu.createImage(numCellsX, numCellsY, 4);
-			breakup_cellform_index_surface = SDL_CreateRGBSurface(SDL_SWSURFACE, numCellsX, numCellsY, 32, 0, 0, 0, 0);
+			breakup_cellform_index_surface = onsCreateRGBSurface(SDL_SWSURFACE, numCellsX, numCellsY, 32, 0, 0, 0, 0);
 		}
 	}
 }
@@ -299,7 +299,7 @@ void ONScripter::effectBreakupOld(BreakupID id, int breakupFactor) {
 		}
 		int c = (myCells[n].radius * 255) / BREAKUP_CELLFORMS;
 		setSurfacePixel(breakup_cellform_index_surface, myCells[n].cell_x, myCells[n].cell_y,
-		                SDL_MapRGBA(breakup_cellform_index_surface->format, c, c, c, 255));
+		                onsMapRGBA(breakup_cellform_index_surface, c, c, c, 255));
 	}
 	GPU_GetTarget(breakup_cellform_index_grid);
 	gpu.updateImage(breakup_cellform_index_grid, nullptr, breakup_cellform_index_surface, nullptr, false);

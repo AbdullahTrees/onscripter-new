@@ -853,7 +853,7 @@ int main(int argc, char **argv) {
 	//  WindowController (for basic hints)
 	//  ONScripter (ScripParser) :: initSDL {
 	//   SDL [is a dependency for most of the code]
-	//   SDL_gpu [is a dependency for most of the code]
+	//   RendererBackend [is a dependency for most of the graphics-facing code]
 	//   Window creation
 	//   JoystickController
 	//   GPUController

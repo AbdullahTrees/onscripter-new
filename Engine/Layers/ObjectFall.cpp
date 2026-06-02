@@ -11,7 +11,7 @@
 #include "Engine/Core/ONScripter.hpp"
 #include "Engine/Graphics/GPU.hpp"
 
-#include <SDL2/SDL_gpu.h>
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <cmath>
 #include <random>
@@ -123,7 +123,7 @@ void ObjectFallLayer::setWind(int32_t factor) {
 	// But changing the wind later won't affect drops that were already created.
 }
 
-void ObjectFallLayer::setBaseDrop(GPU_Image *newBaseDrop) {
+void ObjectFallLayer::setBaseDrop(RenderImage *newBaseDrop) {
 	drops.clear();
 	gpu.freeImage(baseDrop);
 	baseDrop = newBaseDrop;
@@ -244,7 +244,7 @@ bool ObjectFallLayer::update(bool old) {
 	return true;
 }
 
-void ObjectFallLayer::refresh(GPU_Target *target, GPU_Rect &clip, float x, float y, bool /*centre_coordinates*/, int rm, float /*scalex*/, float /*scaley*/) {
+void ObjectFallLayer::refresh(RenderTarget *target, RenderRect &clip, float x, float y, bool /*centre_coordinates*/, int rm, float /*scalex*/, float /*scaley*/) {
 	bool scene   = (rm & REFRESH_BEFORESCENE_MODE && old_drops.has());
 	auto &rdrops = scene ? old_drops.get() : drops;
 

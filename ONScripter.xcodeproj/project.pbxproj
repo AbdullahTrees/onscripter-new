@@ -138,7 +138,6 @@
 		CE61AC6720E3C0E1000B31C7 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C0A60921747A490004A9BCC /* CoreAudio.framework */; };
 		CE61AC6820E3C0E1000B31C7 /* libSDL2main.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D720E3821700C286AF /* libSDL2main.a */; };
 		CE61AC6920E3C0E1000B31C7 /* libepoxy.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D820E3821700C286AF /* libepoxy.a */; };
-		CE61AC6A20E3C0E1000B31C7 /* libsmpeg2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D920E3821700C286AF /* libsmpeg2.a */; };
 		CE61AC6B20E3C0E1000B31C7 /* libSDL2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DA20E3821700C286AF /* libSDL2.a */; };
 		CE61AC6C20E3C0E1000B31C7 /* libass.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DB20E3821700C286AF /* libass.a */; };
 		CE61AC6D20E3C0E1000B31C7 /* libSDL2_test.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DC20E3821700C286AF /* libSDL2_test.a */; };
@@ -243,7 +242,6 @@
 		CE9D80E020E3CA9200670C17 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C0A60921747A490004A9BCC /* CoreAudio.framework */; };
 		CE9D80E120E3CA9200670C17 /* libSDL2main.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D720E3821700C286AF /* libSDL2main.a */; };
 		CE9D80E220E3CA9200670C17 /* libepoxy.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D820E3821700C286AF /* libepoxy.a */; };
-		CE9D80E320E3CA9200670C17 /* libsmpeg2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D920E3821700C286AF /* libsmpeg2.a */; };
 		CE9D80E420E3CA9200670C17 /* libSDL2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DA20E3821700C286AF /* libSDL2.a */; };
 		CE9D80E520E3CA9200670C17 /* libass.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DB20E3821700C286AF /* libass.a */; };
 		CE9D80E620E3CA9200670C17 /* libSDL2_test.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DC20E3821700C286AF /* libSDL2_test.a */; };
@@ -345,7 +343,6 @@
 		CEE126D620E3792200C286AF /* UIKitWrapper.mm in Sources */ = {isa = PBXBuildFile; fileRef = CEFEC4701D52B2CA00957675 /* UIKitWrapper.mm */; };
 		CEE126F120E3821800C286AF /* libSDL2main.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D720E3821700C286AF /* libSDL2main.a */; };
 		CEE126F220E3821800C286AF /* libepoxy.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D820E3821700C286AF /* libepoxy.a */; };
-		CEE126F320E3821800C286AF /* libsmpeg2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D920E3821700C286AF /* libsmpeg2.a */; };
 		CEE126F420E3821800C286AF /* libSDL2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DA20E3821700C286AF /* libSDL2.a */; };
 		CEE126F520E3821800C286AF /* libass.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DB20E3821700C286AF /* libass.a */; };
 		CEE126F620E3821800C286AF /* libSDL2_test.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DC20E3821700C286AF /* libSDL2_test.a */; };
@@ -398,7 +395,6 @@
 		CEE1277820E3A6BD00C286AF /* libavformat.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276120E3A6BC00C286AF /* libavformat.a */; };
 		CEE1277920E3A6BD00C286AF /* libogg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276220E3A6BC00C286AF /* libogg.a */; };
 		CEE1277B20E3A6BD00C286AF /* libSDL2_mixer.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276420E3A6BC00C286AF /* libSDL2_mixer.a */; };
-		CEE1277C20E3A6BD00C286AF /* libsmpeg2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276520E3A6BC00C286AF /* libsmpeg2.a */; };
 		CEE1277D20E3A6BD00C286AF /* libavcodec.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276620E3A6BC00C286AF /* libavcodec.a */; };
 		CEE1277E20E3A6BD00C286AF /* libfreetype.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276720E3A6BC00C286AF /* libfreetype.a */; };
 		CEE1277F20E3A6BD00C286AF /* libfribidi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276820E3A6BC00C286AF /* libfribidi.a */; };
@@ -755,7 +751,6 @@
 		CEE1268320E3707E00C286AF /* onscripter-ru-osx64h.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "onscripter-ru-osx64h.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		CEE126D720E3821700C286AF /* libSDL2main.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2main.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2main.a; sourceTree = "<group>"; };
 		CEE126D820E3821700C286AF /* libepoxy.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libepoxy.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libepoxy.a; sourceTree = "<group>"; };
-		CEE126D920E3821700C286AF /* libsmpeg2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsmpeg2.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libsmpeg2.a; sourceTree = "<group>"; };
 		CEE126DA20E3821700C286AF /* libSDL2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2.a; sourceTree = "<group>"; };
 		CEE126DB20E3821700C286AF /* libass.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libass.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libass.a; sourceTree = "<group>"; };
 		CEE126DC20E3821700C286AF /* libSDL2_test.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_test.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2_test.a; sourceTree = "<group>"; };
@@ -798,7 +793,6 @@
 		CEE1273B20E3A67F00C286AF /* libavutil.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavutil.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libavutil.a"; sourceTree = "<group>"; };
 		CEE1273C20E3A67F00C286AF /* libz.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libz.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libz.a"; sourceTree = "<group>"; };
 		CEE1273D20E3A68000C286AF /* libbz2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbz2.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libbz2.a"; sourceTree = "<group>"; };
-		CEE1273E20E3A68000C286AF /* libsmpeg2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsmpeg2.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libsmpeg2.a"; sourceTree = "<group>"; };
 		CEE1273F20E3A68000C286AF /* libvorbis.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbis.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libvorbis.a"; sourceTree = "<group>"; };
 		CEE1274020E3A68000C286AF /* libSDL2main.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2main.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libSDL2main.a"; sourceTree = "<group>"; };
 		CEE1274120E3A68000C286AF /* libharfbuzz.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libharfbuzz.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libharfbuzz.a"; sourceTree = "<group>"; };
@@ -816,7 +810,6 @@
 		CEE1276220E3A6BC00C286AF /* libogg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libogg.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libogg.a"; sourceTree = "<group>"; };
 		CEE1276320E3A6BC00C286AF /* libSDL2main.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2main.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libSDL2main.a"; sourceTree = "<group>"; };
 		CEE1276420E3A6BC00C286AF /* libSDL2_mixer.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_mixer.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libSDL2_mixer.a"; sourceTree = "<group>"; };
-		CEE1276520E3A6BC00C286AF /* libsmpeg2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsmpeg2.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libsmpeg2.a"; sourceTree = "<group>"; };
 		CEE1276620E3A6BC00C286AF /* libavcodec.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavcodec.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libavcodec.a"; sourceTree = "<group>"; };
 		CEE1276720E3A6BC00C286AF /* libfreetype.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfreetype.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libfreetype.a"; sourceTree = "<group>"; };
 		CEE1276820E3A6BC00C286AF /* libfribidi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfribidi.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libfribidi.a"; sourceTree = "<group>"; };
@@ -884,7 +877,6 @@
 				CEE1277820E3A6BD00C286AF /* libavformat.a in Frameworks */,
 				CEE1277920E3A6BD00C286AF /* libogg.a in Frameworks */,
 				CEE1277B20E3A6BD00C286AF /* libSDL2_mixer.a in Frameworks */,
-				CEE1277C20E3A6BD00C286AF /* libsmpeg2.a in Frameworks */,
 				CEE1277D20E3A6BD00C286AF /* libavcodec.a in Frameworks */,
 				CEE1277E20E3A6BD00C286AF /* libfreetype.a in Frameworks */,
 				CEE1277F20E3A6BD00C286AF /* libfribidi.a in Frameworks */,
@@ -919,7 +911,6 @@
 				CE61AC6720E3C0E1000B31C7 /* CoreAudio.framework in Frameworks */,
 				CE61AC6820E3C0E1000B31C7 /* libSDL2main.a in Frameworks */,
 				CE61AC6920E3C0E1000B31C7 /* libepoxy.a in Frameworks */,
-				CE61AC6A20E3C0E1000B31C7 /* libsmpeg2.a in Frameworks */,
 				CE61AC6B20E3C0E1000B31C7 /* libSDL2.a in Frameworks */,
 				CE61AC6C20E3C0E1000B31C7 /* libass.a in Frameworks */,
 				CE61AC6D20E3C0E1000B31C7 /* libSDL2_test.a in Frameworks */,
@@ -967,7 +958,6 @@
 				CE9D80E020E3CA9200670C17 /* CoreAudio.framework in Frameworks */,
 				CE9D80E120E3CA9200670C17 /* libSDL2main.a in Frameworks */,
 				CE9D80E220E3CA9200670C17 /* libepoxy.a in Frameworks */,
-				CE9D80E320E3CA9200670C17 /* libsmpeg2.a in Frameworks */,
 				CE9D80E420E3CA9200670C17 /* libSDL2.a in Frameworks */,
 				CE9D80E520E3CA9200670C17 /* libass.a in Frameworks */,
 				CE9D80E620E3CA9200670C17 /* libSDL2_test.a in Frameworks */,
@@ -1039,7 +1029,6 @@
 				CEE1270B20E3823700C286AF /* CoreAudio.framework in Frameworks */,
 				CEE126F120E3821800C286AF /* libSDL2main.a in Frameworks */,
 				CEE126F220E3821800C286AF /* libepoxy.a in Frameworks */,
-				CEE126F320E3821800C286AF /* libsmpeg2.a in Frameworks */,
 				CEE126F420E3821800C286AF /* libSDL2.a in Frameworks */,
 				CEE126F520E3821800C286AF /* libass.a in Frameworks */,
 				CEE126F620E3821800C286AF /* libSDL2_test.a in Frameworks */,
@@ -1158,11 +1147,9 @@
 				CEE1276420E3A6BC00C286AF /* libSDL2_mixer.a */,
 				CEE1277020E3A6BD00C286AF /* libSDL2.a */,
 				CEE1274020E3A68000C286AF /* libSDL2main.a */,
-				CEE1273E20E3A68000C286AF /* libsmpeg2.a */,
 				CEE1276F20E3A6BD00C286AF /* libswresample.a */,
 				CEE1274520E3A68000C286AF /* libswscale.a */,
 				CEE1276320E3A6BC00C286AF /* libSDL2main.a */,
-				CEE1276520E3A6BC00C286AF /* libsmpeg2.a */,
 				CEE1276E20E3A6BD00C286AF /* libswscale.a */,
 				CEE1273F20E3A68000C286AF /* libvorbis.a */,
 				CEE1273220E3A67F00C286AF /* libvorbisenc.a */,
@@ -1196,7 +1183,6 @@
 				CEE126DC20E3821700C286AF /* libSDL2_test.a */,
 				CEE126DA20E3821700C286AF /* libSDL2.a */,
 				CEE126D720E3821700C286AF /* libSDL2main.a */,
-				CEE126D920E3821700C286AF /* libsmpeg2.a */,
 				CEE126E920E3821800C286AF /* libswresample.a */,
 				CEE126DD20E3821700C286AF /* libswscale.a */,
 				CEE126ED20E3821800C286AF /* libusb-1.0.a */,

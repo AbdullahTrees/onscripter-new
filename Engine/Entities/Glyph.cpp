@@ -73,7 +73,7 @@ bool GlyphValues::buildGPUImage(bool border, GlyphAtlasController *atlas) {
 
 	SDL_Surface *src_surface = border ? border_bitmap : bitmap;
 
-	//No need to rebuild GPU_Image
+	//No need to rebuild RenderImage
 	if ((border ? border_gpu : glyph_gpu) != nullptr)
 		return true;
 
@@ -86,7 +86,7 @@ bool GlyphValues::buildGPUImage(bool border, GlyphAtlasController *atlas) {
 	}
 
 	bool ret                    = true;
-	SDL_Surface *letter_surface = SDL_CreateRGBSurface(SDL_SWSURFACE, src_surface->w, src_surface->h, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
+	SDL_Surface *letter_surface = onsCreateRGBSurface(SDL_SWSURFACE, src_surface->w, src_surface->h, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
 
 	uint8_t *src_buffer = static_cast<uint8_t *>(src_surface->pixels);
 	uint8_t *alphap     = static_cast<uint8_t *>(letter_surface->pixels) + 3;
@@ -105,7 +105,7 @@ bool GlyphValues::buildGPUImage(bool border, GlyphAtlasController *atlas) {
 	img = gpu.copyImageFromSurface(letter_surface);
 
 	if (atlas) {
-		GPU_Rect rect;
+		RenderRect rect;
 		if (atlas->add(img->w + 2, img->h + 2, rect)) {
 
 			gpu.copyGPUImage(img, nullptr, &rect, atlas->atlas->target, rect.x + 1, rect.y + 1);

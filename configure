@@ -120,6 +120,7 @@ DROID_MIN_API=34
 DROID_BUILD=false
 DROID_ARCH=arm64
 DROID_TOOLCHAIN=""
+SDL3_RENDERER=false
 CROSS_TRIPLE=""
 TOOLCHAIN_PREFIX=""
 COMPILER_PREFIX=""
@@ -186,6 +187,8 @@ do
         DROID_TOOLCHAIN="$arg"
         TOOLCHAIN_PREFIX="${DROID_TOOLCHAIN}/bin/"
         ;;
+      --sdl3-renderer | -sdl3-renderer)
+        SDL3_RENDERER=true ;;
       --cross=* | -cross=*)
         CROSS_TRIPLE=$arg ;;
       --embed-path=* | =embed-path=*)
@@ -216,6 +219,7 @@ do
 	  --droid-build            build for droid
 	  --droid-arch=ARCH        build for droid arch: arm64|x86_64 (default is arm64)
 	  --droid-toolchain=DIR    path to droid toolchain (default is auto)
+	  --sdl3-renderer          build against SDL3/SDL3_image/SDL3_mixer and the SDL3_GPU backend
 	  --cross=TRIPLE           cross compilation triple
 	  --embed-path=EMBED       path to compiled embed binary (default is target compile)
 	__ENDHELP
@@ -394,6 +398,21 @@ if ! $UNSUPPORTED_COMPILER; then
   esac
 fi
 
+supports_cxx_linker_flag() {
+  local flag="$1"
+  local test_src test_bin ret
+  test_src="$(mktemp "${TMPDIR:-/tmp}/ons-link-XXXXXX.cpp")" || return 1
+  test_bin="$(mktemp "${TMPDIR:-/tmp}/ons-link-XXXXXX$EXE")" || {
+    rm -f "$test_src"
+    return 1
+  }
+  printf 'int main(){return 0;}\n' > "$test_src"
+  "$CXX" $CXXSTD "$test_src" "$flag" -o "$test_bin" >/dev/null 2>&1
+  ret=$?
+  rm -f "$test_src" "$test_bin"
+  return $ret
+}
+
 case "$CXX_TMP" in
   g++* | *apple*g++* | Apple* | *clang* | *\(GCC\)*)
     EXTRAOSCFLAGS="$EXTRAOSCFLAGS -Wall -Wextra" ;;
@@ -474,6 +493,9 @@ fi
 
 if [ -z "$WINDRES" ]; then
   WINDRES="${COMPILER_PREFIX}windres"
+  if ! command -v "$WINDRES" >/dev/null 2>&1 && command -v windres >/dev/null 2>&1; then
+    WINDRES=windres
+  fi
 fi
 
 if [ "x$MAKE" != "xmake" ]; then
@@ -541,10 +563,11 @@ case "$CXX_TMP:$SYS" in
   ;;
   *clang*:"MinGW")
     LINK_START_GROUP="-Wl,--start-group"
-    LINK_END_GROUP="-Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic -Wl,--end-group"
+    LINK_END_GROUP="-Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic -Wl,--end-group -lbcrypt"
     EXTRALDFLAGS="$EXTRALDFLAGS -static-libgcc"
     EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DWIN32 -DPTW32_STATIC_LIB -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00"
-    EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -lwinmm -lshlwapi -lws2_32 -lglu32 -lopengl32 -Wl,--wrap=SDL_LoadObject -Wl,--large-address-aware"
+    EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -lwinmm -lshlwapi -lws2_32 -lglu32 -lopengl32 -Wl,--wrap=SDL_LoadObject"
+    supports_cxx_linker_flag "-Wl,--large-address-aware" && EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -Wl,--large-address-aware"
   ;;
   *clang*:"Droid")
     LINK_START_GROUP="-Wl,--start-group"
@@ -555,10 +578,11 @@ case "$CXX_TMP:$SYS" in
   ;;
   *g++*:"MinGW")
     LINK_START_GROUP="-Wl,--start-group"
-    LINK_END_GROUP="-Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic -Wl,--end-group"
+    LINK_END_GROUP="-Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic -Wl,--end-group -lbcrypt"
     EXTRALDFLAGS="$EXTRALDFLAGS -static-libgcc -static-libstdc++ -mthreads"
     EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DWIN32 -DPTW32_STATIC_LIB -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -mthreads"
-    EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -lwinmm -lshlwapi -lws2_32 -lglu32 -lopengl32 -Wl,--wrap=SDL_LoadObject -Wl,--large-address-aware"
+    EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -lwinmm -lshlwapi -lws2_32 -lglu32 -lopengl32 -Wl,--wrap=SDL_LoadObject"
+    supports_cxx_linker_flag "-Wl,--large-address-aware" && EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -Wl,--large-address-aware"
   ;;
   g++*:"Posix" | *clang*:"Posix")
     LINK_START_GROUP="-Wl,--start-group"
@@ -584,6 +608,10 @@ case "$CXX_TMP:$SYS" in
     EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -Wl,-framework,OpenGL -Wl,-framework,VideoToolbox -Wl,-framework,CoreMedia"
   ;;
 esac
+
+if $SDL3_RENDERER; then
+  EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DONS_USE_SDL3"
+fi
 
 echo "done"
 
@@ -611,6 +639,10 @@ else
   echo "onscrlib native"
 fi
 
+if $SDL3_RENDERER; then
+  ONS_PKG_OPTS="$ONS_PKG_OPTS -O sdl3_renderer"
+fi
+
 mkdir -p "${BUILD_PATH}/Dependencies"
 
 pushd "$ONSCRLIB" &> /dev/null
@@ -622,7 +654,6 @@ popd &> /dev/null
 chmod +x "${BUILD_PATH}/Dependencies/build.sh"
 
 SDL_CONFIG="\$(EXTLIB)/bin/sdl2-config"
-SMPEG_CONFIG="\$(EXTLIB)/bin/smpeg2-config"
 FREETYPE_CONFIG="\$(EXTLIB)/bin/freetype-config"
 
 genlink z
@@ -630,10 +661,13 @@ genlink png
 genlink jpeg
 genlink SDL2main
 genlink SDL2_image
+genlink SDL3
+genlink SDL3_image
 genlink ogg
 genlink vorbis
 genlink vorbisfile
 genlink SDL2_mixer
+genlink SDL3_mixer
 genlink bz2
 genlink SDL2_gpu
 genlink avutil
@@ -664,6 +698,27 @@ if [ "$SYS" == "Droid" ]; then
 else
 	genlink usb -1.0
   genlink epoxy
+fi
+
+if $SDL3_RENDERER; then
+  SDL_SHADERCROSS_CFLAGS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross && PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --cflags sdl3-shadercross)"
+  SDL_SHADERCROSS_DEFS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross && printf '%s' '-DONS_USE_SDL3_SHADERCROSS')"
+  SDL_SHADERCROSS_VENDOR_LIBS="\$(wildcard \$(EXTLIB)/lib/libspirv-cross-c\$(LIBSUFFIX)) \$(wildcard \$(EXTLIB)/lib/libspirv-cross-glsl\$(LIBSUFFIX)) \$(wildcard \$(EXTLIB)/lib/libspirv-cross-hlsl\$(LIBSUFFIX)) \$(wildcard \$(EXTLIB)/lib/libspirv-cross-msl\$(LIBSUFFIX)) \$(wildcard \$(EXTLIB)/lib/libspirv-cross-cpp\$(LIBSUFFIX)) \$(wildcard \$(EXTLIB)/lib/libspirv-cross-reflect\$(LIBSUFFIX)) \$(wildcard \$(EXTLIB)/lib/libspirv-cross-core\$(LIBSUFFIX))"
+  SDL_SHADERCROSS_LIBS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross && PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --libs sdl3-shadercross) $SDL_SHADERCROSS_VENDOR_LIBS"
+  SDL_SHADERC_CFLAGS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross shaderc && PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --cflags shaderc)"
+  SDL_SHADERC_DEFS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross shaderc && printf '%s' '-DONS_USE_SDL3_SHADERC')"
+  SDL_SHADERC_LIBS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross shaderc && PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --libs shaderc)"
+  SDL_STACK_CFLAGS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --cflags sdl3 sdl3-image sdl3-mixer) $SDL_SHADERCROSS_CFLAGS $SDL_SHADERCROSS_DEFS $SDL_SHADERC_CFLAGS $SDL_SHADERC_DEFS"
+  SDL_STACK_LIBS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --static --libs sdl3 sdl3-image sdl3-mixer) $SDL_SHADERCROSS_LIBS $SDL_SHADERC_LIBS"
+  SDL_IMAGE_LIBS=""
+  SDL_MIXER_LIBS=""
+  RENDERER_LIBS=""
+else
+  SDL_STACK_CFLAGS="\$(shell \$(SDL_CONFIG) --cflags)"
+  SDL_STACK_LIBS="\$(shell \$(SDL_CONFIG) --static-libs)"
+  SDL_IMAGE_LIBS="$LINKSDL2_image"
+  SDL_MIXER_LIBS="$LINKSDL2_mixer"
+  RENDERER_LIBS="$LINKSDL2_gpu $LINKepoxy"
 fi
 
 # ---------- Embedded resources configuration ----------
@@ -758,6 +813,7 @@ SOURCES=(
   'Engine/Graphics/GPU.cpp'
   'Engine/Graphics/PNG.cpp'
   'Engine/Graphics/Pool.cpp'
+  'Engine/Graphics/SDL3GPUCompat.cpp'
   'Engine/Handlers/LUA.cpp'
   'Engine/Handlers/Script.cpp'
   'Engine/Layers/Furu.cpp'
@@ -780,6 +836,7 @@ SOURCES=(
   'Support/DirPaths.cpp'
   'Support/DirtyRect.cpp'
   'Support/FileIO.cpp'
+  'Support/SDLMixerCompat.cpp'
   'Support/Unicode.cpp'
   'External/slre.c'
   "${RESOURCE_FILE}"
@@ -809,6 +866,8 @@ HEADERS=(
   'Engine/Graphics/GPU.hpp'
   'Engine/Graphics/PNG.hpp'
   'Engine/Graphics/Pool.hpp'
+  'Engine/Graphics/RendererBackend.hpp'
+  'Engine/Graphics/SDL3GPUCompat.hpp'
   'Engine/Handlers/LUA.hpp'
   'Engine/Handlers/Script.hpp'
   'Engine/Layers/Furu.hpp'
@@ -835,6 +894,10 @@ HEADERS=(
   'Support/FileDefs.hpp'
   'Support/FileIO.hpp'
   'Support/KeyState.hpp'
+  'Support/SDLCompat.hpp'
+  'Support/SDLImageCompat.hpp'
+  'Support/SDLMixerCompat.hpp'
+  'Support/SDLSysWMCompat.hpp'
   'Support/Unicode.hpp'
   'External/Compatibility.hpp'
   'External/LimitedQueue.hpp'
@@ -930,7 +993,7 @@ ONSCRLIB        = \$(BUILD_PATH)/Dependencies
 EXTLIB          = \$(BUILD_PATH)/Dependencies/onscrlib
 EMBED           = $EMBED_PATH
 SDL_CONFIG      = $SDL_CONFIG
-PKG_CONFIG_PATH = \$(EXTLIB)/lib/pkgconfig
+export PKG_CONFIG_PATH := \$(EXTLIB)/lib/pkgconfig
 ONS_PKGS        = $ONS_PKGS
 ONS_PKG_OPTS    = $ONS_PKG_OPTS
 ONS_PKG_DEPS    = \$(addprefix \$(EXTLIB)/.pkgs/,\$(ONS_PKGS))
@@ -972,16 +1035,15 @@ else
 endif
 
 INCS = -I\$(PROJECT) -I\$(EXTLIB)/include \\
-	\$(shell \$(SDL_CONFIG) --cflags) \\
-	\$(shell $SMPEG_CONFIG --cflags) \\
+	$SDL_STACK_CFLAGS \\
 	\$(shell $FREETYPE_CONFIG --cflags)
 
 LIBS = \$(EXTRAOSLDFLAGS) -L\$(EXTLIB)/lib $LINK_START_GROUP \\
-	\$(shell \$(SDL_CONFIG) --static-libs) \$(filter-out \$(shell \$(SDL_CONFIG) --libs),\$(shell $SMPEG_CONFIG --libs)) \\
+	$SDL_STACK_LIBS \\
 	\$(shell $FREETYPE_CONFIG --libs) \\
-	$LINKSDL2_image $LINKjpeg $LINKpng $LINKz \\
-	$LINKSDL2_mixer $LINKogg $LINKvorbis $LINKvorbisfile \\
-	$LINKSDL2_gpu $LINKepoxy $LINKbz2 \\
+	$SDL_IMAGE_LIBS $LINKjpeg $LINKpng $LINKz \\
+	$SDL_MIXER_LIBS $LINKogg $LINKvorbis $LINKvorbisfile \\
+	$RENDERER_LIBS $LINKbz2 \\
 	$LINKavutil $LINKavformat $LINKavcodec $LINKswscale $LINKswresample \\
 	$LINKass $LINKusb $LINKfribidi $LINKharfbuzz $LINKunwind $LINK_END_GROUP
 

@@ -783,7 +783,7 @@ int ONScripter::scrollableSpriteCommand() {
 	int sprNo  = validSprite(script_h.readInt());
 	int treeNo = validTree(script_h.readInt());
 
-	GPU_Rect newpos;
+	RenderRect newpos;
 	newpos.x = script_h.readInt();
 	newpos.y = script_h.readInt();
 	newpos.w = script_h.readInt();
@@ -1804,7 +1804,7 @@ int ONScripter::pastLogCommand() {
 		float w = si.elementWidth ? si.elementWidth : ai.pos.w;
 		float h = si.elementHeight;
 
-		GPU_Rect elemRect{0, 0, w, h};
+		RenderRect elemRect{0, 0, w, h};
 		setRectForScrollableElement(&elem, elemRect);
 		if (elemRect.y - ai.scrollable.y > ai.pos.h - ai.scrollableInfo.lastMargin) {
 			// we're off the bottom of the visible area, break
@@ -2520,7 +2520,7 @@ int ONScripter::fallCommand() {
 		const char *buf = script_h.readColor(&is_colour);
 
 		if (!is_colour) {
-			GPU_Image *image = loadGpuImage(script_h.readFilePath());
+			RenderImage *image = loadGpuImage(script_h.readFilePath());
 			layer->setBaseDrop(image);
 		} else {
 			uchar3 colourBytes;

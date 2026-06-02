@@ -13,7 +13,7 @@
 
 #include "Support/FileIO.hpp"
 
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 #include <signal.h>
 #include <unistd.h>
 

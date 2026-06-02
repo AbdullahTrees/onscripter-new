@@ -35,7 +35,7 @@
 #include <cmath>
 #include <cstdio>
 
-void Layer::drawLayerToGPUTarget(GPU_Target *target, AnimationInfo *anim, GPU_Rect &clip, float x, float y) {
+void Layer::drawLayerToGPUTarget(RenderTarget *target, AnimationInfo *anim, RenderRect &clip, float x, float y) {
 	if (anim->gpu_image == nullptr) {
 		sendToLog(LogLevel::Error, "Layer@gpu_image is null; something went wrong\n");
 		return;

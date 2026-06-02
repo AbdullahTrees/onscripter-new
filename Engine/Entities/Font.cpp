@@ -12,6 +12,7 @@
 #include "Engine/Graphics/Common.hpp"
 #include "Engine/Core/ONScripter.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <stack>
@@ -314,19 +315,25 @@ GlyphValues *Font::renderGlyph(GlyphParams *key, SDL_Color fg, SDL_Color bg) {
 }
 
 SDL_Surface *Font::freetypeToSDLSurface(FT_Bitmap *ft_bmp, SDL_Color fg, SDL_Color bg) {
-	SDL_Surface *sdl_surface = SDL_CreateRGBSurface(SDL_SWSURFACE, ft_bmp->width, ft_bmp->rows, 8, 0, 0, 0, 0);
+	SDL_Surface *sdl_surface = onsCreateRGBSurface(SDL_SWSURFACE, ft_bmp->width, ft_bmp->rows, 8, 0, 0, 0, 0);
+	if (!sdl_surface)
+		return nullptr;
 
 	// Fill palette with 256 shades interpolating between foreground
 	// and background colours.
-	SDL_Palette *pal = sdl_surface->format->palette;
+	SDL_Palette *pal = onsSurfacePalette(sdl_surface);
 	int dr           = fg.r - bg.r;
 	int dg           = fg.g - bg.g;
 	int db           = fg.b - bg.b;
+	std::array<SDL_Color, 256> colors{};
 	for (int i = 0; i < 256; ++i) {
-		pal->colors[i].r = bg.r + i * dr / 255;
-		pal->colors[i].g = bg.g + i * dg / 255;
-		pal->colors[i].b = bg.b + i * db / 255;
+		colors[i].r = bg.r + i * dr / 255;
+		colors[i].g = bg.g + i * dg / 255;
+		colors[i].b = bg.b + i * db / 255;
+		colors[i].a = SDL_ALPHA_OPAQUE;
 	}
+	if (pal)
+		onsSetPaletteColors(pal, colors.data(), 0, static_cast<int>(colors.size()));
 
 	// Copy the character from the pixmap
 	uint8_t *src = ft_bmp->buffer;

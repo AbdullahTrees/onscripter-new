@@ -247,7 +247,7 @@ bool MediaLayer::update(bool old) {
 				}
 			} else /*if (thisVideoFrame->srcFormat == AV_PIX_FMT_NONE)*/ { /* Converted by sws earlier */
 				if (mask_gpu) {
-					GPU_Rect maskRect = videoRect;
+					RenderRect maskRect = videoRect;
 					maskRect.y += maskRect.h;
 					gpu.mergeAlpha(frame, &videoRect, mask_gpu, &maskRect, thisVideoFrame->surface);
 				} else {
@@ -264,7 +264,7 @@ bool MediaLayer::update(bool old) {
 	return true;
 }
 
-void MediaLayer::refresh(GPU_Target *target, GPU_Rect &clip, float x, float y, bool centre_coordinates, int rm, float scalex, float scaley) {
+void MediaLayer::refresh(RenderTarget *target, RenderRect &clip, float x, float y, bool centre_coordinates, int rm, float scalex, float scaley) {
 	auto frame = (!(rm & REFRESH_BEFORESCENE_MODE) && frame_gpu[NewFrame]) ? frame_gpu[NewFrame] : frame_gpu[DefFrame];
 
 	// I think this should never happen actually

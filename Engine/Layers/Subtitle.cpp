@@ -90,7 +90,7 @@ void SubtitleLayer::setFont(unsigned int id) {
 	subtitleDriver.setFont(id);
 }
 
-void SubtitleLayer::refresh(GPU_Target *target, GPU_Rect &clip, float x, float y, bool /*centre_coordinates*/, int /*rm*/, float /*scalex*/, float /*scaley*/) {
+void SubtitleLayer::refresh(RenderTarget *target, RenderRect &clip, float x, float y, bool /*centre_coordinates*/, int /*rm*/, float /*scalex*/, float /*scaley*/) {
 	if (current_frame)
 		gpu.copyGPUImage(current_frame, nullptr, &clip, target,
 		                 width / ratio_x / 2.0 + x, height / ratio_y / 2.0 + y,
@@ -168,7 +168,7 @@ bool SubtitleLayer::update(bool /*old*/) {
 
 void SubtitleLayer::renderImageSet(std::vector<SubtitleImage> &imgs) {
 	for (size_t i = 0; i < imgs.size(); i++) {
-		GPU_Rect rect;
+		RenderRect rect;
 		rect.x = 0;
 		rect.y = i * SubtitleDriver::IMG_H;
 		rect.h = imgs[i].h;

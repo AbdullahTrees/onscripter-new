@@ -12,13 +12,13 @@
 #include "External/Compatibility.hpp"
 #include "Engine/Components/Base.hpp"
 
-#include <SDL2/SDL_gpu.h>
+#include "Engine/Graphics/RendererBackend.hpp"
 
 #include <vector>
 
 struct BlitData {
-	GPU_Rect src;
-	GPU_Rect dst;
+	RenderRect src;
+	RenderRect dst;
 };
 
 struct Sides {
@@ -37,17 +37,17 @@ public:
 
 	bool usingDynamicTextWindow{false};
 
-	void setWindow(const GPU_Rect &w) {
+	void setWindow(const RenderRect &w) {
 		originalWindowSize = w;
 	}
 
-	GPU_Rect mainRegionDimensions{0, 0, 0, 0}; // the area in the texture map occupied by the main region
+	RenderRect mainRegionDimensions{0, 0, 0, 0}; // the area in the texture map occupied by the main region
 	float mainRegionExtensionCol{0};
 
-	GPU_Rect noNameRegionDimensions{0, 0, 0, 0}; // the area in the texture map occupied by the no-name region
+	RenderRect noNameRegionDimensions{0, 0, 0, 0}; // the area in the texture map occupied by the no-name region
 	float noNameRegionExtensionCol{0};
 
-	GPU_Rect nameRegionDimensions{0, 0, 0, 0}; // the area in the texture map occuped by the name region
+	RenderRect nameRegionDimensions{0, 0, 0, 0}; // the area in the texture map occuped by the name region
 	float nameRegionExtensionCol{0};
 
 	float nameBoxExtensionCol{0};
@@ -58,25 +58,25 @@ public:
 
 	std::vector<BlitData> getRegions();
 
-	GPU_Rect getPrintableNameBoxRegion();
-	GPU_Rect getExtendedWindow();
+	RenderRect getPrintableNameBoxRegion();
+	RenderRect getExtendedWindow();
 	void updateTextboxExtension(bool smoothly = false);
 	int extension{0};
 
 private:
 	float previousGoalExtension{0};
-	float getRequiredAdditionalHeight(const GPU_Rect &window);
+	float getRequiredAdditionalHeight(const RenderRect &window);
 
-	GPU_Rect originalWindowSize{0, 0, 0, 0}; // sentence_font_info.pos, essentially
+	RenderRect originalWindowSize{0, 0, 0, 0}; // sentence_font_info.pos, essentially
 
-	std::vector<BlitData> getBottomRegion(const GPU_Rect &window);
-	std::vector<BlitData> getTopRegion(const GPU_Rect &window);
-	std::vector<BlitData> getNameRegion(const GPU_Rect &window);
-	std::vector<BlitData> getNoNameRegion(const GPU_Rect &window);
-	GPU_Rect getNameBoxRegion(const GPU_Rect &window);
-	GPU_Rect getPrintableNameBoxRegion(const GPU_Rect &window);
-	GPU_Rect getExtendedWindow(GPU_Rect window);
-	float getTopOfBottom(const GPU_Rect &window) {
+	std::vector<BlitData> getBottomRegion(const RenderRect &window);
+	std::vector<BlitData> getTopRegion(const RenderRect &window);
+	std::vector<BlitData> getNameRegion(const RenderRect &window);
+	std::vector<BlitData> getNoNameRegion(const RenderRect &window);
+	RenderRect getNameBoxRegion(const RenderRect &window);
+	RenderRect getPrintableNameBoxRegion(const RenderRect &window);
+	RenderRect getExtendedWindow(RenderRect window);
+	float getTopOfBottom(const RenderRect &window) {
 		return window.y + window.h - mainRegionDimensions.h - mainRegionPadding.bottom;
 	}
 };

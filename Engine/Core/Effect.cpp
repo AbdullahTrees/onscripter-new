@@ -172,11 +172,11 @@ bool ONScripter::setEffect() {
 	return false;
 }
 
-void ONScripter::mergeForEffect(GPU_Image *dst, GPU_Rect *scene_rect, GPU_Rect *hud_rect, int refresh_mode) {
+void ONScripter::mergeForEffect(RenderImage *dst, RenderRect *scene_rect, RenderRect *hud_rect, int refresh_mode) {
 	if (dst != combined_effect_src_gpu && dst != combined_effect_dst_gpu)
-		throw std::runtime_error("unexpected GPU_Image used for merge");
+		throw std::runtime_error("unexpected RenderImage used for merge");
 
-	GPU_Rect full_rect = full_script_clip;
+	RenderRect full_rect = full_script_clip;
 	if (!scene_rect)
 		scene_rect = &full_rect;
 	if (!hud_rect)
@@ -353,8 +353,8 @@ void ONScripter::sendToPreScreen(bool refreshSrc, std::function<PooledGPUImage(G
 		                  dirty_rect_scene.bounding_box_script, dirty_rect_hud.bounding_box_script, rm);
 	}
 
-	GPU_Image *lower = refreshSrc ? combined_effect_dst_gpu : combined_effect_src_gpu;
-	GPU_Image *upper = refreshSrc ? combined_effect_src_gpu : combined_effect_dst_gpu;
+	RenderImage *lower = refreshSrc ? combined_effect_dst_gpu : combined_effect_src_gpu;
+	RenderImage *upper = refreshSrc ? combined_effect_src_gpu : combined_effect_dst_gpu;
 
 	GPUTransformableCanvasImage transform(upper);
 	PooledGPUImage result = applyTransform(transform);

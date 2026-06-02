@@ -12,7 +12,7 @@
 #include "External/Compatibility.hpp"
 #include "Engine/Components/Base.hpp"
 
-#include <SDL2/SDL_thread.h>
+#include "Support/SDLCompat.hpp"
 
 #include <memory>
 #include <deque>

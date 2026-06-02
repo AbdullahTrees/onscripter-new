@@ -12,7 +12,7 @@
 #include "External/Compatibility.hpp"
 #include "Engine/Layers/Layer.hpp"
 
-#include <SDL2/SDL.h>
+#include "Support/SDLCompat.hpp"
 
 #include <vector>
 #include <cmath>
@@ -69,13 +69,13 @@ public:
 	void setAmplifiers(float s, float w, float h, float r, float m); // A way to fine-tune the rain
 	void setAmount(uint32_t dropNum);                                // prop 20
 	void setWind(int32_t factor);                                    // prop 22
-	void setBaseDrop(GPU_Image *newBaseDrop);                        // if we need a custom drop
+	void setBaseDrop(RenderImage *newBaseDrop);                        // if we need a custom drop
 	void setBaseDrop(SDL_Color &colour, uint32_t w, uint32_t h);     // if we need a custom coloured drop
 	void setPause(bool state);
 	void setBlend(BlendModeId mode);
 	void coverScreen();
 	bool update(bool old) override;
-	void refresh(GPU_Target *target, GPU_Rect &clip, float x, float y, bool centre_coordinates, int rm, float scalex = 1.0, float scaley = 1.0) override;
+	void refresh(RenderTarget *target, RenderRect &clip, float x, float y, bool centre_coordinates, int rm, float scalex = 1.0, float scaley = 1.0) override;
 	BlendModeId blendingMode(int /*rm*/) override {
 		return blendMode;
 	}
@@ -86,7 +86,7 @@ private:
 	static size_t constexpr CurrentScene = 0;
 	static size_t constexpr FormerScene  = 1;
 	bool paused[2]{false, false};
-	GPU_Image *baseDrop{nullptr};   // drop image used as a base
+	RenderImage *baseDrop{nullptr};   // drop image used as a base
 	uint32_t dropW{baseDropWidth};  // actual drop width set by script
 	uint32_t dropH{baseDropHeight}; // actual drop height set by script
 	uint32_t dropSpeed{70};         // drop speed in px/frame (in layer refresh rate)

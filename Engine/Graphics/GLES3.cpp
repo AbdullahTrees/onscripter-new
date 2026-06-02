@@ -7,7 +7,7 @@
  *  Consult LICENSE file for licensing terms and copyright holders.
  */
 
-#if defined(IOS) || defined(DROID) || defined(WIN32)
+#if !defined(ONS_USE_SDL3) && (defined(IOS) || defined(DROID) || defined(WIN32))
 
 #if defined(WIN32) && !defined(SDL_GPU_DYNAMIC_GLES_2)
 #define SDL_GPU_DYNAMIC_GLES_2 1
@@ -22,7 +22,7 @@
 
 #include <SDL2/SDL_gpu_GLES_3.h>
 
-GPU_RendererID GPUController::makeRendererIdANGLE3() {
+RenderDriverId GPUController::makeRendererIdANGLE3() {
 	SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1");
 	return GPU_MakeRendererID("ANGLE 3", GPU_RENDERER_GLES_3, 3, 0);
 }
@@ -33,7 +33,7 @@ void GPUController::initRendererFlagsANGLE3() {
 		render_to_self = 0;
 }
 
-int GPUController::getImageFormatANGLE3(GPU_Image *image) {
+int GPUController::getImageFormatANGLE3(RenderImage *image) {
 	return static_cast<GPU_IMAGE_DATA *>(image->data)->format;
 }
 
@@ -55,14 +55,14 @@ int GPUController::getMaxTextureSizeANGLE3() {
 	return size;
 }
 
-GPU_RendererID GPUController::makeRendererIdGLES3() {
+RenderDriverId GPUController::makeRendererIdGLES3() {
 	return GPU_MakeRendererID("OpenGL ES 3", GPU_RENDERER_GLES_3, 3, 0);
 }
 
 void GPUController::initRendererFlagsGLES3() {
 }
 
-int GPUController::getImageFormatGLES3(GPU_Image *image) {
+int GPUController::getImageFormatGLES3(RenderImage *image) {
 	return static_cast<GPU_IMAGE_DATA *>(image->data)->format;
 }
 
