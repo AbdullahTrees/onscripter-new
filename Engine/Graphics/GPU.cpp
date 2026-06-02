@@ -428,6 +428,11 @@ void GPUController::multiplyAlpha(RenderImage *image, RenderRect *dst_clip) {
 
 	GPU_GetTarget(image);
 
+#if defined(ONS_USE_SDL3)
+	if (GPU_MultiplyAlpha(image, dst_clip))
+		return;
+#endif
+
 	if (render_to_self) {
 		setShaderProgram("multiplyAlpha.frag");
 		GPU_SetBlending(image, false);

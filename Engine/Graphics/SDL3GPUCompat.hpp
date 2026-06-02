@@ -206,6 +206,7 @@ typedef struct GPU_Image {
 	GPU_BlendMode blend_mode;
 	GPU_FilterEnum filter_mode;
 	GPU_SnapEnum snap_mode;
+	Uint32 mip_level_count;
 	void *data;
 	int refcount;
 	GPU_bool is_alias;
@@ -213,6 +214,7 @@ typedef struct GPU_Image {
 	std::vector<Uint8> pixels;
 	int pitch;
 	GPU_bool pixels_dirty;
+	GPU_bool texture_initialized;
 } GPU_Image;
 
 struct GPU_Target {
@@ -304,5 +306,6 @@ void SDLCALL GPU_SetShaderImage(GPU_Image *image, int location, int image_unit);
 void SDLCALL GPU_SetUniformi(int location, int value);
 void SDLCALL GPU_SetUniformf(int location, float value);
 void SDLCALL GPU_SetUniformfv(int location, int num_elements_per_value, int num_values, float *values);
+GPU_bool SDLCALL GPU_MultiplyAlpha(GPU_Image *image, const GPU_Rect *dst_clip);
 
 #endif
