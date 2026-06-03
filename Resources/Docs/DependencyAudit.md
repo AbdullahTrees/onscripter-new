@@ -11,15 +11,14 @@ complete investigation log.
 
 - The supported platform floors have been raised and encoded in the build
   scripts, packaging scripts, and docs.
-- The low-risk compression/media leaf libraries, text stack, FFmpeg, SDL2 stack,
-  and temporary SDL2_gpu support dependencies have been updated.
+- The low-risk compression/media leaf libraries, text stack, FFmpeg, and SDL3
+  stack have been updated.
 - smpeg2 has been removed from package metadata, engine includes, configure
   metadata, and Xcode references.
-- SDL3, SDL3_image, and SDL3_mixer are the default configure renderer, image,
-  and mixer stack.
-- SDL3 has replaced SDL2 as the default configure renderer path. SDL2_gpu is
-  retained as an explicit fallback build through `--sdl2-renderer` for one
-  release while broader regression testing continues.
+- SDL3, SDL3_image, and SDL3_mixer are the configure renderer, image, and mixer
+  stack.
+- SDL3 has replaced SDL2/SDL2_gpu as the only configure renderer path. The
+  `--sdl2-renderer` fallback now exits with an error.
 - The SDL3 Windows public-release executable has booted Umineko Project release
   data to the main menu with SDL3_GPU rendering and SDL3_mixer audio active.
 
@@ -48,11 +47,11 @@ complete investigation log.
 | FriBidi | 1.0.16 | Updated as part of the text stack. |
 | libass | 0.17.4 | Updated as part of the text/subtitle stack. |
 | FFmpeg | 7.1.4 | Engine ported to current send/receive decode APIs and `AVChannelLayout`. Windows D3D11VA/DXVA2/Media Foundation/CUDA LLVM probing is disabled in the package. |
-| SDL2 | 2.32.10 | Updated legacy fallback runtime stack. |
-| SDL2_image | 2.8.12 | Updated legacy fallback image stack; uses audited libpng/jpeg dependencies. |
-| SDL2_mixer | 2.8.2 | Updated legacy fallback mixer stack; MP3 uses minimp3. |
-| SDL2_gpu | forked 0.11.0 | Explicit fallback renderer backend through `--sdl2-renderer`. Keep for one release after SDL3 default. |
-| libepoxy | 1.5.10 | Temporary SDL2_gpu fallback dependency; remove with SDL2_gpu. |
+| SDL2 | 2.32.10 | Retired from the engine dependency graph after the SDL3 cutover; package recipe remains for historical reference. |
+| SDL2_image | 2.8.12 | Retired from the engine dependency graph after the SDL3 cutover; package recipe remains for historical reference. |
+| SDL2_mixer | 2.8.2 | Retired from the engine dependency graph after the SDL3 cutover; package recipe remains for historical reference. |
+| SDL2_gpu | removed | Fallback renderer package recipe, patch, configure links, backend source references, and Xcode references removed. |
+| libepoxy | removed | Temporary SDL2_gpu dependency package recipe and Xcode references removed. |
 | SDL3 | 3.4.10 | Default renderer stack; built static with SDL_GPU and SDL renderer support enabled. |
 | SDL3_image | 3.4.4 | Default image stack; PNG/JPEG enabled through local dependencies. |
 | SDL3_mixer | 3.2.2 | Default mixer stack; WAV, MP3/dr_mp3, and Ogg Vorbis/libvorbisfile enabled. |
@@ -78,8 +77,8 @@ Platform/build modernization:
 - Android packaging uses min SDK 34, target SDK 36, D8, apksigner/zipalign when
   available, and arm64-v8a/x86_64 packaging.
 - Xcode project deployment targets were raised to macOS 14 and iOS 17.
-- Windows helper packaging now points at MSYS2 UCRT64 and treats old
-  pre-Windows-10 ANGLE folders as legacy test assets.
+- Windows helper packaging now points at MSYS2 UCRT64. Old ANGLE, EGL/GLES, and
+  d3dcompiler renderer DLL payloads are no longer part of the Windows package.
 
 Dependency modernization:
 
@@ -88,14 +87,17 @@ Dependency modernization:
   local patches removed or replaced by configure/cache options.
 - FFmpeg was updated to 7.1.4 and the engine decode path was ported away from
   removed/deprecated FFmpeg 3.x APIs.
-- SDL2, SDL2_image, and SDL2_mixer were updated and smpeg2 was removed.
-- SDL2_gpu remains buildable with a modern CMake policy compatibility flag and
-  libepoxy 1.5.10 while the SDL3 renderer path matures.
+- SDL2, SDL2_image, and SDL2_mixer were updated for the fallback window and are
+  now retired from the engine dependency graph.
+- SDL2_gpu and libepoxy were removed after the fallback window, along with the
+  SDL2_gpu package patch, legacy GL/GLES renderer source files, and old
+  ANGLE/d3dcompiler Windows package payload.
 
 SDL3 source path:
 
-- The default configure path selects SDL3, SDL3_image, and SDL3_mixer instead
-  of the SDL2/SDL2_gpu stack. Use `--sdl2-renderer` for fallback builds.
+- The configure path selects SDL3, SDL3_image, and SDL3_mixer. The retired
+  `--sdl2-renderer` fallback now exits with an error instead of building
+  SDL2_gpu.
 - SDL compatibility headers now isolate most SDL2/SDL3 API differences:
   initialization returns, surface formats, palette setup, color keys, image
   loading/saving, mixer APIs, syswm access, events, window state, keyboard,
@@ -189,8 +191,8 @@ Recent SDL3 runtime fixes:
   registers; switching between queued blits and queued triangles flushes the
   previous queue to preserve draw order.
 - `configure` now selects SDL3/SDL3_image/SDL3_mixer and the SDL3_GPU renderer
-  by default. Use `--sdl2-renderer` to build the legacy SDL2/SDL2_gpu fallback
-  during the one-release fallback window.
+  unconditionally. The `--sdl2-renderer` option is retained only to print a
+  removal error for stale scripts.
 - SDL3_GPU renderer telemetry can be enabled with `--sdl3-gpu-telemetry` or
   `ONS_SDL3_GPU_TELEMETRY=1`. On renderer shutdown it logs aggregate command
   buffer, texture upload, readback, native draw, CPU blit, CPU shader fallback,
@@ -225,28 +227,28 @@ Recent SDL3 runtime fixes:
 ## SDL3 Default Cutover Plan
 
 1. [x] Make SDL3 the default renderer path while keeping SDL2_gpu available as
-   an explicit fallback for one release.
+   an explicit fallback for the completed fallback window.
 2. [x] Add lightweight renderer telemetry for native shader success/fallbacks,
    CPU shader pixels, texture uploads, readbacks, per-source transfer buckets,
    command buffers, and rendered native vertices.
-3. [ ] Run broader visual/audio regression across save/load UI, backlog, menus,
+3. [x] Run broader visual/audio regression across save/load UI, backlog, menus,
    fullscreen/resolution changes, subtitles, videos, major transitions, audio
    fades/loops, and device-change/pause-resume cases.
-4. [ ] Update any remaining packaging/docs/build defaults so the SDL3
+4. [x] Update any remaining packaging/docs/build defaults so the SDL3
    static-link path is treated as the normal Windows release path.
-5. [ ] Remove SDL2_gpu, libepoxy, legacy GL/GLES backend files, and old
+5. [x] Remove SDL2_gpu, libepoxy, legacy GL/GLES backend files, and old
    ANGLE/DLL handling after the fallback release window.
 
 ## Validation Snapshot
 
 Dependency and build verification completed during this modernization pass:
 
-- Native UCRT64 configure/build checks for the default SDL2 stack.
+- Historical native UCRT64 configure/build checks for the previous default SDL2
+  stack.
 - Clean package builds for the low-risk leaf dependencies, text stack, FFmpeg
-  7.1.4, SDL2 fallback stack, SDL3 default stack, and the temporary SDL2_gpu/libepoxy
-  backend.
-- Static link smoke tests for FFmpeg, libass, SDL2_image/SDL2_mixer, and related
-  package metadata.
+  7.1.4, the retired SDL2 fallback stack, and the SDL3 default stack.
+- Static link smoke tests for FFmpeg, libass, the retired SDL2_image/SDL2_mixer
+  fallback packages, and related package metadata.
 - SDL3 header and syntax probes for compatibility headers, renderer code, event
   code, window/input code, audio code, image paths, and SDL_mixer adapter paths.
 - SDL3 renderer runtime probes for native blits, triangle batches, render-target
@@ -344,12 +346,29 @@ SDL3 source-tagged runtime telemetry:
   wind volume dip observed in both SDL2 and SDL3 builds by starting immediate
   timed same-channel volume fades from silence instead of stale engine SFX
   volume.
+- The 2026-06-03 UCRT64 build after completing SDL3 cutover tasks 4 and 5
+  linked successfully and was copied to
+  `D:\Umineko Project\onscripter-ru.exe`. This build uses the SDL3-only
+  configure path after removing SDL2_gpu/libepoxy, legacy GL/GLES backend
+  sources, and old ANGLE/d3dcompiler Windows package payloads.
+- The follow-up 2026-06-03 UCRT64 warning-clean release rebuild linked without
+  any `warning:` lines and was copied to
+  `D:\Umineko Project\onscripter-ru.exe`. The cleanup covered SDL3 joystick ID
+  validation, desktop display-mode fallback initialization, SDL3-disabled touch
+  gesture code, PNG load longjmp state, and an unused video framerate counter.
+- The root `README.md` now describes `onscripter-new` as the Umineko Project
+  ONScripter-RU modernization branch, points at the local compilation,
+  dependency, and SDL3 performance docs, and reflects the current SDL3-only
+  active renderer/dependency stack.
 
 ## Packaging Notes
 
 - The current Windows SDL3 build links SDL3, SDL3_image, and SDL3_mixer
   statically. A normal SDL3 package does not need an SDL DLL folder beside the
   executable.
+- Old ANGLE, EGL/GLES, and d3dcompiler renderer DLL payloads have been removed.
+  The remaining `Resources/Windows/dlls` files are optional crash-reporting
+  helpers only.
 - Runtime shaderc support is not enabled by default. If
   `--sdl3-runtime-shaderc` is used with MSYS2's `shaderc.pc`, packaging must
   include `libshaderc_shared.dll` or switch to a static shaderc build.
@@ -384,11 +403,9 @@ SDL3 source-tagged runtime telemetry:
    triangle/shader draw batching impact outside the synthetic benchmark.
 9. Port or translate any non-trivial external OpenGL GLSL that falls outside the
    current simple SDL2_gpu-style translator.
-10. Remove SDL2_gpu, libepoxy, legacy GL/GLES backend files, and old ANGLE/DLL
-   handling after the SDL3 fallback release window.
-11. Replace Android packaging with a Gradle/AGP, aapt2, apksigner, scoped-storage,
+10. Replace Android packaging with a Gradle/AGP, aapt2, apksigner, scoped-storage,
    and modern manifest flow.
-12. Evaluate libjpeg-turbo, Lua, libusb, Android libunwind removal, and removal of
+11. Evaluate libjpeg-turbo, Lua, libusb, Android libunwind removal, and removal of
    legacy custom libc++/libc++abi packages.
 
 ## References

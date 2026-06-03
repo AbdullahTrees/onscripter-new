@@ -23,7 +23,7 @@ extern "C" {
 __declspec(dllexport) unsigned long NvOptimusEnablement        = 1;
 __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 
-// We also wrap dll loading code on Windows for multiver ANGLE support
+// Keep optional Windows support DLLs isolated in a local dlls folder.
 void *__real_SDL_LoadObject(const char *sofile);
 void *__wrap_SDL_LoadObject(const char *sofile);
 }
@@ -49,42 +49,14 @@ static void initFileIO() {
 void *__wrap_SDL_LoadObject(const char *sofile) {
 	initFileIO();
 
-	// https://msdn.microsoft.com/en-us/library/windows/desktop/ms724439.aspx
-	// We do not manifest ourselves for win8.1, so it is safe to assume that we get 6.2
-	uint16_t kernelVer     = GetVersion();
-	uint8_t kernelVerMajor = kernelVer & 0xFF;
-	uint8_t kernelVerMinor = kernelVer >> 8;
+	auto lookupdir = std::string(FileIO::getLaunchDir()) + std::string("dlls") + DELIMITER;
+	if (FileIO::accessFile(lookupdir + sofile, FileType::File)) {
+		sendToLog(LogLevel::Info, "Redirected to %s%s\n", lookupdir.c_str(), sofile);
 
-	sendToLog(LogLevel::Info, "Loading %s on %d.%d or higher\n",
-	          sofile, kernelVerMajor, kernelVerMinor);
+		// Some helper DLLs load companions from their own directory.
+		SetDllDirectoryW(decodeUTF8StringWide(lookupdir.c_str()).c_str());
 
-	// We have 10 here, but actually we should never get anything above 6.2.
-	std::pair<uint8_t, uint8_t> targetVers[]{
-	    {10, 0}, {6, 2}, {6, 1}, {6, 0}, {5, 1}, {0, 0}};
-
-	for (auto targetVer : targetVers) {
-		auto targetMajor = targetVer.first;
-		auto targetMinor = targetVer.second;
-
-		// Skip low kernels
-		if ((kernelVerMajor == targetMajor && kernelVerMinor < targetMinor) ||
-		    kernelVerMajor < targetMajor)
-			continue;
-
-		auto lookupdir = std::string(FileIO::getLaunchDir()) + std::string("dlls") + DELIMITER;
-		if (targetMajor > 0)
-			lookupdir += std::to_string(targetMajor) + '.' + std::to_string(targetMinor) + DELIMITER;
-
-		//sendToLog(LogLevel::Info, "Looking up %s%s\n", lookupdir.c_str(), sofile);
-
-		if (FileIO::accessFile(lookupdir + sofile, FileType::File)) {
-			sendToLog(LogLevel::Info, "Redirected to %s%s\n", lookupdir.c_str(), sofile);
-
-			// This is just a hack for some libraries trying to load other libraries from their dir.
-			SetDllDirectoryW(decodeUTF8StringWide(lookupdir.c_str()).c_str());
-
-			return __real_SDL_LoadObject((lookupdir + sofile).c_str());
-		}
+		return __real_SDL_LoadObject((lookupdir + sofile).c_str());
 	}
 
 	return __real_SDL_LoadObject(sofile);
@@ -142,9 +114,8 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 	printf("     --audiodriver dev            set the SDL_AUDIODRIVER to dev\n");
 	printf("     --audiobuffer size           set the audio buffer size in kB (default: 2)\n");
 	printf("     --audioformat format         set the audio format (choose from s8, u8, s16, u16, s32, f32)\n");
-	printf("     --renderer-blacklist list    comma-separated list of disabled renderers (choose from GL2, GLES2, GLES3, ANGLE2, ANGLE3)\n");
+	printf("     --renderer-blacklist list    comma-separated list of disabled renderers (choose from SDL3_GPU)\n");
 	printf("     --prefer-renderer name       try using this renderer first of all\n");
-	printf("     --d3dcompiler compiler.dll   hlsl shader compiler library for angle (e.g. d3dompiler_43.dll)\n");
 	printf("     --force-vsync                forces vsync (default on Windows)\n");
 	printf("     --try-late-swap              tries late swap vsync mode (default on other OS)\n");
 	printf("     --no-texture-reuse           forces freed textures deletion\n");
@@ -234,10 +205,6 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
 				argc--;
 				argv++;
 				ons.ons_cfg_options["prefer-renderer"] = argv[0];
-			} else if (!std::strcmp(argv[0] + 1, "-d3dcompiler")) {
-				argc--;
-				argv++;
-				ons.ons_cfg_options["d3dcompiler"] = argv[0];
 			} else if (!std::strcmp(argv[0] + 1, "-match-audiodevice-to-bgm")) {
 				ons.setMatchBgmAudio(true);
 				ons.ons_cfg_options["match-audiodevice-to-bgm"] = "noval";

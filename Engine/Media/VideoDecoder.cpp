@@ -45,7 +45,7 @@ long double MediaProcController::VideoDecoder::getVideoFramerate(bool &isVFR, bo
 
 	isCorrupted = false;
 	long double previous{0}, sum{0};
-	int vfrCount{0}, cfrCount{0}, count{0}, previousCount{0}, countSkipped{0};
+	int vfrCount{0}, count{0}, previousCount{0}, countSkipped{0};
 
 	long double minVFR, maxVFR;
 	// Needs correct coefficients unique per file, they not only depend from fps but from other factors
@@ -69,8 +69,6 @@ long double MediaProcController::VideoDecoder::getVideoFramerate(bool &isVFR, bo
 				if (media.initVideoTimecodes[i] / currCount * minVFR > previous / previousCount ||
 				    media.initVideoTimecodes[i] / currCount * maxVFR < previous / previousCount) {
 					vfrCount++;
-				} else {
-					cfrCount++;
 				}
 			}
 			count += currCount;

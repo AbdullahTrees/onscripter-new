@@ -462,49 +462,12 @@ public:
 	RenderTarget *rendererInit(RenderWindowFlags SDL_flags);
 	RenderTarget *rendererInitWithInfo(GPURendererInfo &info, uint16_t w, uint16_t h, RenderWindowFlags SDL_flags);
 
-#if defined(ONS_USE_SDL3)
 	RenderDriverId makeRendererIdSDL3GPU();
 	void initRendererFlagsSDL3GPU();
 	int getImageFormatSDL3GPU(RenderImage *image);
 	void printBlitBufferStateSDL3GPU();
 	void syncRendererStateSDL3GPU();
 	int getMaxTextureSizeSDL3GPU();
-#else
-	RenderDriverId makeRendererIdGLES2();
-	void initRendererFlagsGLES2();
-	int getImageFormatGLES2(RenderImage *image);
-	void printBlitBufferStateGLES2();
-	void syncRendererStateGLES2();
-	int getMaxTextureSizeGLES2();
-
-	RenderDriverId makeRendererIdGLES3();
-	void initRendererFlagsGLES3();
-	int getImageFormatGLES3(RenderImage *image);
-	void printBlitBufferStateGLES3();
-	void syncRendererStateGLES3();
-	int getMaxTextureSizeGLES3();
-
-	RenderDriverId makeRendererIdANGLE2();
-	void initRendererFlagsANGLE2();
-	int getImageFormatANGLE2(RenderImage *image);
-	void printBlitBufferStateANGLE2();
-	void syncRendererStateANGLE2();
-	int getMaxTextureSizeANGLE2();
-
-	RenderDriverId makeRendererIdANGLE3();
-	void initRendererFlagsANGLE3();
-	int getImageFormatANGLE3(RenderImage *image);
-	void printBlitBufferStateANGLE3();
-	void syncRendererStateANGLE3();
-	int getMaxTextureSizeANGLE3();
-
-	RenderDriverId makeRendererIdGL2();
-	void initRendererFlagsGL2();
-	int getImageFormatGL2(RenderImage *image);
-	void printBlitBufferStateGL2();
-	void syncRendererStateGL2();
-	int getMaxTextureSizeGL2();
-#endif
 
 #if defined(DROID) || defined(IOS)
 	// This is generally too harsh on iOS
@@ -513,7 +476,6 @@ public:
 	static constexpr size_t GlobalImagePoolSize{20};
 #endif
 
-#if defined(ONS_USE_SDL3)
 	GPURendererInfo renderers[1]{
 	    {"SDL3_GPU",
 	     &GPUController::makeRendererIdSDL3GPU,
@@ -523,65 +485,6 @@ public:
 	     &GPUController::syncRendererStateSDL3GPU,
 	     &GPUController::getMaxTextureSizeSDL3GPU,
 	     false}};
-#elif defined(DROID) || defined(IOS)
-	GPURendererInfo renderers[2]{
-	    {"GLES2",
-	     &GPUController::makeRendererIdGLES2,
-	     &GPUController::initRendererFlagsGLES2,
-	     &GPUController::getImageFormatGLES2,
-	     &GPUController::printBlitBufferStateGLES2,
-	     &GPUController::syncRendererStateGLES2,
-	     &GPUController::getMaxTextureSizeGLES2,
-	     true},
-	    {
-		    "GLES3",
-		    &GPUController::makeRendererIdGLES3,
-		    &GPUController::initRendererFlagsGLES3,
-		    &GPUController::getImageFormatGLES3,
-		    &GPUController::printBlitBufferStateGLES3,
-		    &GPUController::syncRendererStateGLES3,
-		    &GPUController::getMaxTextureSizeGLES3,
-		    true
-	    }};
-#elif defined(WIN32)
-	GPURendererInfo renderers[3]{
-	    {"GL2",
-	     &GPUController::makeRendererIdGL2,
-	     &GPUController::initRendererFlagsGL2,
-	     &GPUController::getImageFormatGL2,
-	     &GPUController::printBlitBufferStateGL2,
-	     &GPUController::syncRendererStateGL2,
-	     &GPUController::getMaxTextureSizeGL2,
-	     false},
-	    {"ANGLE2",
-	     &GPUController::makeRendererIdANGLE2,
-	     &GPUController::initRendererFlagsANGLE2,
-	     &GPUController::getImageFormatANGLE2,
-	     &GPUController::printBlitBufferStateANGLE2,
-	     &GPUController::syncRendererStateANGLE2,
-	     &GPUController::getMaxTextureSizeANGLE2,
-	     true},
-	    {
-		    "ANGLE3",
-		    &GPUController::makeRendererIdANGLE3,
-		    &GPUController::initRendererFlagsANGLE3,
-		    &GPUController::getImageFormatANGLE3,
-		    &GPUController::printBlitBufferStateANGLE3,
-		    &GPUController::syncRendererStateANGLE3,
-		    &GPUController::getMaxTextureSizeANGLE3,
-		    true
-	    }};
-#else
-	GPURendererInfo renderers[1]{
-	    {"GL2",
-	     &GPUController::makeRendererIdGL2,
-	     &GPUController::initRendererFlagsGL2,
-	     &GPUController::getImageFormatGL2,
-	     &GPUController::printBlitBufferStateGL2,
-	     &GPUController::syncRendererStateGL2,
-	     &GPUController::getMaxTextureSizeGL2,
-	     false}};
-#endif
 
 	GPURendererInfo *current_renderer{nullptr};
 

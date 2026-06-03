@@ -1,1 +1,0 @@
-Unsupported legacy ANGLE build for pre-Windows 10 testing only.

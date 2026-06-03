@@ -513,11 +513,6 @@ void ONScripter::initSDL() {
 	SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeRight,LandscapeLeft");
 #endif
 
-	// This is mainly needed for ANGLE when we want to use DirectX 9 on new Windows
-	auto d3d = ons_cfg_options.find("d3dcompiler");
-	if (d3d != ons_cfg_options.end())
-		SDL_SetHint(SDL_HINT_VIDEO_WIN_D3DCOMPILER, d3d->second.c_str());
-
 	if (!onsSDLInitSubSystem(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO)) {
 		errorAndExit("Couldn't initialize SDL", SDL_GetError(), "Init Error", true);
 		return; //dummy

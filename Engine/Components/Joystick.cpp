@@ -690,7 +690,11 @@ int JoystickController::ownInit() {
 			SDL_Joystick *joy = onsJoystickOpenByIndex(i);
 			if (joy) {
 				SDL_JoystickID id = SDL_JoystickInstanceID(joy);
+#if defined(ONS_USE_SDL3)
+				if (id != 0) {
+#else
 				if (id >= 0) {
+#endif
 					std::array<uint8_t, 16> guid;
 					std::memcpy(&guid[0], SDL_JoystickGetGUID(joy).data, 16);
 

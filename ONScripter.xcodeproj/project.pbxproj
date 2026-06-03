@@ -57,8 +57,6 @@
 		2FD1DB571D52108C00362A7C /* Script.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0A5FA517478EFA004A9BCC /* Script.cpp */; };
 		2FD1DB581D52108C00362A7C /* ParserCommand.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0A5FA717478EFA004A9BCC /* ParserCommand.cpp */; };
 		CE2431811E3A6B46003276DA /* Unicode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE24317B1E3A6A50003276DA /* Unicode.cpp */; };
-		CE53C3191E62C1110010FDB3 /* GLES2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE53C3171E62C1110010FDB3 /* GLES2.cpp */; };
-		CE53C31A1E62C1110010FDB3 /* GLES3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE53C3181E62C1110010FDB3 /* GLES3.cpp */; };
 		CE61AC0D20E3A8AF000B31C7 /* Resources.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE61AC0C20E3A8AF000B31C7 /* Resources.cpp */; };
 		CE61AC1320E3B0F2000B31C7 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CE61AC0F20E3AE21000B31C7 /* Images.xcassets */; };
 		CE61AC1420E3BD43000B31C7 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CE61AC0F20E3AE21000B31C7 /* Images.xcassets */; };
@@ -101,9 +99,6 @@
 		CE61AC4120E3C0E1000B31C7 /* SubtitleDecoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1CA4B8031CDE48E50044F97D /* SubtitleDecoder.cpp */; };
 		CE61AC4220E3C0E1000B31C7 /* SubtitleDriver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0D41B41CD6752000DF1157 /* SubtitleDriver.cpp */; };
 		CE61AC4320E3C0E1000B31C7 /* GPU.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C7B87CD1799A24500FA05F3 /* GPU.cpp */; };
-		CE61AC4420E3C0E1000B31C7 /* GL2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE53C31B1E62C11A0010FDB3 /* GL2.cpp */; };
-		CE61AC4520E3C0E1000B31C7 /* GLES2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE53C3171E62C1110010FDB3 /* GLES2.cpp */; };
-		CE61AC4620E3C0E1000B31C7 /* GLES3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE53C3181E62C1110010FDB3 /* GLES3.cpp */; };
 		CE61AC4720E3C0E1000B31C7 /* Common.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0A5F8117478EFA004A9BCC /* Common.cpp */; };
 		CE61AC4820E3C0E1000B31C7 /* Pool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB261920DF692100E79DC4 /* Pool.cpp */; };
 		CE61AC4920E3C0E1000B31C7 /* PNG.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C1557B5182E77C300FDADF0 /* PNG.cpp */; };
@@ -137,7 +132,6 @@
 		CE61AC6620E3C0E1000B31C7 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1270C20E3823F00C286AF /* CoreGraphics.framework */; };
 		CE61AC6720E3C0E1000B31C7 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C0A60921747A490004A9BCC /* CoreAudio.framework */; };
 		CE61AC6820E3C0E1000B31C7 /* libSDL2main.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D720E3821700C286AF /* libSDL2main.a */; };
-		CE61AC6920E3C0E1000B31C7 /* libepoxy.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D820E3821700C286AF /* libepoxy.a */; };
 		CE61AC6B20E3C0E1000B31C7 /* libSDL2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DA20E3821700C286AF /* libSDL2.a */; };
 		CE61AC6C20E3C0E1000B31C7 /* libass.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DB20E3821700C286AF /* libass.a */; };
 		CE61AC6D20E3C0E1000B31C7 /* libSDL2_test.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DC20E3821700C286AF /* libSDL2_test.a */; };
@@ -148,7 +142,6 @@
 		CE61AC7220E3C0E1000B31C7 /* libvorbisenc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E120E3821700C286AF /* libvorbisenc.a */; };
 		CE61AC7320E3C0E1000B31C7 /* libavutil.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E220E3821700C286AF /* libavutil.a */; };
 		CE61AC7420E3C0E1000B31C7 /* libavformat.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1271720E3839A00C286AF /* libavformat.a */; };
-		CE61AC7520E3C0E1000B31C7 /* libSDL2_gpu.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E320E3821700C286AF /* libSDL2_gpu.a */; };
 		CE61AC7620E3C0E1000B31C7 /* libfreetype.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E420E3821700C286AF /* libfreetype.a */; };
 		CE61AC7720E3C0E1000B31C7 /* libjpeg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E520E3821700C286AF /* libjpeg.a */; };
 		CE61AC7820E3C0E1000B31C7 /* libSDL2_image.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E620E3821800C286AF /* libSDL2_image.a */; };
@@ -205,9 +198,6 @@
 		CE9D80BA20E3CA9200670C17 /* SubtitleDecoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1CA4B8031CDE48E50044F97D /* SubtitleDecoder.cpp */; };
 		CE9D80BB20E3CA9200670C17 /* SubtitleDriver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0D41B41CD6752000DF1157 /* SubtitleDriver.cpp */; };
 		CE9D80BC20E3CA9200670C17 /* GPU.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C7B87CD1799A24500FA05F3 /* GPU.cpp */; };
-		CE9D80BD20E3CA9200670C17 /* GL2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE53C31B1E62C11A0010FDB3 /* GL2.cpp */; };
-		CE9D80BE20E3CA9200670C17 /* GLES2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE53C3171E62C1110010FDB3 /* GLES2.cpp */; };
-		CE9D80BF20E3CA9200670C17 /* GLES3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE53C3181E62C1110010FDB3 /* GLES3.cpp */; };
 		CE9D80C020E3CA9200670C17 /* Common.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0A5F8117478EFA004A9BCC /* Common.cpp */; };
 		CE9D80C120E3CA9200670C17 /* Pool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB261920DF692100E79DC4 /* Pool.cpp */; };
 		CE9D80C220E3CA9200670C17 /* PNG.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C1557B5182E77C300FDADF0 /* PNG.cpp */; };
@@ -241,7 +231,6 @@
 		CE9D80DF20E3CA9200670C17 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1270C20E3823F00C286AF /* CoreGraphics.framework */; };
 		CE9D80E020E3CA9200670C17 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C0A60921747A490004A9BCC /* CoreAudio.framework */; };
 		CE9D80E120E3CA9200670C17 /* libSDL2main.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D720E3821700C286AF /* libSDL2main.a */; };
-		CE9D80E220E3CA9200670C17 /* libepoxy.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D820E3821700C286AF /* libepoxy.a */; };
 		CE9D80E420E3CA9200670C17 /* libSDL2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DA20E3821700C286AF /* libSDL2.a */; };
 		CE9D80E520E3CA9200670C17 /* libass.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DB20E3821700C286AF /* libass.a */; };
 		CE9D80E620E3CA9200670C17 /* libSDL2_test.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DC20E3821700C286AF /* libSDL2_test.a */; };
@@ -252,7 +241,6 @@
 		CE9D80EB20E3CA9200670C17 /* libvorbisenc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E120E3821700C286AF /* libvorbisenc.a */; };
 		CE9D80EC20E3CA9200670C17 /* libavutil.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E220E3821700C286AF /* libavutil.a */; };
 		CE9D80ED20E3CA9200670C17 /* libavformat.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1271720E3839A00C286AF /* libavformat.a */; };
-		CE9D80EE20E3CA9200670C17 /* libSDL2_gpu.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E320E3821700C286AF /* libSDL2_gpu.a */; };
 		CE9D80EF20E3CA9200670C17 /* libfreetype.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E420E3821700C286AF /* libfreetype.a */; };
 		CE9D80F020E3CA9200670C17 /* libjpeg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E520E3821700C286AF /* libjpeg.a */; };
 		CE9D80F120E3CA9200670C17 /* libSDL2_image.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E620E3821800C286AF /* libSDL2_image.a */; };
@@ -318,9 +306,6 @@
 		CEE126B820E374BD00C286AF /* SubtitleDecoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1CA4B8031CDE48E50044F97D /* SubtitleDecoder.cpp */; };
 		CEE126B920E374BD00C286AF /* SubtitleDriver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0D41B41CD6752000DF1157 /* SubtitleDriver.cpp */; };
 		CEE126BA20E374BD00C286AF /* GPU.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C7B87CD1799A24500FA05F3 /* GPU.cpp */; };
-		CEE126BC20E374BD00C286AF /* GL2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE53C31B1E62C11A0010FDB3 /* GL2.cpp */; };
-		CEE126BD20E374BD00C286AF /* GLES2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE53C3171E62C1110010FDB3 /* GLES2.cpp */; };
-		CEE126BE20E374BD00C286AF /* GLES3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE53C3181E62C1110010FDB3 /* GLES3.cpp */; };
 		CEE126BF20E374BD00C286AF /* Common.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0A5F8117478EFA004A9BCC /* Common.cpp */; };
 		CEE126C020E374BD00C286AF /* Pool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB261920DF692100E79DC4 /* Pool.cpp */; };
 		CEE126C120E374BD00C286AF /* PNG.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C1557B5182E77C300FDADF0 /* PNG.cpp */; };
@@ -342,7 +327,6 @@
 		CEE126D120E374BD00C286AF /* slre.c in Sources */ = {isa = PBXBuildFile; fileRef = 1CD59BB4180D4441005A57A7 /* slre.c */; };
 		CEE126D620E3792200C286AF /* UIKitWrapper.mm in Sources */ = {isa = PBXBuildFile; fileRef = CEFEC4701D52B2CA00957675 /* UIKitWrapper.mm */; };
 		CEE126F120E3821800C286AF /* libSDL2main.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D720E3821700C286AF /* libSDL2main.a */; };
-		CEE126F220E3821800C286AF /* libepoxy.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D820E3821700C286AF /* libepoxy.a */; };
 		CEE126F420E3821800C286AF /* libSDL2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DA20E3821700C286AF /* libSDL2.a */; };
 		CEE126F520E3821800C286AF /* libass.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DB20E3821700C286AF /* libass.a */; };
 		CEE126F620E3821800C286AF /* libSDL2_test.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DC20E3821700C286AF /* libSDL2_test.a */; };
@@ -352,7 +336,6 @@
 		CEE126FA20E3821800C286AF /* libvorbisfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E020E3821700C286AF /* libvorbisfile.a */; };
 		CEE126FB20E3821800C286AF /* libvorbisenc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E120E3821700C286AF /* libvorbisenc.a */; };
 		CEE126FC20E3821800C286AF /* libavutil.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E220E3821700C286AF /* libavutil.a */; };
-		CEE126FD20E3821800C286AF /* libSDL2_gpu.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E320E3821700C286AF /* libSDL2_gpu.a */; };
 		CEE126FE20E3821800C286AF /* libfreetype.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E420E3821700C286AF /* libfreetype.a */; };
 		CEE126FF20E3821800C286AF /* libjpeg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E520E3821700C286AF /* libjpeg.a */; };
 		CEE1270020E3821800C286AF /* libSDL2_image.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E620E3821800C286AF /* libSDL2_image.a */; };
@@ -380,7 +363,6 @@
 		CEE1271A20E3840C00C286AF /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C0A603217479DF8004A9BCC /* Carbon.framework */; };
 		CEE1272020E38BBD00C286AF /* CoreServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1271F20E38BBD00C286AF /* CoreServices.framework */; };
 		CEE1272320E3901C00C286AF /* Resources.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEE1272220E3901B00C286AF /* Resources.cpp */; };
-		CEE1272A20E399DD00C286AF /* GL2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE53C31B1E62C11A0010FDB3 /* GL2.cpp */; };
 		CEE1272B20E399FC00C286AF /* Glyph.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB263820DFF4CA00E79DC4 /* Glyph.cpp */; };
 		CEE1272C20E399FC00C286AF /* StringTree.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB264820E0374500E79DC4 /* StringTree.cpp */; };
 		CEE1272D20E399FC00C286AF /* Fonts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB263520DFF46400E79DC4 /* Fonts.cpp */; };
@@ -401,7 +383,6 @@
 		CEE1278020E3A6BD00C286AF /* libjpeg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276920E3A6BC00C286AF /* libjpeg.a */; };
 		CEE1278120E3A6BD00C286AF /* libpng16.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276A20E3A6BC00C286AF /* libpng16.a */; };
 		CEE1278220E3A6BD00C286AF /* libbz2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276B20E3A6BC00C286AF /* libbz2.a */; };
-		CEE1278320E3A6BD00C286AF /* libSDL2_gpu.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276C20E3A6BC00C286AF /* libSDL2_gpu.a */; };
 		CEE1278420E3A6BD00C286AF /* libvorbisenc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276D20E3A6BD00C286AF /* libvorbisenc.a */; };
 		CEE1278520E3A6BD00C286AF /* libswscale.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276E20E3A6BD00C286AF /* libswscale.a */; };
 		CEE1278620E3A6BD00C286AF /* libswresample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276F20E3A6BD00C286AF /* libswresample.a */; };
@@ -671,9 +652,6 @@
 		CE24317C1E3A6A50003276DA /* Unicode.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = Unicode.hpp; sourceTree = "<group>"; };
 		CE28334F1EB21F7700E06E4C /* Base.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = Base.hpp; sourceTree = "<group>"; };
 		CE44679C1E212045007F847C /* mac_reloader.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = mac_reloader.c; sourceTree = "<group>"; };
-		CE53C3171E62C1110010FDB3 /* GLES2.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GLES2.cpp; sourceTree = "<group>"; };
-		CE53C3181E62C1110010FDB3 /* GLES3.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GLES3.cpp; sourceTree = "<group>"; };
-		CE53C31B1E62C11A0010FDB3 /* GL2.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GL2.cpp; sourceTree = "<group>"; };
 		CE61AC0C20E3A8AF000B31C7 /* Resources.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Resources.cpp; path = "DerivedData/Xcode/onscripter-ru-ios/Resources.cpp"; sourceTree = "<group>"; };
 		CE61AC0F20E3AE21000B31C7 /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Resources/Bundle/Images.xcassets; sourceTree = SOURCE_ROOT; };
 		CE61AC1120E3AE2E000B31C7 /* iTunesArtwork */ = {isa = PBXFileReference; lastKnownFileType = file; name = iTunesArtwork; path = Resources/Bundle/iTunesArtwork; sourceTree = SOURCE_ROOT; };
@@ -750,7 +728,6 @@
 		CEE1267E20E36FA900C286AF /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = SOURCE_ROOT; };
 		CEE1268320E3707E00C286AF /* onscripter-ru-osx64h.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "onscripter-ru-osx64h.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		CEE126D720E3821700C286AF /* libSDL2main.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2main.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2main.a; sourceTree = "<group>"; };
-		CEE126D820E3821700C286AF /* libepoxy.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libepoxy.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libepoxy.a; sourceTree = "<group>"; };
 		CEE126DA20E3821700C286AF /* libSDL2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2.a; sourceTree = "<group>"; };
 		CEE126DB20E3821700C286AF /* libass.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libass.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libass.a; sourceTree = "<group>"; };
 		CEE126DC20E3821700C286AF /* libSDL2_test.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_test.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2_test.a; sourceTree = "<group>"; };
@@ -760,7 +737,6 @@
 		CEE126E020E3821700C286AF /* libvorbisfile.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisfile.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libvorbisfile.a; sourceTree = "<group>"; };
 		CEE126E120E3821700C286AF /* libvorbisenc.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisenc.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libvorbisenc.a; sourceTree = "<group>"; };
 		CEE126E220E3821700C286AF /* libavutil.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavutil.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libavutil.a; sourceTree = "<group>"; };
-		CEE126E320E3821700C286AF /* libSDL2_gpu.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_gpu.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2_gpu.a; sourceTree = "<group>"; };
 		CEE126E420E3821700C286AF /* libfreetype.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfreetype.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libfreetype.a; sourceTree = "<group>"; };
 		CEE126E520E3821700C286AF /* libjpeg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libjpeg.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libjpeg.a; sourceTree = "<group>"; };
 		CEE126E620E3821800C286AF /* libSDL2_image.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_image.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2_image.a; sourceTree = "<group>"; };
@@ -796,7 +772,6 @@
 		CEE1273F20E3A68000C286AF /* libvorbis.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbis.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libvorbis.a"; sourceTree = "<group>"; };
 		CEE1274020E3A68000C286AF /* libSDL2main.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2main.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libSDL2main.a"; sourceTree = "<group>"; };
 		CEE1274120E3A68000C286AF /* libharfbuzz.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libharfbuzz.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libharfbuzz.a"; sourceTree = "<group>"; };
-		CEE1274220E3A68000C286AF /* libSDL2_gpu.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_gpu.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libSDL2_gpu.a"; sourceTree = "<group>"; };
 		CEE1274320E3A68000C286AF /* libass.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libass.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libass.a"; sourceTree = "<group>"; };
 		CEE1274420E3A68000C286AF /* libfreetype.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfreetype.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libfreetype.a"; sourceTree = "<group>"; };
 		CEE1274520E3A68000C286AF /* libswscale.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libswscale.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libswscale.a"; sourceTree = "<group>"; };
@@ -816,7 +791,6 @@
 		CEE1276920E3A6BC00C286AF /* libjpeg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libjpeg.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libjpeg.a"; sourceTree = "<group>"; };
 		CEE1276A20E3A6BC00C286AF /* libpng16.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libpng16.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libpng16.a"; sourceTree = "<group>"; };
 		CEE1276B20E3A6BC00C286AF /* libbz2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbz2.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libbz2.a"; sourceTree = "<group>"; };
-		CEE1276C20E3A6BC00C286AF /* libSDL2_gpu.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_gpu.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libSDL2_gpu.a"; sourceTree = "<group>"; };
 		CEE1276D20E3A6BD00C286AF /* libvorbisenc.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisenc.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libvorbisenc.a"; sourceTree = "<group>"; };
 		CEE1276E20E3A6BD00C286AF /* libswscale.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libswscale.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libswscale.a"; sourceTree = "<group>"; };
 		CEE1276F20E3A6BD00C286AF /* libswresample.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libswresample.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libswresample.a"; sourceTree = "<group>"; };
@@ -883,7 +857,6 @@
 				CEE1278020E3A6BD00C286AF /* libjpeg.a in Frameworks */,
 				CEE1278120E3A6BD00C286AF /* libpng16.a in Frameworks */,
 				CEE1278220E3A6BD00C286AF /* libbz2.a in Frameworks */,
-				CEE1278320E3A6BD00C286AF /* libSDL2_gpu.a in Frameworks */,
 				CEE1278420E3A6BD00C286AF /* libvorbisenc.a in Frameworks */,
 				CEE1278520E3A6BD00C286AF /* libswscale.a in Frameworks */,
 				CEE1278620E3A6BD00C286AF /* libswresample.a in Frameworks */,
@@ -910,7 +883,6 @@
 				CE61AC6620E3C0E1000B31C7 /* CoreGraphics.framework in Frameworks */,
 				CE61AC6720E3C0E1000B31C7 /* CoreAudio.framework in Frameworks */,
 				CE61AC6820E3C0E1000B31C7 /* libSDL2main.a in Frameworks */,
-				CE61AC6920E3C0E1000B31C7 /* libepoxy.a in Frameworks */,
 				CE61AC6B20E3C0E1000B31C7 /* libSDL2.a in Frameworks */,
 				CE61AC6C20E3C0E1000B31C7 /* libass.a in Frameworks */,
 				CE61AC6D20E3C0E1000B31C7 /* libSDL2_test.a in Frameworks */,
@@ -921,7 +893,6 @@
 				CE61AC7220E3C0E1000B31C7 /* libvorbisenc.a in Frameworks */,
 				CE61AC7320E3C0E1000B31C7 /* libavutil.a in Frameworks */,
 				CE61AC7420E3C0E1000B31C7 /* libavformat.a in Frameworks */,
-				CE61AC7520E3C0E1000B31C7 /* libSDL2_gpu.a in Frameworks */,
 				CE61AC7620E3C0E1000B31C7 /* libfreetype.a in Frameworks */,
 				CE61AC7720E3C0E1000B31C7 /* libjpeg.a in Frameworks */,
 				CE61AC7820E3C0E1000B31C7 /* libSDL2_image.a in Frameworks */,
@@ -957,7 +928,6 @@
 				CE9D80DF20E3CA9200670C17 /* CoreGraphics.framework in Frameworks */,
 				CE9D80E020E3CA9200670C17 /* CoreAudio.framework in Frameworks */,
 				CE9D80E120E3CA9200670C17 /* libSDL2main.a in Frameworks */,
-				CE9D80E220E3CA9200670C17 /* libepoxy.a in Frameworks */,
 				CE9D80E420E3CA9200670C17 /* libSDL2.a in Frameworks */,
 				CE9D80E520E3CA9200670C17 /* libass.a in Frameworks */,
 				CE9D80E620E3CA9200670C17 /* libSDL2_test.a in Frameworks */,
@@ -968,7 +938,6 @@
 				CE9D80EB20E3CA9200670C17 /* libvorbisenc.a in Frameworks */,
 				CE9D80EC20E3CA9200670C17 /* libavutil.a in Frameworks */,
 				CE9D80ED20E3CA9200670C17 /* libavformat.a in Frameworks */,
-				CE9D80EE20E3CA9200670C17 /* libSDL2_gpu.a in Frameworks */,
 				CE9D80EF20E3CA9200670C17 /* libfreetype.a in Frameworks */,
 				CE9D80F020E3CA9200670C17 /* libjpeg.a in Frameworks */,
 				CE9D80F120E3CA9200670C17 /* libSDL2_image.a in Frameworks */,
@@ -1028,7 +997,6 @@
 				CEE1270D20E3824000C286AF /* CoreGraphics.framework in Frameworks */,
 				CEE1270B20E3823700C286AF /* CoreAudio.framework in Frameworks */,
 				CEE126F120E3821800C286AF /* libSDL2main.a in Frameworks */,
-				CEE126F220E3821800C286AF /* libepoxy.a in Frameworks */,
 				CEE126F420E3821800C286AF /* libSDL2.a in Frameworks */,
 				CEE126F520E3821800C286AF /* libass.a in Frameworks */,
 				CEE126F620E3821800C286AF /* libSDL2_test.a in Frameworks */,
@@ -1039,7 +1007,6 @@
 				CEE126FB20E3821800C286AF /* libvorbisenc.a in Frameworks */,
 				CEE126FC20E3821800C286AF /* libavutil.a in Frameworks */,
 				CEE1271820E3839A00C286AF /* libavformat.a in Frameworks */,
-				CEE126FD20E3821800C286AF /* libSDL2_gpu.a in Frameworks */,
 				CEE126FE20E3821800C286AF /* libfreetype.a in Frameworks */,
 				CEE126FF20E3821800C286AF /* libjpeg.a in Frameworks */,
 				CEE1270020E3821800C286AF /* libSDL2_image.a in Frameworks */,
@@ -1137,10 +1104,8 @@
 				CEE1276920E3A6BC00C286AF /* libjpeg.a */,
 				CEE1273720E3A67F00C286AF /* libogg.a */,
 				CEE1273820E3A67F00C286AF /* libpng16.a */,
-				CEE1274220E3A68000C286AF /* libSDL2_gpu.a */,
 				CEE1276220E3A6BC00C286AF /* libogg.a */,
 				CEE1276A20E3A6BC00C286AF /* libpng16.a */,
-				CEE1276C20E3A6BC00C286AF /* libSDL2_gpu.a */,
 				CEE1274620E3A68000C286AF /* libSDL2_image.a */,
 				CEE1273920E3A67F00C286AF /* libSDL2_mixer.a */,
 				CEE1273420E3A67F00C286AF /* libSDL2.a */,
@@ -1169,7 +1134,6 @@
 				CEE126EA20E3821800C286AF /* libavcodec.a */,
 				CEE126E220E3821700C286AF /* libavutil.a */,
 				CEE126EF20E3821800C286AF /* libbz2.a */,
-				CEE126D820E3821700C286AF /* libepoxy.a */,
 				CEE126E420E3821700C286AF /* libfreetype.a */,
 				CEE126F020E3821800C286AF /* libfribidi.a */,
 				CEE126E820E3821800C286AF /* libharfbuzz.a */,
@@ -1177,7 +1141,6 @@
 				CEE126DF20E3821700C286AF /* liblua.a */,
 				CEE126EC20E3821800C286AF /* libogg.a */,
 				CEE126EE20E3821800C286AF /* libpng16.a */,
-				CEE126E320E3821700C286AF /* libSDL2_gpu.a */,
 				CEE126E620E3821800C286AF /* libSDL2_image.a */,
 				CEE126EB20E3821800C286AF /* libSDL2_mixer.a */,
 				CEE126DC20E3821700C286AF /* libSDL2_test.a */,
@@ -1359,9 +1322,6 @@
 			children = (
 				1C7B87CD1799A24500FA05F3 /* GPU.cpp */,
 				1C7B87D31799A33A00FA05F3 /* GPU.hpp */,
-				CE53C31B1E62C11A0010FDB3 /* GL2.cpp */,
-				CE53C3171E62C1110010FDB3 /* GLES2.cpp */,
-				CE53C3181E62C1110010FDB3 /* GLES3.cpp */,
 				1C0A5F8117478EFA004A9BCC /* Common.cpp */,
 				1C0A5F7C17478EFA004A9BCC /* Common.hpp */,
 				CEDB261920DF692100E79DC4 /* Pool.cpp */,
@@ -2230,11 +2190,8 @@
 				2FD1DB511D52108C00362A7C /* DirPaths.cpp in Sources */,
 				2FD1DB521D52108C00362A7C /* DirtyRect.cpp in Sources */,
 				2FD1DB531D52108C00362A7C /* Font.cpp in Sources */,
-				CEE1272A20E399DD00C286AF /* GL2.cpp in Sources */,
-				CE53C31A1E62C1110010FDB3 /* GLES3.cpp in Sources */,
 				2FD1DB541D52108C00362A7C /* LUA.cpp in Sources */,
 				2FD1DB551D52108C00362A7C /* Loader.cpp in Sources */,
-				CE53C3191E62C1110010FDB3 /* GLES2.cpp in Sources */,
 				CEFEC4781D53D5A200957675 /* ExceptionHandler.cpp in Sources */,
 				2FD1DB561D52108C00362A7C /* SubtitleDriver.cpp in Sources */,
 				2FD1DB571D52108C00362A7C /* Script.cpp in Sources */,
@@ -2289,9 +2246,6 @@
 				CE61AC4120E3C0E1000B31C7 /* SubtitleDecoder.cpp in Sources */,
 				CE61AC4220E3C0E1000B31C7 /* SubtitleDriver.cpp in Sources */,
 				CE61AC4320E3C0E1000B31C7 /* GPU.cpp in Sources */,
-				CE61AC4420E3C0E1000B31C7 /* GL2.cpp in Sources */,
-				CE61AC4520E3C0E1000B31C7 /* GLES2.cpp in Sources */,
-				CE61AC4620E3C0E1000B31C7 /* GLES3.cpp in Sources */,
 				CE61AC4720E3C0E1000B31C7 /* Common.cpp in Sources */,
 				CE61AC4820E3C0E1000B31C7 /* Pool.cpp in Sources */,
 				CE61AC4920E3C0E1000B31C7 /* PNG.cpp in Sources */,
@@ -2359,9 +2313,6 @@
 				CE9D80BA20E3CA9200670C17 /* SubtitleDecoder.cpp in Sources */,
 				CE9D80BB20E3CA9200670C17 /* SubtitleDriver.cpp in Sources */,
 				CE9D80BC20E3CA9200670C17 /* GPU.cpp in Sources */,
-				CE9D80BD20E3CA9200670C17 /* GL2.cpp in Sources */,
-				CE9D80BE20E3CA9200670C17 /* GLES2.cpp in Sources */,
-				CE9D80BF20E3CA9200670C17 /* GLES3.cpp in Sources */,
 				CE9D80C020E3CA9200670C17 /* Common.cpp in Sources */,
 				CE9D80C120E3CA9200670C17 /* Pool.cpp in Sources */,
 				CE9D80C220E3CA9200670C17 /* PNG.cpp in Sources */,
@@ -2453,9 +2404,6 @@
 				CEE126B820E374BD00C286AF /* SubtitleDecoder.cpp in Sources */,
 				CEE126B920E374BD00C286AF /* SubtitleDriver.cpp in Sources */,
 				CEE126BA20E374BD00C286AF /* GPU.cpp in Sources */,
-				CEE126BC20E374BD00C286AF /* GL2.cpp in Sources */,
-				CEE126BD20E374BD00C286AF /* GLES2.cpp in Sources */,
-				CEE126BE20E374BD00C286AF /* GLES3.cpp in Sources */,
 				CEE126BF20E374BD00C286AF /* Common.cpp in Sources */,
 				CEE126C020E374BD00C286AF /* Pool.cpp in Sources */,
 				CEE126C120E374BD00C286AF /* PNG.cpp in Sources */,

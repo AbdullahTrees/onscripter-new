@@ -4,8 +4,8 @@ Date: 2026-06-02
 Updated: 2026-06-03
 
 This audit covers the SDL3 default renderer path, with emphasis on
-`Engine/Graphics/SDL3GPUCompat.cpp` because that layer currently adapts the old
-SDL2_gpu-shaped renderer API to SDL3_GPU.
+`Engine/Graphics/SDL3GPUCompat.cpp` because that layer currently adapts the
+engine's former SDL2_gpu-shaped renderer API to SDL3_GPU.
 
 ## Benchmark
 
@@ -223,6 +223,21 @@ telemetry is the authoritative way to catch external shaders, render-to-self
 safety fallbacks, unsupported texture formats, or backend-specific native
 shader creation failures.
 
+### SDL3-Only Build and Windows Packaging Cutover
+
+The fallback-release window is closed. Configure now builds the SDL3_GPU path
+unconditionally, rejects `--sdl2-renderer`, and no longer wires SDL2_gpu or
+libepoxy into `onscrlib`. The legacy GL2/GLES2/GLES3 backend source files were
+removed, Xcode references to those files and to SDL2_gpu/libepoxy archives were
+scrubbed, and Windows packaging no longer ships ANGLE, EGL/GLES, or
+d3dcompiler renderer DLL payloads.
+
+Status: build-verified on the 2026-06-03 local Windows UCRT64 SDL3 public
+release build and copied to `D:\Umineko Project\onscripter-ru.exe`. Runtime
+telemetry is still useful for representative shader/effect validation, but this
+cleanup changes the dependency graph and packaging surface rather than renderer
+runtime semantics.
+
 ### SDL3_mixer High-Resolution Dynamic Fades
 
 Dynamic BGM fades (`abgm_prop`) and mix-channel fades (`ach_prop`) interpolate
@@ -354,6 +369,19 @@ write helper. Cleanup is explicit on both successful writes and libpng error
 returns, including unlocking any locked surface. The local UCRT64 rebuild no
 longer emits the previous GCC `-Wclobbered` longjmp warnings from
 `saveSurfacePNG_RW()`.
+
+### SDL3 Warning-Clean Release Build
+
+The 2026-06-03 UCRT64 warning-clean release rebuild no longer emits the
+remaining GCC diagnostics from SDL3 joystick ID validation, display-mode
+fallback initialization, SDL3-disabled touch gesture handling, PNG load
+longjmp state, or unused video framerate counting. The clean build was copied
+to `D:\Umineko Project\onscripter-ru.exe`.
+
+The root `README.md` was also refreshed during this pass to identify
+`onscripter-new` as the Umineko Project ONScripter-RU modernization branch and
+to point readers at the local compilation, dependency, and SDL3 performance
+status documents.
 
 ### Umineko Project Startup/Video Telemetry
 
@@ -912,8 +940,9 @@ synthetic benchmark.
 
 ### 4. CPU Backing Storage Is Reduced But Still Necessary
 
-Every `GPU_Image` keeps CPU backing pixels for SDL2_gpu compatibility,
-screenshot/readback support, CPU shader fallback, and render-to-self recovery.
+Every `GPU_Image` keeps CPU backing pixels for the higher-level renderer
+compatibility API, screenshot/readback support, CPU shader fallback, and
+render-to-self recovery.
 Lazy solid-color mirrors reduce the common full-clear cost, direct surface
 copy-out avoids unnecessary persistent mirror updates, and reusable download
 buffers reduce allocation churn. Actual CPU fallback still needs synchronized

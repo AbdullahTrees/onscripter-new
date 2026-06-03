@@ -86,14 +86,16 @@ if [ ! -f "Engine/Core/Loader.cpp" ]; then
 	exit 1
 fi
 
-if [ -f "DerivedData/Xcode/onscrlib64h/onscrlib/include/SDL2/SDL_gpu.h" ]; then
+if [ -f "DerivedData/Xcode/onscrlib64h/onscrlib/include/SDL3/SDL.h" ]; then
 	ONSCRLIB="DerivedData/Xcode/onscrlib64h/onscrlib"
-elif [ -f "DerivedData/Xcode/onscrlib64/onscrlib/include/SDL2/SDL_gpu.h" ]; then
+elif [ -f "DerivedData/Xcode/onscrlib64/onscrlib/include/SDL3/SDL.h" ]; then
 	ONSCRLIB="DerivedData/Xcode/onscrlib64/onscrlib"
-elif [ -f "DerivedData/Xcode/onscrlib32/onscrlib/include/SDL2/SDL_gpu.h" ]; then
+elif [ -f "DerivedData/Xcode/onscrlib32/onscrlib/include/SDL3/SDL.h" ]; then
 	ONSCRLIB="DerivedData/Xcode/onscrlib64/onscrlib"
-elif [ -f "DerivedData/MinGW-i686/Dependencies/onscrlib/include/SDL2/SDL_gpu.h" ]; then
-	ONSCRLIB="DerivedData/MinGW-i686/Dependencies/onscrlib/onscrlib"
+elif [ -f "DerivedData/MinGW-x86_64/Dependencies/onscrlib/include/SDL3/SDL.h" ]; then
+	ONSCRLIB="DerivedData/MinGW-x86_64/Dependencies/onscrlib"
+elif [ -f "DerivedData/MinGW-i686/Dependencies/onscrlib/include/SDL3/SDL.h" ]; then
+	ONSCRLIB="DerivedData/MinGW-i686/Dependencies/onscrlib"
 else
 	echo "No compiled onscrlib found!"
 	exit 1
@@ -104,7 +106,7 @@ CFILES=$(find Tools Engine Support -name \*.c)
 MMFILES=$(find Tools Engine Support -name \*.mm ! -name UIKitWrapper.mm)
 
 INCLUDES="-I$ONSCRLIB/include -I$ONSCRLIB/include/freetype2"
-PREPROCESSOR="$PREPROCESSOR -DOV_EXCLUDE_STATIC_CALLBACKS=1 -DUSE_LUA=1 -D_THREAD_SAFE=1"
+PREPROCESSOR="$PREPROCESSOR -DOV_EXCLUDE_STATIC_CALLBACKS=1 -DUSE_LUA=1 -D_THREAD_SAFE=1 -DONS_USE_SDL3=1"
 case `uname` in
 	MINGW32*)
 		PREPROCESSOR="$PREPROCESSOR -DWIN32=1 -target i686-w64-mingw32"

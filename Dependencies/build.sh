@@ -1037,7 +1037,7 @@ if $CROSS_BUILD; then
         # Makes sure the right ranlib is used
         echo "${CROSS_SYS_PREFIX}$(getHostPrefix)-ranlib \"\$@\"" > $outdir/bin/ranlib
         chmod a+x $outdir/bin/ranlib
-        # Makes sure the right ar is used (ffmpeg, SDL2_gpu)
+        # Makes sure the right ar is used (ffmpeg)
         echo "${CROSS_SYS_PREFIX}$(getHostPrefix)-ar \"\$@\"" > $outdir/bin/ar
         chmod a+x $outdir/bin/ar
         # Makes sure the right strip is used (lua)

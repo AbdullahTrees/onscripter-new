@@ -642,17 +642,17 @@ bool ONScripter::touchEvent(SDL_Event &event, EventProcessingState &state) {
 	bool type_down  = event.type == SDL_FINGERDOWN;
 	float event_x = 0, event_y = 0;
 
-	auto sendKeyEvent = [this](SDL_Scancode c) {
-		auto k                 = new SDL_Event;
-		onsKeyboardScancode(k->key) = c;
-		k->type                = SDL_KEYUP;
-		localEventQueue.emplace_front(k);
-	};
-
 	if (event.type == ONS_MULTIGESTURE_EVENT) {
 #if defined(ONS_USE_SDL3)
 		return false;
 #else
+		auto sendKeyEvent = [this](SDL_Scancode c) {
+			auto k                    = new SDL_Event;
+			onsKeyboardScancode(k->key) = c;
+			k->type                   = SDL_KEYUP;
+			localEventQueue.emplace_front(k);
+		};
+
 		SDL_MultiGestureEvent &gesture = event.mgesture;
 
 		//sendToLog(LogLevel::Error, "Multiguesture %d last %d, num %d (%f, %f)\n",

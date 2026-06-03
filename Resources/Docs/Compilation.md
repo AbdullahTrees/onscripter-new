@@ -30,14 +30,6 @@ The default renderer stack is SDL3_GPU with SDL3_image and SDL3_mixer:
 make -j8
 ```
 
-The legacy SDL2/SDL2_gpu renderer remains available for fallback testing during
-the SDL3 cutover window:
-
-```
-./configure --sdl2-renderer
-make -j8
-```
-
 For packaged game distributions that ship compressed `.file` scripts, use a public release build. Development builds expect the plaintext script layout and can stop at startup with "No compatible game script found" when pointed at release game data.
 
 ```
@@ -68,12 +60,19 @@ Runtime GLSL-to-SPIR-V through shaderc is opt-in:
 
 If `shaderc.pc` is available and `--sdl3-runtime-shaderc` is used, configure defines `ONS_USE_SDL3_SHADERC`. MSYS2's shaderc package links the shared `libshaderc_shared` import library, so release packaging must ship that DLL or use a static shaderc build. Older arbitrary OpenGL GLSL still needs source porting, embedded precompiled bytecode, or a dedicated translator.
 
-The Windows SDL3 path currently links SDL3, SDL3_image, and SDL3_mixer statically, so a normal package does not need SDL3 DLLs beside the executable. Runtime validation on Windows reached the Umineko Project main menu with `--release-build --strip-binary --std=gnu++14`; the log showed SDL3_GPU initialization, shader compilation, and SDL3_mixer audio startup without a new Windows application error during the 120 second validation run.
+The Windows release path links SDL3, SDL3_image, and SDL3_mixer statically, so
+a normal package does not need SDL, ANGLE, EGL, GLES, or d3dcompiler renderer
+DLLs beside the executable. Runtime validation on Windows reached the Umineko
+Project main menu with `--release-build --strip-binary --std=gnu++14`; the log
+showed SDL3_GPU initialization, shader compilation, and SDL3_mixer audio
+startup without a new Windows application error during the 120 second
+validation run.
 
 The SDL3_mixer compatibility layer also exposes high-resolution float volume
 wrappers for dynamic fades. BGM and mix-channel property fades keep their
 interpolated double volume until the final SDL3_mixer `MIX_SetTrackGain()` call,
-while SDL2 fallback builds still round through the legacy SDL2_mixer volume API.
+while the retired SDL2 fallback path rounded through the legacy SDL2_mixer
+volume API.
 The 2026-06-02 UCRT64 rebuild after this change linked successfully and the
 updated executable was copied to `D:\Umineko Project\onscripter-ru.exe`.
 The 2026-06-03 UCRT64 rebuild after full built-in shader SPIR-V coverage also
@@ -94,11 +93,26 @@ stale mix-channel volume properties when explicit `dwave` stop/restart commands
 reuse a channel.
 The follow-up 2026-06-03 UCRT64 rebuild after the shared `dwave`/`ach_prop`
 fade-priming fix also linked successfully and was copied to the same Umineko
-Project executable path. This change applies to both SDL2 and SDL3 builds: when
-a `dwave*` command starts a channel and the next script command is a timed
-`ach_prop` fade for that same numeric channel, the channel volume is seeded to
-zero before playback so the scripted fade starts cleanly instead of from stale
-engine SFX volume.
+Project executable path. This shared fix applied before fallback removal to
+both SDL2 and SDL3 builds: when a `dwave*` command starts a channel and the next
+script command is a timed `ach_prop` fade for that same numeric channel, the
+channel volume is seeded to zero before playback so the scripted fade starts
+cleanly instead of from stale engine SFX volume.
+The 2026-06-03 SDL3 default cutover cleanup removed the `--sdl2-renderer`
+fallback, SDL2_gpu/libepoxy dependency recipes, legacy GL/GLES backend sources,
+and old ANGLE/d3dcompiler Windows DLL packaging. Configure now treats SDL3_GPU
+as the only renderer backend.
+The 2026-06-03 UCRT64 rebuild after this SDL3-only cutover cleanup linked
+successfully and the updated executable was copied to
+`D:\Umineko Project\onscripter-ru.exe`.
+The follow-up 2026-06-03 UCRT64 warning-clean rebuild removed the remaining
+GCC diagnostics from joystick ID validation, display-mode initialization,
+SDL3-disabled touch gesture handling, PNG load longjmp state, and video
+framerate counting. A clean release rebuild emitted no `warning:` lines and the
+updated executable was copied again to `D:\Umineko Project\onscripter-ru.exe`.
+The same documentation pass refreshed the root `README.md` so the repository is
+presented as `onscripter-new`, an Umineko Project ONScripter-RU modernization
+branch with SDL3_GPU/SDL3_image/SDL3_mixer as the active build stack.
 
 SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
 `ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,

@@ -83,12 +83,13 @@ SDL_Surface *PNGLoader::loadPng(SDL_RWops *src) {
 	int row, i;
 	int ckey = -1;
 	png_color_16 *transv;
+	SDL_RWops *volatile read_src = src;
 
-	if (!src) {
+	if (!read_src) {
 		/* The error message has been set in SDL_RWFromFile */
 		return nullptr;
 	}
-	start = SDL_RWtell(src);
+	start = SDL_RWtell(read_src);
 
 	/* Initialize the data we will clean up when we're done */
 	error        = nullptr;
@@ -121,7 +122,7 @@ SDL_Surface *PNGLoader::loadPng(SDL_RWops *src) {
 	}
 
 	/* Set up the input control */
-	this->png_set_read_fn(png_ptr, src, this->png_read_data);
+	this->png_set_read_fn(png_ptr, read_src, this->png_read_data);
 
 	/* Read PNG header info */
 	this->png_read_info(png_ptr, info_ptr);
@@ -278,7 +279,7 @@ done: /* Clean up and return */
 		SDL_free(row_pointers);
 	}
 	if (error) {
-		SDL_RWseek(src, start, RW_SEEK_SET);
+		SDL_RWseek(read_src, start, RW_SEEK_SET);
 		if (surface) {
 			SDL_FreeSurface(surface);
 			surface = nullptr;

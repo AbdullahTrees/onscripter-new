@@ -185,13 +185,18 @@ bool WindowController::updateDisplayData(bool getpos) {
 	RenderRect windowRegion{static_cast<float>(window_x), static_cast<float>(window_y), static_cast<float>(screen_width), static_cast<float>(screen_height)};
 
 	for (int d = 0; d < displays; d++) {
-		SDL_DisplayMode video_mode;
-		onsGetDesktopDisplayMode(d, &video_mode);
+		SDL_DisplayMode video_mode{};
+		SDL_Rect displayBounds{};
+		bool haveDisplayBounds = onsGetDisplayBounds(d, &displayBounds);
+		if (!onsGetDesktopDisplayMode(d, &video_mode)) {
+			video_mode.w = haveDisplayBounds ? displayBounds.w : screen_width;
+			video_mode.h = haveDisplayBounds ? displayBounds.h : screen_height;
+		}
 		auto &display         = displayData.displays[d];
 		display.id            = d;
 		display.native_width  = video_mode.w;
 		display.native_height = video_mode.h;
-		onsGetDisplayBounds(d, &display.region);
+		display.region        = haveDisplayBounds ? displayBounds : SDL_Rect{0, 0, video_mode.w, video_mode.h};
 
 		// Determine the size of the portion of the window visible on this display
 		SDL_Rect &r = display.region;
