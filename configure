@@ -120,7 +120,8 @@ DROID_MIN_API=34
 DROID_BUILD=false
 DROID_ARCH=arm64
 DROID_TOOLCHAIN=""
-SDL3_RENDERER=false
+SDL3_RENDERER=true
+SDL3_RUNTIME_SHADERC=false
 CROSS_TRIPLE=""
 TOOLCHAIN_PREFIX=""
 COMPILER_PREFIX=""
@@ -189,6 +190,10 @@ do
         ;;
       --sdl3-renderer | -sdl3-renderer)
         SDL3_RENDERER=true ;;
+      --sdl2-renderer | -sdl2-renderer)
+        SDL3_RENDERER=false ;;
+      --sdl3-runtime-shaderc | -sdl3-runtime-shaderc)
+        SDL3_RUNTIME_SHADERC=true ;;
       --cross=* | -cross=*)
         CROSS_TRIPLE=$arg ;;
       --embed-path=* | =embed-path=*)
@@ -219,7 +224,9 @@ do
 	  --droid-build            build for droid
 	  --droid-arch=ARCH        build for droid arch: arm64|x86_64 (default is arm64)
 	  --droid-toolchain=DIR    path to droid toolchain (default is auto)
-	  --sdl3-renderer          build against SDL3/SDL3_image/SDL3_mixer and the SDL3_GPU backend
+	  --sdl3-renderer          build against SDL3/SDL3_image/SDL3_mixer and the SDL3_GPU backend (default)
+	  --sdl2-renderer          build the legacy SDL2/SDL2_gpu backend for fallback testing
+	  --sdl3-runtime-shaderc   enable runtime GLSL-to-SPIR-V through shaderc
 	  --cross=TRIPLE           cross compilation triple
 	  --embed-path=EMBED       path to compiled embed binary (default is target compile)
 	__ENDHELP
@@ -705,9 +712,14 @@ if $SDL3_RENDERER; then
   SDL_SHADERCROSS_DEFS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross && printf '%s' '-DONS_USE_SDL3_SHADERCROSS')"
   SDL_SHADERCROSS_VENDOR_LIBS="\$(wildcard \$(EXTLIB)/lib/libspirv-cross-c\$(LIBSUFFIX)) \$(wildcard \$(EXTLIB)/lib/libspirv-cross-glsl\$(LIBSUFFIX)) \$(wildcard \$(EXTLIB)/lib/libspirv-cross-hlsl\$(LIBSUFFIX)) \$(wildcard \$(EXTLIB)/lib/libspirv-cross-msl\$(LIBSUFFIX)) \$(wildcard \$(EXTLIB)/lib/libspirv-cross-cpp\$(LIBSUFFIX)) \$(wildcard \$(EXTLIB)/lib/libspirv-cross-reflect\$(LIBSUFFIX)) \$(wildcard \$(EXTLIB)/lib/libspirv-cross-core\$(LIBSUFFIX))"
   SDL_SHADERCROSS_LIBS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross && PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --libs sdl3-shadercross) $SDL_SHADERCROSS_VENDOR_LIBS"
-  SDL_SHADERC_CFLAGS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross shaderc && PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --cflags shaderc)"
-  SDL_SHADERC_DEFS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross shaderc && printf '%s' '-DONS_USE_SDL3_SHADERC')"
-  SDL_SHADERC_LIBS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross shaderc && PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --libs shaderc)"
+  SDL_SHADERC_CFLAGS=""
+  SDL_SHADERC_DEFS=""
+  SDL_SHADERC_LIBS=""
+  if $SDL3_RUNTIME_SHADERC; then
+    SDL_SHADERC_CFLAGS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross shaderc && PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --cflags shaderc)"
+    SDL_SHADERC_DEFS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross shaderc && printf '%s' '-DONS_USE_SDL3_SHADERC')"
+    SDL_SHADERC_LIBS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --exists sdl3-shadercross shaderc && PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --libs shaderc)"
+  fi
   SDL_STACK_CFLAGS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --cflags sdl3 sdl3-image sdl3-mixer) $SDL_SHADERCROSS_CFLAGS $SDL_SHADERCROSS_DEFS $SDL_SHADERC_CFLAGS $SDL_SHADERC_DEFS"
   SDL_STACK_LIBS="\$(shell PKG_CONFIG_PATH=\"\$(PKG_CONFIG_PATH)\" pkg-config --static --libs sdl3 sdl3-image sdl3-mixer) $SDL_SHADERCROSS_LIBS $SDL_SHADERC_LIBS"
   SDL_IMAGE_LIBS=""

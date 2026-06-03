@@ -572,6 +572,19 @@ public:
 		return 0; //dummy
 	}
 
+	double validVolumeLevel(double vol) {
+		constexpr double epsilon = 0.0001;
+		if (vol >= -epsilon && vol <= DEFAULT_VOLUME + epsilon) {
+			if (vol < 0.0)
+				return 0.0;
+			if (vol > DEFAULT_VOLUME)
+				return DEFAULT_VOLUME;
+			return vol;
+		}
+		errorAndExit("An invalid volume level was read!");
+		return 0.0; //dummy
+	}
+
 	uint32_t validChannel(uint32_t ch) {
 		// This is how it was originally, but I think we must be more restrictive
 		//if (ch >= ONS_MIX_CHANNELS) ch = ONS_MIX_CHANNELS-1;
@@ -1398,16 +1411,22 @@ public:
 	std::shared_ptr<Wrapped_Mix_Chunk> wave_sample[ONS_MIX_CHANNELS + ONS_MIX_EXTRA_CHANNELS]{};
 	std::shared_ptr<Wrapped_Mix_Chunk> pending_cache_chunk[2]{};
 
-	void setVolume(uint32_t channel, uint32_t level, bool flag) {
-		if (wave_sample[channel])
-			Mix_Volume(channel, flag ? level * MIX_MAX_VOLUME / DEFAULT_VOLUME : 0);
-		// Loop bgm channels and similar are not registered in channelVolumes for some reason.
-		if (channel < std::extent<decltype(channelvolumes)>::value)
-			channelvolumes[channel] = level;
+	uint32_t roundedVolumeLevel(double level) {
+		if (level <= 0.0)
+			return 0;
+		return static_cast<uint32_t>(level + 0.5);
 	}
 
-	void setMusicVolume(uint32_t level, bool flag) {
-		Mix_VolumeMusic(flag ? level * MIX_MAX_VOLUME / DEFAULT_VOLUME : 0);
+	void setVolume(uint32_t channel, double level, bool flag) {
+		if (wave_sample[channel])
+			Mix_VolumeFloat(channel, flag ? static_cast<float>(level * MIX_MAX_VOLUME / DEFAULT_VOLUME) : 0.0f);
+		// Loop bgm channels and similar are not registered in channelVolumes for some reason.
+		if (channel < std::extent<decltype(channelvolumes)>::value)
+			channelvolumes[channel] = roundedVolumeLevel(level);
+	}
+
+	void setMusicVolume(double level, bool flag) {
+		Mix_VolumeMusicFloat(flag ? static_cast<float>(level * MIX_MAX_VOLUME / DEFAULT_VOLUME) : 0.0f);
 	}
 
 private:
@@ -1420,9 +1439,10 @@ private:
 	void playCDAudio();
 	int playWave(const std::shared_ptr<Wrapped_Mix_Chunk> &chunk, int format, bool loop_flag, int channel);
 	int playSequencedMusic(bool loop_flag);
+	void clearPendingChannelVolume(int channel);
 	// Mion: for music status and fades
 	int playingMusic();
-	int setCurMusicVolume(int volume);
+	int setCurMusicVolume(double volume);
 	int setVolumeMute(bool do_mute);
 
 	enum { WAVE_PLAY        = 0,

@@ -191,6 +191,12 @@ void DynamicPropertyController::addGlobalProperty(bool _is_abs, int _property, i
 		globalProperties[_property].push_back(gp);
 }
 
+void DynamicPropertyController::clearGlobalProperty(int property) {
+	auto it = globalProperties.find(property);
+	if (it != globalProperties.end())
+		it->second.clear();
+}
+
 void DynamicPropertyController::addSpritesetProperty(int _spriteset_number, bool _is_abs, int _property, int _value, int _duration, int _motion_equation) {
 	DynamicSpritesetProperty ssp = DynamicSpritesetProperty(this, _spriteset_number, _is_abs, _property, _value, _duration, _motion_equation);
 	if (ssp.duration == 0) {
@@ -522,7 +528,7 @@ void DynamicPropertyController::DynamicGlobalProperty::setValue(double value) {
 				ons.stopDWAVE(ch);
 			value = 0;
 		}
-		ons.setVolume(ch, ons.validVolume(value), ons.volume_on_flag);
+		ons.setVolume(ch, ons.validVolumeLevel(value), ons.volume_on_flag);
 	}
 	/* May be missing required flush?
      * ons.flush(ONScripter::REFRESH_NORMAL_MODE, nullptr, nullptr, false, false, false); */

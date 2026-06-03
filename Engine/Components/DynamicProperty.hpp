@@ -271,6 +271,8 @@ public:
 	void addSpriteProperty(AnimationInfo *_ai, int _sprite_number, bool _is_lsp2, bool _is_abs, int _property, int _value = 0, int _duration = 0, int _motion_equation = MOTION_EQUATION_LINEAR, bool _is_override = false);
 	// Same for global properties. (Changes to the same property will queue.)
 	void addGlobalProperty(bool _is_abs, int _property, int _value = 0, int _duration = 0, int _motion_equation = MOTION_EQUATION_LINEAR, bool _is_override = false);
+	// Drops queued global property changes without applying their remaining deltas.
+	void clearGlobalProperty(int property);
 	// Same for spriteset properties. (Changes to the same property on the same spriteset will queue.)
 	void addSpritesetProperty(int _spriteset_number, bool _is_abs, int _property, int _value = 0, int _duration = 0, int _motion_equation = MOTION_EQUATION_LINEAR);
 

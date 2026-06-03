@@ -214,6 +214,8 @@ typedef struct GPU_Image {
 	std::vector<Uint8> pixels;
 	int pitch;
 	GPU_bool pixels_dirty;
+	GPU_bool pixels_solid;
+	SDL_Color solid_color;
 	GPU_bool texture_initialized;
 } GPU_Image;
 
@@ -307,5 +309,22 @@ void SDLCALL GPU_SetUniformi(int location, int value);
 void SDLCALL GPU_SetUniformf(int location, float value);
 void SDLCALL GPU_SetUniformfv(int location, int num_elements_per_value, int num_values, float *values);
 GPU_bool SDLCALL GPU_MultiplyAlpha(GPU_Image *image, const GPU_Rect *dst_clip);
+int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const char *outputPath);
+void SDLCALL GPU_PushTelemetryScope(const char *source);
+void SDLCALL GPU_PopTelemetryScope(void);
+
+class GPU_TelemetryScope {
+public:
+	explicit GPU_TelemetryScope(const char *source) {
+		GPU_PushTelemetryScope(source);
+	}
+
+	~GPU_TelemetryScope() {
+		GPU_PopTelemetryScope();
+	}
+
+	GPU_TelemetryScope(const GPU_TelemetryScope &) = delete;
+	GPU_TelemetryScope &operator=(const GPU_TelemetryScope &) = delete;
+};
 
 #endif

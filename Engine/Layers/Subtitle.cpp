@@ -156,6 +156,9 @@ bool SubtitleLayer::update(bool /*old*/) {
 		if (!imgs.empty()) {
 			renderImageSet(imgs);
 		} else if (needed_buffer) {
+#if defined(ONS_USE_SDL3)
+			GPU_TelemetryScope telemetryScope("subtitle_frame");
+#endif
 			GPU_UpdateImageBytes(current_frame, nullptr, needed_buffer.get(), width * 4);
 		} else if (gotFrame) {
 			gpu.clearWholeTarget(current_frame->target);
@@ -167,6 +170,9 @@ bool SubtitleLayer::update(bool /*old*/) {
 /* Private Subtitle wrapper */
 
 void SubtitleLayer::renderImageSet(std::vector<SubtitleImage> &imgs) {
+#if defined(ONS_USE_SDL3)
+	GPU_TelemetryScope telemetryScope("subtitle_image_set");
+#endif
 	for (size_t i = 0; i < imgs.size(); i++) {
 		RenderRect rect;
 		rect.x = 0;

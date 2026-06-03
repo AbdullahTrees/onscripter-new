@@ -21,13 +21,143 @@
 #include <sys/types.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <cerrno>
 #include <cmath>
+#include <cstdint>
 
 #define DEFAULT_CURSOR_WAIT ":l/3,160,2;cursor0.bmp"
 #define DEFAULT_CURSOR_NEWPAGE ":l/3,160,2;cursor1.bmp"
+
+namespace {
+
+const char *skipInlineScriptSpace(const char *p) {
+	while (*p == ' ' || *p == '\t' || *p == '\r')
+		p++;
+	return p;
+}
+
+const char *skipToNextScriptCommand(const char *p) {
+	while (*p) {
+		p = skipInlineScriptSpace(p);
+		if (*p == ';') {
+			while (*p && *p != '\n')
+				p++;
+		} else if (*p == '\n' || *p == ':') {
+			p++;
+		} else {
+			break;
+		}
+	}
+	return p;
+}
+
+bool consumeCommandName(const char *&p, const char *name) {
+	p = skipInlineScriptSpace(p);
+
+	const char *start = p;
+	for (const char *n = name; *n; n++, p++) {
+		if (std::tolower(static_cast<unsigned char>(*p)) != *n) {
+			p = start;
+			return false;
+		}
+	}
+
+	unsigned char next = static_cast<unsigned char>(*p);
+	if (std::isalnum(next) || next == '_') {
+		p = start;
+		return false;
+	}
+
+	return true;
+}
+
+bool consumeComma(const char *&p) {
+	p = skipInlineScriptSpace(p);
+	if (*p != ',')
+		return false;
+	p++;
+	return true;
+}
+
+bool readUnsignedLiteral(const char *&p, uint32_t &value) {
+	p = skipInlineScriptSpace(p);
+	if (!std::isdigit(static_cast<unsigned char>(*p)))
+		return false;
+
+	uint32_t result = 0;
+	while (std::isdigit(static_cast<unsigned char>(*p))) {
+		result = result * 10 + static_cast<uint32_t>(*p - '0');
+		p++;
+	}
+	value = result;
+	return true;
+}
+
+const char *skipScriptArgument(const char *p) {
+	bool inQuote = false;
+	int parenDepth{0};
+
+	while (*p) {
+		if (*p == '"') {
+			inQuote = !inQuote;
+		} else if (!inQuote) {
+			if (*p == '(') {
+				parenDepth++;
+			} else if (*p == ')' && parenDepth > 0) {
+				parenDepth--;
+			} else if (parenDepth == 0 && (*p == ',' || *p == '\n' || *p == ':' || *p == ';')) {
+				break;
+			}
+		}
+		p++;
+	}
+
+	return p;
+}
+
+bool readPositiveDurationLiteral(const char *&p) {
+	p = skipInlineScriptSpace(p);
+
+	bool negative = false;
+	if (*p == '-' || *p == '+') {
+		negative = *p == '-';
+		p++;
+	}
+	if (!std::isdigit(static_cast<unsigned char>(*p)))
+		return false;
+
+	uint32_t duration = 0;
+	while (std::isdigit(static_cast<unsigned char>(*p))) {
+		duration = duration * 10 + static_cast<uint32_t>(*p - '0');
+		p++;
+	}
+
+	return !negative && duration > 0;
+}
+
+bool nextCommandFadesChannelVolume(const char *nextScript, uint32_t channel) {
+	const char *p = skipToNextScriptCommand(nextScript);
+	if (!consumeCommandName(p, "ach_prop"))
+		return false;
+
+	uint32_t fadeChannel = 0;
+	if (!readUnsignedLiteral(p, fadeChannel) || fadeChannel != channel)
+		return false;
+
+	if (!consumeComma(p))
+		return false;
+	p = skipScriptArgument(p);
+
+	if (!consumeComma(p))
+		return false;
+
+	return readPositiveDurationLiteral(p);
+}
+
+} // namespace
 
 int ONScripter::yesnoboxCommand() {
 	bool is_yesnobox = script_h.isName("yesnobox", true);
@@ -2677,7 +2807,14 @@ int ONScripter::effectskipCommand() {
 }
 
 int ONScripter::dwavestopCommand() {
-	stopDWAVE(script_h.readInt());
+	int channel = script_h.readInt();
+	int clamped = channel;
+	if (clamped < 0)
+		clamped = 0;
+	else if (clamped >= ONS_MIX_CHANNELS)
+		clamped = ONS_MIX_CHANNELS - 1;
+	clearPendingChannelVolume(clamped);
+	stopDWAVE(channel);
 
 	return RET_CONTINUE;
 }
@@ -2699,9 +2836,14 @@ int ONScripter::dwaveCommand() {
 	}
 
 	auto ch = validChannel(script_h.readInt());
+	if (play_mode != WAVE_PRELOAD)
+		clearPendingChannelVolume(ch);
 	if (play_mode == WAVE_PLAY_LOADED) {
+		bool startsTimedChannelFade = nextCommandFadesChannelVolume(script_h.getNext(), ch);
 		if (!audio_open_flag)
 			return RET_CONTINUE;
+		if (startsTimedChannelFade)
+			setVolume(ch, 0, volume_on_flag);
 		if (lipsChannels[ch].has()) {
 			LipsAnimationAction *lipsAction = LipsAnimationAction::create();
 			lipsAction->channel             = ch;
@@ -2720,11 +2862,14 @@ int ONScripter::dwaveCommand() {
 		}
 	} else {
 		const char *buf = script_h.readFilePath();
+		bool startsTimedChannelFade = play_mode != WAVE_PRELOAD && nextCommandFadesChannelVolume(script_h.getNext(), ch);
 		if (!audio_open_flag)
 			return RET_CONTINUE;
 		int fmt               = SOUND_CHUNK;
 		channel_preloaded[ch] = false;
 		stopDWAVE(ch);
+		if (startsTimedChannelFade)
+			setVolume(ch, 0, volume_on_flag);
 		if (play_mode == WAVE_PRELOAD) {
 			fmt |= SOUND_PRELOAD;
 			channel_preloaded[ch] = true;

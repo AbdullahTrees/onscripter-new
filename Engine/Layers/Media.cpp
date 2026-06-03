@@ -251,6 +251,9 @@ bool MediaLayer::update(bool old) {
 					maskRect.y += maskRect.h;
 					gpu.mergeAlpha(frame, &videoRect, mask_gpu, &maskRect, thisVideoFrame->surface);
 				} else {
+#if defined(ONS_USE_SDL3)
+					GPU_TelemetryScope telemetryScope("video_frame_surface");
+#endif
 					gpu.updateImage(frame, nullptr, thisVideoFrame->surface, nullptr, false);
 				}
 			}

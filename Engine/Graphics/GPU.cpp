@@ -457,6 +457,9 @@ void GPUController::multiplyAlpha(RenderImage *image, RenderRect *dst_clip) {
 }
 
 void GPUController::mergeAlpha(RenderImage *image, RenderRect *imageRect, RenderImage *mask, RenderRect *maskRect, SDL_Surface *src) {
+#if defined(ONS_USE_SDL3)
+	GPU_TelemetryScope telemetryScope("video_frame_alpha_mask");
+#endif
 	GPU_GetTarget(image);
 	GPU_GetTarget(mask);
 
@@ -589,6 +592,9 @@ void GPUController::updateImage(RenderImage *image, const RenderRect *image_rect
 }
 
 void GPUController::convertNV12ToRGB(RenderImage *image, RenderImage **imgs, RenderRect &rect, uint8_t *planes[4], int *linesizes, bool masked) {
+#if defined(ONS_USE_SDL3)
+	GPU_TelemetryScope telemetryScope("video_frame_nv12");
+#endif
 
 	// 2 planes: Y, UV
 
@@ -614,7 +620,7 @@ void GPUController::convertNV12ToRGB(RenderImage *image, RenderImage **imgs, Ren
 
 	//bindImageToSlot(imgs[0], 0); redundant
 	bindImageToSlot(imgs[1], 1);
-	//bindImageToSlot(imgs[1], 2); redundant
+	bindImageToSlot(imgs[1], 2);
 	//bindImageToSlot(imgs[1], 3);
 
 	copyGPUImage(imgs[0], nullptr, nullptr, image->target);
@@ -626,6 +632,9 @@ void GPUController::convertNV12ToRGB(RenderImage *image, RenderImage **imgs, Ren
 }
 
 void GPUController::convertYUVToRGB(RenderImage *image, RenderImage **imgs, RenderRect &rect, uint8_t *planes[4], int *linesizes, bool masked) {
+#if defined(ONS_USE_SDL3)
+	GPU_TelemetryScope telemetryScope("video_frame_yuv420p");
+#endif
 
 	// 3 planes: Y, U, V
 
@@ -668,6 +677,9 @@ void GPUController::convertYUVToRGB(RenderImage *image, RenderImage **imgs, Rend
 
 void GPUController::simulateRead(RenderImage *image) {
 	if (simulate_reads) {
+#if defined(ONS_USE_SDL3)
+		GPU_TelemetryScope telemetryScope("glyph_simulate_read");
+#endif
 		// Uncomment to see the actual bug.
 		// Basically VMware drivers seem to apply various texture writes on read attempt, and sometimes fail to
 		// detect them. As a result our atlas often misses glyphs, which appear in pairs and trinities overwriting
@@ -695,8 +707,12 @@ void GPUController::simulateRead(RenderImage *image) {
 		}
 
 		if (!ons.tmp_image) {
-			ons.tmp_image = gpu.copyImage(image);
+			ons.tmp_image = gpu.createImage(image->w, image->h, static_cast<uint8_t>(image->bytes_per_pixel));
 			GPU_GetTarget(ons.tmp_image);
+			gpu.clear(ons.tmp_image->target);
+			GPU_SetBlending(image, false);
+			copyGPUImage(image, nullptr, nullptr, ons.tmp_image->target);
+			GPU_SetBlending(image, true);
 		}
 
 		// This is the the actual line fixing things.

@@ -11,6 +11,7 @@
 #include "Engine/Core/ONScripter.hpp"
 #include "Engine/Readers/Direct.hpp"
 #include "Support/FileIO.hpp"
+#include "Support/SDLCompat.hpp"
 #include "Support/Unicode.hpp"
 #include "Resources/Support/Version.hpp"
 
@@ -29,6 +30,7 @@ void *__wrap_SDL_LoadObject(const char *sofile);
 #endif
 
 #include <cstdio>
+#include <cstdlib>
 
 ControllerCollection ctrl;
 
@@ -165,6 +167,14 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 	printf("     --check-file-case            attempt to check file case on case-insensitive file systems\n");
 	printf("     --show-fps                   display a ms/frame counter in the window title\n");
 	printf("     --force-fps value            override all fps changes to this value\n");
+#if defined(ONS_USE_SDL3)
+	printf("     --sdl3-benchmark             run SDL3_GPU compatibility performance benchmarks and exit\n");
+	printf("     --sdl3-benchmark-iterations n set SDL3 benchmark iterations (default: 300)\n");
+	printf("     --sdl3-benchmark-width width set SDL3 benchmark target width (default: 1280)\n");
+	printf("     --sdl3-benchmark-height height set SDL3 benchmark target height (default: 720)\n");
+	printf("     --sdl3-benchmark-output path write SDL3 benchmark CSV output to a file\n");
+	printf("     --sdl3-gpu-telemetry         log SDL3_GPU aggregate and per-shader fallback counters on exit\n");
+#endif
 	printf("     --cursor                     set cursor parameters: hide, show, auto are supported (default: auto)\n");
 	printf("     --pad-map                    provide custom button mapping for a gamepad\n");
 	printf("     --prefer-rumble              specify preferred method of gamepad rumble (sdl/libusb)\n");
@@ -376,6 +386,29 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
 				argc--;
 				argv++;
 				ons.ons_cfg_options["force-fps"] = argv[0];
+#if defined(ONS_USE_SDL3)
+			} else if (!std::strcmp(argv[0] + 1, "-sdl3-benchmark")) {
+				ons.ons_cfg_options["sdl3-benchmark"] = "noval";
+			} else if (!std::strcmp(argv[0] + 1, "-sdl3-benchmark-iterations")) {
+				argc--;
+				argv++;
+				ons.ons_cfg_options["sdl3-benchmark-iterations"] = argv[0];
+			} else if (!std::strcmp(argv[0] + 1, "-sdl3-benchmark-width")) {
+				argc--;
+				argv++;
+				ons.ons_cfg_options["sdl3-benchmark-width"] = argv[0];
+			} else if (!std::strcmp(argv[0] + 1, "-sdl3-benchmark-height")) {
+				argc--;
+				argv++;
+				ons.ons_cfg_options["sdl3-benchmark-height"] = argv[0];
+			} else if (!std::strcmp(argv[0] + 1, "-sdl3-benchmark-output")) {
+				argc--;
+				argv++;
+				ons.ons_cfg_options["sdl3-benchmark-output"] = argv[0];
+			} else if (!std::strcmp(argv[0] + 1, "-sdl3-gpu-telemetry")) {
+				ons.ons_cfg_options["sdl3-gpu-telemetry"] = "noval";
+				onsSDLSetEnv("ONS_SDL3_GPU_TELEMETRY", "1", true);
+#endif
 			} else if (!std::strcmp(argv[0] + 1, "-disable-icloud")) {
 				ons.ons_cfg_options["disable-icloud"] = "noval";
 			} else if (!std::strcmp(argv[0] + 1, "-force-vsync")) {
@@ -804,6 +837,29 @@ int main(int argc, char **argv) {
 
 	//Firstly, read command line options
 	parseOptions(ons.argc, ons.argv, hasArchivePath);
+
+#if defined(ONS_USE_SDL3)
+	if (ons.ons_cfg_options.find("sdl3-benchmark") != ons.ons_cfg_options.end()) {
+		auto benchmarkIntOption = [](const char *name, int fallback) {
+			auto it = ons.ons_cfg_options.find(name);
+			if (it == ons.ons_cfg_options.end())
+				return fallback;
+			char *end        = nullptr;
+			const long value = std::strtol(it->second.c_str(), &end, 10);
+			return (end && *end == '\0' && value > 0) ? static_cast<int>(value) : fallback;
+		};
+		auto benchmarkStringOption = [](const char *name) -> const char * {
+			auto it = ons.ons_cfg_options.find(name);
+			return it == ons.ons_cfg_options.end() ? nullptr : it->second.c_str();
+		};
+		const int result = GPU_RunSDL3Benchmark(
+		    benchmarkIntOption("sdl3-benchmark-iterations", 300),
+		    benchmarkIntOption("sdl3-benchmark-width", 1280),
+		    benchmarkIntOption("sdl3-benchmark-height", 720),
+		    benchmarkStringOption("sdl3-benchmark-output"));
+		ctrl.quit(result);
+	}
+#endif
 
 	// --root has zero priority
 	if (initWithPath(nullptr, hasArchivePath)) {

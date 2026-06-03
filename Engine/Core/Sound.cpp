@@ -170,6 +170,9 @@ int ONScripter::playSoundThreaded(const char *filename, int format, bool loop_fl
 	//stop lipsEvent from being called, otherwise we will get lips broken due to loadLips calls in playSound -> playWave
 	skipLipsAction = true;
 
+	if ((format & SOUND_CHUNK) && !(format & SOUND_PRELOAD))
+		clearPendingChannelVolume(channel);
+
 	int cacheRet = trySoundCache(filename, format, loop_flag, channel);
 	if (cacheRet) {
 		skipLipsAction = false;
@@ -199,6 +202,11 @@ int ONScripter::playSoundThreaded(const char *filename, int format, bool loop_fl
 	skipLipsAction = false;
 
 	return static_cast<int>(r);
+}
+
+void ONScripter::clearPendingChannelVolume(int channel) {
+	if (channel >= 0 && channel < ONS_MIX_CHANNELS)
+		dynamicProperties.clearGlobalProperty(GLOBAL_PROPERTY_MIX_CHANNEL_VOLUME | channel);
 }
 
 int ONScripter::playSound(const char *filename, int format, bool loop_flag, int channel) {
@@ -587,12 +595,12 @@ int ONScripter::playingMusic() {
 	return (audio_open_flag && (Mix_GetMusicHookData() || Mix_Playing(MIX_BGM_CHANNEL) == 1 || Mix_PlayingMusic() == 1)) ? 1 : 0;
 }
 
-int ONScripter::setCurMusicVolume(int volume) {
+int ONScripter::setCurMusicVolume(double volume) {
 	if (!audio_open_flag)
 		return 0;
 
 	if (bgmdownmode_flag && music_info && wave_sample[0] && Mix_Playing(0))
-		volume /= 2;
+		volume *= 0.5;
 	if (Mix_Playing(MIX_BGM_CHANNEL) == 1) // wave/ogg (unstreamed)
 		setVolume(MIX_BGM_CHANNEL, volume, volume_on_flag);
 	else if (Mix_PlayingMusic() == 1) // mp3,ogg,midi,wave

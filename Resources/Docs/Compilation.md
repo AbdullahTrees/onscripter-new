@@ -23,25 +23,125 @@ cd /path/to/onscripter
 make -j8    # Add DEBUG=1 for debugging
 ```
 
-The default renderer stack remains the temporary SDL2_gpu path during the SDL3 migration. To build the staging SDL3_GPU/SDL3_image/SDL3_mixer path, configure with `--sdl3-renderer`:
+The default renderer stack is SDL3_GPU with SDL3_image and SDL3_mixer:
 
 ```
-./configure --sdl3-renderer
+./configure
+make -j8
+```
+
+The legacy SDL2/SDL2_gpu renderer remains available for fallback testing during
+the SDL3 cutover window:
+
+```
+./configure --sdl2-renderer
 make -j8
 ```
 
 For packaged game distributions that ship compressed `.file` scripts, use a public release build. Development builds expect the plaintext script layout and can stop at startup with "No compatible game script found" when pointed at release game data.
 
 ```
-./configure --sdl3-renderer --release-build --strip-binary --std=gnu++14
+./configure --release-build --strip-binary --std=gnu++14
 make -j8
 ```
 
 On current MSYS2/UCRT64 GCC 16 toolchains, `--std=gnu++14` is recommended for Windows release builds. It avoids strict `-std=c++14` parsing failures in current libstdc++ headers around `__float128` literal suffix declarations.
 
-If `sdl3-shadercross.pc` is available in the dependency prefix, `--sdl3-renderer` also defines `ONS_USE_SDL3_SHADERCROSS` and links SDL_shadercross. That optional path lets the SDL3 backend run external SPIR-V/HLSL shaders natively, and it translates simple SDL2_gpu-style fragment GLSL (`sampler2D`, `varying color`/`texCoord`, scalar/vector uniforms, `gl_FragColor`) into the native SDL_GPU pipeline. If `shaderc.pc` is also available, configure defines `ONS_USE_SDL3_SHADERC` and modern Vulkan-layout GLSL can be compiled to SPIR-V at runtime before SDL_shadercross reflection. MSYS2's shaderc package links the shared `libshaderc_shared` import library, so release packaging must ship that DLL or use a static shaderc build. Older arbitrary OpenGL GLSL still needs source porting or a dedicated translator.
+If `sdl3-shadercross.pc` is available in the dependency prefix, SDL3 builds also
+define `ONS_USE_SDL3_SHADERCROSS` and link SDL_shadercross. That optional path
+lets the SDL3 backend run external SPIR-V/HLSL shaders natively, and it attempts
+to translate recognized built-in and simple SDL2_gpu-style fragment GLSL
+(`sampler2D`, `varying color`/`texCoord`, scalar/vector uniforms,
+`gl_FragColor`) into the native SDL_GPU pipeline before falling back to the
+compatibility CPU shader evaluator. Every built-in fragment shader under
+`Resources/Shaders` now also has embedded precompiled SPIR-V for the SDL3_GPU
+Vulkan path, so Windows SDL3 release builds can run the built-in shader set
+natively without runtime shaderc. Runtime telemetry is still the way to identify
+external shaders, render-to-self safety fallbacks, or backend-specific native
+shader failures.
 
-The Windows SDL3 path currently links SDL3, SDL3_image, and SDL3_mixer statically, so a normal package does not need SDL3 DLLs beside the executable. Runtime validation on Windows reached the Umineko Project main menu with `--sdl3-renderer --release-build --strip-binary --std=gnu++14`; the log showed SDL3_GPU initialization, shader compilation, and SDL3_mixer audio startup without a new Windows application error during the 120 second validation run.
+Runtime GLSL-to-SPIR-V through shaderc is opt-in:
+
+```
+./configure --sdl3-runtime-shaderc
+```
+
+If `shaderc.pc` is available and `--sdl3-runtime-shaderc` is used, configure defines `ONS_USE_SDL3_SHADERC`. MSYS2's shaderc package links the shared `libshaderc_shared` import library, so release packaging must ship that DLL or use a static shaderc build. Older arbitrary OpenGL GLSL still needs source porting, embedded precompiled bytecode, or a dedicated translator.
+
+The Windows SDL3 path currently links SDL3, SDL3_image, and SDL3_mixer statically, so a normal package does not need SDL3 DLLs beside the executable. Runtime validation on Windows reached the Umineko Project main menu with `--release-build --strip-binary --std=gnu++14`; the log showed SDL3_GPU initialization, shader compilation, and SDL3_mixer audio startup without a new Windows application error during the 120 second validation run.
+
+The SDL3_mixer compatibility layer also exposes high-resolution float volume
+wrappers for dynamic fades. BGM and mix-channel property fades keep their
+interpolated double volume until the final SDL3_mixer `MIX_SetTrackGain()` call,
+while SDL2 fallback builds still round through the legacy SDL2_mixer volume API.
+The 2026-06-02 UCRT64 rebuild after this change linked successfully and the
+updated executable was copied to `D:\Umineko Project\onscripter-ru.exe`.
+The 2026-06-03 UCRT64 rebuild after full built-in shader SPIR-V coverage also
+linked successfully and was copied to the same Umineko Project executable path.
+The 2026-06-03 UCRT64 rebuild after native indexed triangle/shader draw
+batching also linked successfully and was copied to the same Umineko Project
+executable path.
+The follow-up 2026-06-03 UCRT64 rebuild added
+`--sdl3-benchmark-output <path>` so Windows GUI-subsystem builds can write the
+benchmark CSV directly; it linked successfully and was copied to the same
+Umineko Project executable path before the benchmark and telemetry comparison
+run.
+The 2026-06-03 UCRT64 rebuild after the SDL3_mixer channel restart gain fix
+also linked successfully and was copied to the same Umineko Project executable
+path. This change preserves exact float channel/music gain inside the SDL3
+mixer adapter, reapplies gain immediately after `MIX_PlayTrack()`, and clears
+stale mix-channel volume properties when explicit `dwave` stop/restart commands
+reuse a channel.
+The follow-up 2026-06-03 UCRT64 rebuild after the shared `dwave`/`ach_prop`
+fade-priming fix also linked successfully and was copied to the same Umineko
+Project executable path. This change applies to both SDL2 and SDL3 builds: when
+a `dwave*` command starts a channel and the next script command is a timed
+`ach_prop` fade for that same numeric channel, the channel volume is seeded to
+zero before playback so the scripted fade starts cleanly instead of from stale
+engine SFX volume.
+
+SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
+`ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,
+texture-upload, readback, native-draw, CPU-blit, CPU-shader-fallback, and
+per-shader native/fallback counters on exit. Texture upload and readback
+traffic is also split into per-source buckets such as video frame uploads,
+surface copy-out, glyph atlas `simulateRead()`, and CPU fallback paths. The
+latest source-tagged Umineko Project runs are summarized in
+`Resources/Docs/SDL3PerformanceAudit.md`; after the embedded glyph/color
+SPIR-V and native clipped-clear updates, the measured boot/video path reported
+zero CPU shader fallback draws, zero readbacks, and no clear fallback uploads.
+The subsequent shutdown-lifetime verification run reported zero CPU fallback,
+four 1920x1080 RGBA readbacks attributed to `ensure_pixels_current`/
+`generate_mipmaps`, and no Vulkan `VkImage`/`VkImageView` validation leak
+output. Full-clear upload fallbacks are split into labels such as
+`clear_full_native_fallback_<width>x<height>` and
+`clear_full_clipped_upload_<target>_rect_<rect>` to identify target-size and
+virtual-resolution causes. A later in-game telemetry point exposed
+`alphaOutsideTextures.frag` as a breakup-path CPU fallback source; the current
+source now embeds the full built-in fragment shader set as precompiled SPIR-V.
+Follow-up telemetry should verify those shaders report native draws and use the
+per-shader fallback rows to catch any external or safety fallback path.
+
+The current SDL3_GPU build tracks live `GPU_Image` textures and releases any
+remaining SDL_GPU texture objects before `SDL_DestroyGPUDevice()`. The
+2026-06-02 shutdown telemetry verification no longer reported the Vulkan
+`VkImage`/`VkImageView` shutdown leaks seen in earlier runs. The PNG save path
+also keeps libpng `setjmp` handling in a small write helper; the local UCRT64
+rebuild linked successfully without the previous GCC `-Wclobbered` longjmp
+warnings.
+
+The SDL3 build also includes an opt-in renderer benchmark that exits before game
+script initialization, which makes it useful for quick performance comparisons
+without unpacked development scripts:
+
+```
+./onscripter-ru.exe --sdl3-benchmark
+./onscripter-ru.exe --sdl3-benchmark --sdl3-benchmark-iterations 300 --sdl3-benchmark-width 1280 --sdl3-benchmark-height 720
+./onscripter-ru.exe --sdl3-benchmark --sdl3-benchmark-output sdl3-benchmark.csv
+```
+
+See `Resources/Docs/SDL3PerformanceAudit.md` for benchmark cases and current
+reference results.
 
 #### macOS and iOS
 

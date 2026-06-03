@@ -53,6 +53,8 @@
 	void Mix_ChannelFinished(void(SDLCALL *channel_finished)(int channel));
 	int Mix_Volume(int channel, int volume);
 	int Mix_VolumeMusic(int volume);
+	int Mix_VolumeFloat(int channel, float volume);
+	int Mix_VolumeMusicFloat(float volume);
 	Mix_Chunk *Mix_LoadWAV_RW(SDL_RWops *src, int freesrc);
 	Mix_Chunk *Mix_QuickLoad_RAW(Uint8 *mem, Uint32 len);
 	void Mix_FreeChunk(Mix_Chunk *chunk);
@@ -74,4 +76,12 @@
 	void *Mix_GetMusicHookData();
 #else
 	#include <SDL2/SDL_mixer.h>
+
+	static inline int Mix_VolumeFloat(int channel, float volume) {
+		return Mix_Volume(channel, volume < 0.0f ? -1 : static_cast<int>(volume + 0.5f));
+	}
+
+	static inline int Mix_VolumeMusicFloat(float volume) {
+		return Mix_VolumeMusic(volume < 0.0f ? -1 : static_cast<int>(volume + 0.5f));
+	}
 #endif

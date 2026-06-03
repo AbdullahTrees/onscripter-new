@@ -17,15 +17,18 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdarg>
 #include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <regex>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <png.h>
 
@@ -89,11 +92,13 @@ enum class SDL3GPUShaderKind {
 	MultiplyAlpha,
 	Pixelate,
 	RenderSubtitles,
-	TextFade
+	TextFade,
+	Count
 };
 
 enum class SDL3GPUUniformType {
 	Int,
+	Bool,
 	Float,
 	FloatVec
 };
@@ -124,6 +129,7 @@ struct SDL3GPUShaderObject {
 	SDL_GPUShader *nativeShader{nullptr};
 	SDL3GPUNativeResourceInfo nativeResources{};
 	std::vector<SDL3GPUNativeUniform> nativeUniforms;
+	std::array<int, 8> nativeSamplerImageUnits{{-1, -1, -1, -1, -1, -1, -1, -1}};
 	bool translatedLegacyGLSL{false};
 };
 
@@ -147,6 +153,7 @@ struct SDL3GPUProgramObject {
 	std::vector<SDL3GPUNativeUniform> nativeUniforms;
 	std::unordered_map<std::string, size_t> nativeUniformLookup;
 	std::vector<SDL3GPUNativeUniformRegister> nativeUniformRegisters;
+	std::array<int, 8> nativeSamplerImageUnits{{-1, -1, -1, -1, -1, -1, -1, -1}};
 };
 
 struct SDL3GPUColorF {
@@ -156,20 +163,262 @@ struct SDL3GPUColorF {
 	float a{0.0f};
 };
 
+struct SDL3GPUReusableTransferBuffer {
+	SDL_GPUTransferBuffer *transfer{nullptr};
+	Uint32 capacity{0};
+	SDL_GPUTransferBufferUsage usage{SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD};
+};
+
+struct SDL3GPUReusableUploadedBuffer {
+	SDL_GPUBuffer *buffer{nullptr};
+	SDL_GPUTransferBuffer *transfer{nullptr};
+	Uint32 capacity{0};
+	Uint32 size{0};
+	SDL_GPUBufferUsageFlags usage{0};
+};
+
+struct SDL3GPUNativeBlitBatch {
+	GPU_Target *target{nullptr};
+	GPU_Image *targetImage{nullptr};
+	SDL_GPUTexture *targetTexture{nullptr};
+	SDL_GPUTexture *sourceTexture{nullptr};
+	SDL_GPUGraphicsPipeline *pipeline{nullptr};
+	SDL_GPUSampler *sampler{nullptr};
+	SDL_GPUViewport viewport{};
+	SDL_Rect scissor{};
+	GPU_bool useBlending{false};
+	GPU_BlendMode blendMode{};
+	std::vector<SDL3GPUVertex> vertices;
+	std::vector<Uint16> indices;
+};
+
+struct SDL3GPUNativeTriangleBatch {
+	GPU_Target *target{nullptr};
+	GPU_Image *targetImage{nullptr};
+	SDL_GPUTexture *targetTexture{nullptr};
+	SDL_GPUGraphicsPipeline *pipeline{nullptr};
+	SDL_GPUViewport viewport{};
+	SDL_Rect scissor{};
+	GPU_bool useBlending{false};
+	GPU_BlendMode blendMode{};
+	bool nativeShaderProgram{false};
+	SDL3GPUShaderKind shaderKind{SDL3GPUShaderKind::Unknown};
+	bool pushColorScale{false};
+	std::vector<SDL_GPUTexture *> samplerTextures;
+	std::vector<SDL_GPUSampler *> samplers;
+	std::vector<SDL3GPUNativeUniformRegister> fragmentUniformRegisters;
+	std::vector<SDL3GPUVertex> vertices;
+	std::vector<Uint16> indices;
+};
+
+struct SDL3GPUShaderTelemetry {
+	Uint64 nativeCompiles{0};
+	Uint64 compatibilityCompiles{0};
+	Uint64 nativeDraws{0};
+	Uint64 cpuFallbackDraws{0};
+	Uint64 cpuFallbackPixels{0};
+};
+
+struct SDL3GPUTransferTelemetry {
+	std::string source;
+	Uint64 textureUploads{0};
+	Uint64 textureUploadBytes{0};
+	Uint64 readbacks{0};
+	Uint64 readbackBytes{0};
+};
+
+struct SDL3GPUTelemetry {
+	bool initialized{false};
+	bool enabled{false};
+	bool hasData{false};
+	Uint64 commandBuffersSubmitted{0};
+	Uint64 textureUploads{0};
+	Uint64 textureUploadBytes{0};
+	Uint64 readbacks{0};
+	Uint64 readbackBytes{0};
+	Uint64 nativeFixedDraws{0};
+	Uint64 nativeFixedVertices{0};
+	Uint64 nativeShaderDraws{0};
+	Uint64 nativeShaderVertices{0};
+	Uint64 cpuBlitDraws{0};
+	Uint64 cpuBlitPixels{0};
+	Uint64 cpuShaderDraws{0};
+	Uint64 cpuShaderPixels{0};
+	Uint64 nativeShaderCompiles{0};
+	Uint64 compatibilityShaderCompiles{0};
+	std::array<SDL3GPUShaderTelemetry, static_cast<size_t>(SDL3GPUShaderKind::Count)> shaders{};
+	std::vector<SDL3GPUTransferTelemetry> transfers;
+};
+
 SDL_GPUShader *texturedVertexShader{nullptr};
 SDL_GPUShader *texturedFragmentShader{nullptr};
+SDL_GPUTexture *solidWhiteTexture{nullptr};
 SDL_GPUSampler *nearestSampler{nullptr};
 SDL_GPUSampler *linearSampler{nullptr};
+SDL3GPUReusableTransferBuffer textureUploadBuffer;
+SDL3GPUReusableTransferBuffer textureDownloadBuffer;
+SDL3GPUReusableUploadedBuffer vertexUploadBuffer;
+SDL3GPUReusableUploadedBuffer indexUploadBuffer;
+SDL3GPUNativeBlitBatch nativeBlitBatch;
+SDL3GPUNativeTriangleBatch nativeTriangleBatch;
+SDL3GPUTelemetry telemetry;
+std::vector<std::string> telemetrySourceStack;
 std::vector<SDL3GPUPipelineEntry> pipelineCache;
 std::unordered_map<Uint32, SDL3GPUShaderObject> shaderObjects;
 std::unordered_map<Uint32, SDL3GPUProgramObject> programObjects;
 std::unordered_map<int, Uint32> uniformLocationOwners;
+std::unordered_set<GPU_Image *> liveTextureImages;
 int nextUniformLocation{1};
 #if defined(ONS_USE_SDL3_SHADERCROSS)
 bool shaderCrossInitialized{false};
 #endif
 
 void setShaderMessage(const char *message);
+bool flushNativeBlitBatch();
+bool flushNativeBlitBatchOnly();
+bool flushNativeTriangleBatch();
+bool queueNativeTriangleDraw(GPU_Image *image,
+                             GPU_Target *target,
+                             SDL_GPUGraphicsPipeline *pipeline,
+                             const SDL_GPUViewport &viewport,
+                             const SDL_Rect &scissor,
+                             const std::vector<SDL_GPUTexture *> &samplerTextures,
+                             const std::vector<SDL_GPUSampler *> &samplers,
+                             bool nativeShaderProgram,
+                             SDL3GPUShaderKind shaderKind,
+                             bool pushColorScale,
+                             const std::vector<SDL3GPUNativeUniformRegister> &fragmentUniformRegisters,
+                             const SDL3GPUVertex *vertices,
+                             Uint32 numVertices,
+                             const Uint16 *indices,
+                             Uint32 numIndices);
+void fillImagePixels(GPU_Image *image, SDL_Rect bounds, SDL_Color color);
+void materializeSolidPixels(GPU_Image *image);
+void printAndResetTelemetry();
+
+bool telemetryValueEnabled(const char *value) {
+	if (!value || !*value)
+		return false;
+	if (std::strcmp(value, "0") == 0)
+		return false;
+	if (std::strcmp(value, "false") == 0 || std::strcmp(value, "FALSE") == 0)
+		return false;
+	if (std::strcmp(value, "off") == 0 || std::strcmp(value, "OFF") == 0)
+		return false;
+	return true;
+}
+
+bool telemetryEnabled() {
+	if (!telemetry.initialized) {
+		telemetry.enabled = telemetryValueEnabled(onsSDLGetEnv("ONS_SDL3_GPU_TELEMETRY"));
+		telemetry.initialized = true;
+	}
+	return telemetry.enabled;
+}
+
+void noteCommandBufferSubmitted() {
+	if (!telemetryEnabled())
+		return;
+	++telemetry.commandBuffersSubmitted;
+	telemetry.hasData = true;
+}
+
+std::string normalizedTelemetrySource(const char *source) {
+	return (source && *source) ? source : "unscoped";
+}
+
+std::string currentTelemetrySource(const char *fallback) {
+	if (!telemetrySourceStack.empty())
+		return telemetrySourceStack.front();
+	return normalizedTelemetrySource(fallback);
+}
+
+SDL3GPUTransferTelemetry &transferTelemetryForSource(const std::string &source) {
+	for (auto &stats : telemetry.transfers) {
+		if (stats.source == source)
+			return stats;
+	}
+	telemetry.transfers.emplace_back();
+	telemetry.transfers.back().source = source;
+	return telemetry.transfers.back();
+}
+
+void noteTextureUpload(Uint64 bytes, const char *source = nullptr) {
+	if (!telemetryEnabled())
+		return;
+	++telemetry.textureUploads;
+	telemetry.textureUploadBytes += bytes;
+	auto &transfer = transferTelemetryForSource(currentTelemetrySource(source));
+	++transfer.textureUploads;
+	transfer.textureUploadBytes += bytes;
+	telemetry.hasData = true;
+}
+
+void noteReadback(Uint64 bytes, const char *source = nullptr) {
+	if (!telemetryEnabled())
+		return;
+	++telemetry.readbacks;
+	telemetry.readbackBytes += bytes;
+	auto &transfer = transferTelemetryForSource(currentTelemetrySource(source));
+	++transfer.readbacks;
+	transfer.readbackBytes += bytes;
+	telemetry.hasData = true;
+}
+
+size_t shaderTelemetryIndex(SDL3GPUShaderKind kind) {
+	const size_t index = static_cast<size_t>(kind);
+	return index < telemetry.shaders.size() ? index : static_cast<size_t>(SDL3GPUShaderKind::Unknown);
+}
+
+void noteShaderCompilation(SDL3GPUShaderKind kind, bool native) {
+	if (!telemetryEnabled())
+		return;
+	auto &shader = telemetry.shaders[shaderTelemetryIndex(kind)];
+	if (native) {
+		++shader.nativeCompiles;
+		++telemetry.nativeShaderCompiles;
+	} else {
+		++shader.compatibilityCompiles;
+		++telemetry.compatibilityShaderCompiles;
+	}
+	telemetry.hasData = true;
+}
+
+void noteNativeFixedDraw(Uint64 vertices) {
+	if (!telemetryEnabled())
+		return;
+	++telemetry.nativeFixedDraws;
+	telemetry.nativeFixedVertices += vertices;
+	telemetry.hasData = true;
+}
+
+void noteNativeShaderDraw(SDL3GPUShaderKind kind, Uint64 vertices) {
+	if (!telemetryEnabled())
+		return;
+	++telemetry.nativeShaderDraws;
+	telemetry.nativeShaderVertices += vertices;
+	++telemetry.shaders[shaderTelemetryIndex(kind)].nativeDraws;
+	telemetry.hasData = true;
+}
+
+void noteCpuBlit(Uint64 pixels) {
+	if (!telemetryEnabled())
+		return;
+	++telemetry.cpuBlitDraws;
+	telemetry.cpuBlitPixels += pixels;
+	telemetry.hasData = true;
+}
+
+void noteCpuShaderFallback(SDL3GPUShaderKind kind, Uint64 pixels) {
+	if (!telemetryEnabled())
+		return;
+	++telemetry.cpuShaderDraws;
+	telemetry.cpuShaderPixels += pixels;
+	auto &shader = telemetry.shaders[shaderTelemetryIndex(kind)];
+	++shader.cpuFallbackDraws;
+	shader.cpuFallbackPixels += pixels;
+	telemetry.hasData = true;
+}
 
 int textureBytesPerPixel(GPU_FormatEnum format) {
 	switch (format) {
@@ -199,6 +448,12 @@ SDL_GPUTextureFormat textureFormat(GPU_FormatEnum format) {
 
 bool isNativeTextureFormat(GPU_FormatEnum format) {
 	return format == GPU_FORMAT_RGB || format == GPU_FORMAT_RGBA;
+}
+
+bool isNativeShaderSamplerFormat(GPU_FormatEnum format) {
+	return format == GPU_FORMAT_LUMINANCE ||
+	       format == GPU_FORMAT_LUMINANCE_ALPHA ||
+	       isNativeTextureFormat(format);
 }
 
 bool sameBlendMode(const GPU_BlendMode &a, const GPU_BlendMode &b) {
@@ -307,6 +562,377 @@ bool ensureNativeShaders() {
 		return false;
 
 	return true;
+}
+
+SDL_GPUShader *createPrecompiledFragmentShader(const Uint8 *code,
+                                               size_t codeSize,
+                                               SDL_GPUShaderFormat format,
+                                               const SDL3GPUNativeResourceInfo &resources,
+                                               const char *entrypoint = "main") {
+	if (!rendererState.device || !code || codeSize == 0)
+		return nullptr;
+
+	SDL_GPUShaderCreateInfo shaderInfo{};
+	shaderInfo.code_size = codeSize;
+	shaderInfo.code      = code;
+	shaderInfo.entrypoint = entrypoint;
+	shaderInfo.format    = format;
+	shaderInfo.stage     = SDL_GPU_SHADERSTAGE_FRAGMENT;
+	shaderInfo.num_samplers = resources.numSamplers;
+	shaderInfo.num_storage_textures = resources.numStorageTextures;
+	shaderInfo.num_storage_buffers = resources.numStorageBuffers;
+	shaderInfo.num_uniform_buffers = resources.numUniformBuffers;
+
+	SDL_GPUShader *shader = SDL_CreateGPUShader(rendererState.device, &shaderInfo);
+	if (!shader)
+		setShaderMessage(SDL_GetError());
+	return shader;
+}
+
+SDL3GPUNativeUniform nativeUniform(const char *name,
+                                   SDL3GPUUniformType type,
+                                   int components,
+                                   Uint32 registerIndex,
+                                   int arraySize = 1) {
+	SDL3GPUNativeUniform uniform{};
+	uniform.name          = name;
+	uniform.type          = type;
+	uniform.components    = components;
+	uniform.arraySize     = std::max(1, arraySize);
+	uniform.registerIndex = registerIndex;
+	return uniform;
+}
+
+bool compilePrecompiledBuiltInShader(GPU_ShaderEnum shaderType,
+                                     SDL3GPUShaderKind kind,
+                                     SDL3GPUShaderObject &object) {
+	if (!rendererState.device || shaderType == GPU_VERTEX_SHADER)
+		return false;
+
+	const SDL_GPUShaderFormat supported = SDL_GetGPUShaderFormats(rendererState.device);
+	if (kind == SDL3GPUShaderKind::AlphaOutsideTextures && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(alpha_outside_textures_frag_spv,
+		                                                      sizeof(alpha_outside_textures_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::BlendByMask && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 3;
+		resources.numUniformBuffers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(blend_by_mask_frag_spv,
+		                                                      sizeof(blend_by_mask_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeUniforms.push_back(nativeUniform("mask_value", SDL3GPUUniformType::Int, 1, 0));
+		object.nativeUniforms.push_back(nativeUniform("constant_mask", SDL3GPUUniformType::Bool, 1, 1));
+		object.nativeUniforms.push_back(nativeUniform("crossfade", SDL3GPUUniformType::Bool, 1, 2));
+		return true;
+	}
+
+	if ((kind == SDL3GPUShaderKind::BlurH || kind == SDL3GPUShaderKind::BlurV) &&
+	    (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 1;
+		resources.numUniformBuffers = 1;
+
+		const bool horizontal = kind == SDL3GPUShaderKind::BlurH;
+		object.nativeShader = createPrecompiledFragmentShader(horizontal ? blur_h_frag_spv : blur_v_frag_spv,
+		                                                      horizontal ? sizeof(blur_h_frag_spv) : sizeof(blur_v_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeUniforms.push_back(nativeUniform("sigma", SDL3GPUUniformType::Float, 1, 0));
+		object.nativeUniforms.push_back(nativeUniform("blurSize", SDL3GPUUniformType::Float, 1, 1));
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::Breakup && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 3;
+		resources.numUniformBuffers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(breakup_frag_spv,
+		                                                      sizeof(breakup_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeUniforms.push_back(nativeUniform("tilesX", SDL3GPUUniformType::Float, 1, 0));
+		object.nativeUniforms.push_back(nativeUniform("tilesY", SDL3GPUUniformType::Float, 1, 1));
+		object.nativeUniforms.push_back(nativeUniform("breakupCellforms", SDL3GPUUniformType::Int, 1, 2));
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::ColorModification && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 1;
+		resources.numUniformBuffers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(color_modification_frag_spv,
+		                                                      sizeof(color_modification_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeUniforms.push_back(nativeUniform("modificationType", SDL3GPUUniformType::Int, 1, 0));
+		object.nativeUniforms.push_back(nativeUniform("multiplyAlpha", SDL3GPUUniformType::Int, 1, 1));
+		object.nativeUniforms.push_back(nativeUniform("blurFactor", SDL3GPUUniformType::Int, 1, 2));
+		object.nativeUniforms.push_back(nativeUniform("dimension", SDL3GPUUniformType::Int, 1, 3));
+		object.nativeUniforms.push_back(nativeUniform("darkenHue", SDL3GPUUniformType::FloatVec, 4, 4));
+		object.nativeUniforms.push_back(nativeUniform("greyscaleHue", SDL3GPUUniformType::FloatVec, 4, 5));
+		object.nativeUniforms.push_back(nativeUniform("replaceSrcColor", SDL3GPUUniformType::FloatVec, 4, 6));
+		object.nativeUniforms.push_back(nativeUniform("replaceDstColor", SDL3GPUUniformType::FloatVec, 4, 7));
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::ColourConversion && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 3;
+		resources.numUniformBuffers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(colour_conversion_frag_spv,
+		                                                      sizeof(colour_conversion_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeUniforms.push_back(nativeUniform("conversionType", SDL3GPUUniformType::Int, 1, 0));
+		object.nativeUniforms.push_back(nativeUniform("maskHeight", SDL3GPUUniformType::Int, 1, 1));
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::CropByMask && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 2;
+
+		object.nativeShader = createPrecompiledFragmentShader(crop_by_mask_frag_spv,
+		                                                      sizeof(crop_by_mask_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::EffectTrvswave && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 1;
+		resources.numUniformBuffers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(effect_trvswave_frag_spv,
+		                                                      sizeof(effect_trvswave_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeUniforms.push_back(nativeUniform("script_width", SDL3GPUUniformType::Int, 1, 0));
+		object.nativeUniforms.push_back(nativeUniform("script_height", SDL3GPUUniformType::Int, 1, 1));
+		object.nativeUniforms.push_back(nativeUniform("effect_counter", SDL3GPUUniformType::Int, 1, 2));
+		object.nativeUniforms.push_back(nativeUniform("duration", SDL3GPUUniformType::Int, 1, 3));
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::EffectWarp && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 1;
+		resources.numUniformBuffers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(effect_warp_frag_spv,
+		                                                      sizeof(effect_warp_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeUniforms.push_back(nativeUniform("animationClock", SDL3GPUUniformType::Float, 1, 0));
+		object.nativeUniforms.push_back(nativeUniform("amplitude", SDL3GPUUniformType::Float, 1, 1));
+		object.nativeUniforms.push_back(nativeUniform("wavelength", SDL3GPUUniformType::Float, 1, 2));
+		object.nativeUniforms.push_back(nativeUniform("speed", SDL3GPUUniformType::Float, 1, 3));
+		object.nativeUniforms.push_back(nativeUniform("cx", SDL3GPUUniformType::Float, 1, 4));
+		object.nativeUniforms.push_back(nativeUniform("cy", SDL3GPUUniformType::Float, 1, 5));
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::EffectWhirl && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 1;
+		resources.numUniformBuffers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(effect_whirl_frag_spv,
+		                                                      sizeof(effect_whirl_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeUniforms.push_back(nativeUniform("effect_counter", SDL3GPUUniformType::Int, 1, 0));
+		object.nativeUniforms.push_back(nativeUniform("duration", SDL3GPUUniformType::Int, 1, 1));
+		object.nativeUniforms.push_back(nativeUniform("direction", SDL3GPUUniformType::Int, 1, 2));
+		object.nativeUniforms.push_back(nativeUniform("render_width", SDL3GPUUniformType::Float, 1, 3));
+		object.nativeUniforms.push_back(nativeUniform("render_height", SDL3GPUUniformType::Float, 1, 4));
+		object.nativeUniforms.push_back(nativeUniform("texture_width", SDL3GPUUniformType::Float, 1, 5));
+		object.nativeUniforms.push_back(nativeUniform("texture_height", SDL3GPUUniformType::Float, 1, 6));
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::GlassSmash && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 1;
+		resources.numUniformBuffers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(glass_smash_frag_spv,
+		                                                      sizeof(glass_smash_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeUniforms.push_back(nativeUniform("alpha", SDL3GPUUniformType::Float, 1, 0));
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::GlyphGradient && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 1;
+		resources.numUniformBuffers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(glyph_gradient_frag_spv,
+		                                                      sizeof(glyph_gradient_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeUniforms.push_back(nativeUniform("color", SDL3GPUUniformType::FloatVec, 4, 0));
+		object.nativeUniforms.push_back(nativeUniform("maxy", SDL3GPUUniformType::Int, 1, 1));
+		object.nativeUniforms.push_back(nativeUniform("faceAscender", SDL3GPUUniformType::Int, 1, 2));
+		object.nativeUniforms.push_back(nativeUniform("height", SDL3GPUUniformType::Int, 1, 3));
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::MergeAlpha && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 2;
+
+		object.nativeShader = createPrecompiledFragmentShader(merge_alpha_frag_spv,
+		                                                      sizeof(merge_alpha_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::MultiplyAlpha && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(multiply_alpha_frag_spv,
+		                                                      sizeof(multiply_alpha_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::Pixelate && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 1;
+		resources.numUniformBuffers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(pixelate_frag_spv,
+		                                                      sizeof(pixelate_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeUniforms.push_back(nativeUniform("width", SDL3GPUUniformType::Int, 1, 0));
+		object.nativeUniforms.push_back(nativeUniform("height", SDL3GPUUniformType::Int, 1, 1));
+		object.nativeUniforms.push_back(nativeUniform("factor", SDL3GPUUniformType::Int, 1, 2));
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::RenderSubtitles && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 1;
+		resources.numUniformBuffers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(render_subtitles_frag_spv,
+		                                                      sizeof(render_subtitles_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeSamplerImageUnits[0] = 1;
+		object.nativeUniforms.push_back(nativeUniform("ntextures", SDL3GPUUniformType::Int, 1, 0));
+		object.nativeUniforms.push_back(nativeUniform("subDims", SDL3GPUUniformType::FloatVec, 2, 1, 8));
+		object.nativeUniforms.push_back(nativeUniform("subCoords", SDL3GPUUniformType::FloatVec, 2, 9, 8));
+		object.nativeUniforms.push_back(nativeUniform("subColors", SDL3GPUUniformType::FloatVec, 4, 17, 8));
+		object.nativeUniforms.push_back(nativeUniform("dstDims", SDL3GPUUniformType::FloatVec, 2, 25));
+		return true;
+	}
+
+	if (kind == SDL3GPUShaderKind::TextFade && (supported & SDL_GPU_SHADERFORMAT_SPIRV)) {
+		SDL3GPUNativeResourceInfo resources{};
+		resources.numSamplers = 1;
+		resources.numUniformBuffers = 1;
+
+		object.nativeShader = createPrecompiledFragmentShader(text_fade_frag_spv,
+		                                                      sizeof(text_fade_frag_spv),
+		                                                      SDL_GPU_SHADERFORMAT_SPIRV,
+		                                                      resources);
+		if (!object.nativeShader)
+			return false;
+
+		object.nativeResources = resources;
+		object.nativeUniforms.push_back(nativeUniform("partial", SDL3GPUUniformType::Int, 1, 0));
+		object.nativeUniforms.push_back(nativeUniform("full", SDL3GPUUniformType::Int, 1, 1));
+		object.nativeUniforms.push_back(nativeUniform("width", SDL3GPUUniformType::Int, 1, 2));
+		return true;
+	}
+
+	return false;
 }
 
 SDL_GPUSampler *getSampler(GPU_FilterEnum filter) {
@@ -519,6 +1145,14 @@ std::string regexReplace(const std::string &source, const char *pattern, const s
 	return std::regex_replace(source, std::regex(pattern), replacement);
 }
 
+std::string trimString(const std::string &value) {
+	const size_t begin = value.find_first_not_of(" \t\r\n");
+	if (begin == std::string::npos)
+		return "";
+	const size_t end = value.find_last_not_of(" \t\r\n");
+	return value.substr(begin, end - begin + 1);
+}
+
 int parsePositiveInt(const std::string &value, const std::unordered_map<std::string, int> &defines, int fallback = 1) {
 	if (value.empty())
 		return fallback;
@@ -533,6 +1167,8 @@ int parsePositiveInt(const std::string &value, const std::unordered_map<std::str
 int samplerSlotForName(const std::string &name, int fallback) {
 	if (name == "tex" || name == "u_texture")
 		return 0;
+	if (name == "subTex")
+		return 1;
 	if (name.size() > 3 && name.compare(0, 3, "tex") == 0) {
 		char *end = nullptr;
 		const long parsed = std::strtol(name.c_str() + 3, &end, 10);
@@ -545,6 +1181,8 @@ int samplerSlotForName(const std::string &name, int fallback) {
 const char *hlslTypeName(const SDL3GPUNativeUniform &uniform) {
 	if (uniform.type == SDL3GPUUniformType::Int)
 		return "int";
+	if (uniform.type == SDL3GPUUniformType::Bool)
+		return "int";
 	if (uniform.components <= 1)
 		return "float";
 	if (uniform.components == 2)
@@ -555,7 +1193,7 @@ const char *hlslTypeName(const SDL3GPUNativeUniform &uniform) {
 }
 
 std::string hlslUniformMacroSuffix(const SDL3GPUNativeUniform &uniform) {
-	if (uniform.type == SDL3GPUUniformType::Int)
+	if (uniform.type == SDL3GPUUniformType::Int || uniform.type == SDL3GPUUniformType::Bool)
 		return ".x";
 	if (uniform.components <= 1)
 		return ".x";
@@ -582,46 +1220,63 @@ bool parseLegacyGLSLUniforms(const std::string &source,
 	}
 
 	const std::regex uniformRegex(
-	    R"(\buniform\s+(?:(?:lowp|mediump|highp)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[\s*([A-Za-z_][A-Za-z0-9_]*|[0-9]+)\s*\])?\s*;)");
+	    R"(\buniform\s+(?:(?:lowp|mediump|highp)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+([^;]+);)");
+	const std::regex declarationRegex(
+	    R"(^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[\s*([A-Za-z_][A-Za-z0-9_]*|[0-9]+)\s*\])?\s*$)");
 	int nextSamplerSlot = 0;
 	Uint32 nextRegister = 0;
 	for (auto it = std::sregex_iterator(source.begin(), source.end(), uniformRegex); it != std::sregex_iterator(); ++it) {
 		const std::string type = (*it)[1].str();
-		const std::string name = (*it)[2].str();
-		const int arraySize    = parsePositiveInt((*it)[3].str(), defines);
-		if (type == "sampler2D") {
-			const int slot = samplerSlotForName(name, nextSamplerSlot);
-			nextSamplerSlot = std::max(nextSamplerSlot, slot + 1);
-			samplers.push_back(std::make_pair(name, slot));
-			samplerCount = std::max<Uint32>(samplerCount, static_cast<Uint32>(slot + 1));
-			continue;
-		}
+		const std::string declarations = (*it)[2].str();
+		std::istringstream declarationStream(declarations);
+		std::string declaration;
+		while (std::getline(declarationStream, declaration, ',')) {
+			const std::string trimmedDeclaration = trimString(declaration);
+			std::smatch declarationMatch;
+			if (!std::regex_match(trimmedDeclaration, declarationMatch, declarationRegex)) {
+				error = "Unsupported GLSL uniform declaration in SDL3 shadercross translator: " + trimmedDeclaration;
+				return false;
+			}
 
-		SDL3GPUNativeUniform uniform{};
-		uniform.name = name;
-		uniform.arraySize = arraySize;
-		uniform.registerIndex = nextRegister;
-		if (type == "int" || type == "bool") {
-			uniform.type = SDL3GPUUniformType::Int;
-			uniform.components = 1;
-		} else if (type == "float") {
-			uniform.type = SDL3GPUUniformType::Float;
-			uniform.components = 1;
-		} else if (type == "vec2") {
-			uniform.type = SDL3GPUUniformType::FloatVec;
-			uniform.components = 2;
-		} else if (type == "vec3") {
-			uniform.type = SDL3GPUUniformType::FloatVec;
-			uniform.components = 3;
-		} else if (type == "vec4") {
-			uniform.type = SDL3GPUUniformType::FloatVec;
-			uniform.components = 4;
-		} else {
-			error = "Unsupported GLSL uniform type in SDL3 shadercross translator: " + type;
-			return false;
+			const std::string name = declarationMatch[1].str();
+			const int arraySize    = parsePositiveInt(declarationMatch[2].str(), defines);
+			if (type == "sampler2D") {
+				const int slot = samplerSlotForName(name, nextSamplerSlot);
+				nextSamplerSlot = std::max(nextSamplerSlot, slot + 1);
+				samplers.push_back(std::make_pair(name, slot));
+				samplerCount = std::max<Uint32>(samplerCount, static_cast<Uint32>(slot + 1));
+				continue;
+			}
+
+			SDL3GPUNativeUniform uniform{};
+			uniform.name = name;
+			uniform.arraySize = arraySize;
+			uniform.registerIndex = nextRegister;
+			if (type == "int") {
+				uniform.type = SDL3GPUUniformType::Int;
+				uniform.components = 1;
+			} else if (type == "bool") {
+				uniform.type = SDL3GPUUniformType::Bool;
+				uniform.components = 1;
+			} else if (type == "float") {
+				uniform.type = SDL3GPUUniformType::Float;
+				uniform.components = 1;
+			} else if (type == "vec2") {
+				uniform.type = SDL3GPUUniformType::FloatVec;
+				uniform.components = 2;
+			} else if (type == "vec3") {
+				uniform.type = SDL3GPUUniformType::FloatVec;
+				uniform.components = 3;
+			} else if (type == "vec4") {
+				uniform.type = SDL3GPUUniformType::FloatVec;
+				uniform.components = 4;
+			} else {
+				error = "Unsupported GLSL uniform type in SDL3 shadercross translator: " + type;
+				return false;
+			}
+			nextRegister += static_cast<Uint32>(uniform.arraySize);
+			uniforms.push_back(uniform);
 		}
-		nextRegister += static_cast<Uint32>(uniform.arraySize);
-		uniforms.push_back(uniform);
 	}
 	return true;
 }
@@ -659,9 +1314,14 @@ bool translateLegacyGLSLFragmentToHLSL(const std::string &source,
 		}
 		out << "};\n";
 		for (const auto &uniform : uniforms) {
-			out << "#define " << uniform.name << " _ons_" << uniform.name;
-			if (uniform.arraySize <= 1)
-				out << hlslUniformMacroSuffix(uniform);
+			out << "#define " << uniform.name << " ";
+			if (uniform.type == SDL3GPUUniformType::Bool && uniform.arraySize <= 1) {
+				out << "(_ons_" << uniform.name << hlslUniformMacroSuffix(uniform) << " != 0)";
+			} else {
+				out << "_ons_" << uniform.name;
+				if (uniform.arraySize <= 1)
+					out << hlslUniformMacroSuffix(uniform);
+			}
 			out << "\n";
 		}
 	}
@@ -672,7 +1332,7 @@ bool translateLegacyGLSLFragmentToHLSL(const std::string &source,
 	std::string body = cleaned;
 	body = regexReplace(body, R"(^\s*#\s*version[^\n]*(?:\n|$))", "");
 	body = regexReplace(body, R"(^\s*precision\s+[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z_][A-Za-z0-9_]*\s*;\s*(?:\n|$))", "");
-	body = regexReplace(body, R"(\buniform\s+(?:(?:lowp|mediump|highp)\s+)?[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z_][A-Za-z0-9_]*\s*(?:\[\s*(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+)\s*\])?\s*;)", "");
+	body = regexReplace(body, R"(\buniform\s+(?:(?:lowp|mediump|highp)\s+)?[A-Za-z_][A-Za-z0-9_]*\s+[^;]+;)", "");
 	body = regexReplace(body, R"(\bvarying\s+(?:(?:lowp|mediump|highp)\s+)?[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z_][A-Za-z0-9_]*\s*;)", "");
 	body = regexReplace(body, R"(\btexture2D\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,)", "$1Texture.Sample($1Sampler,");
 	body = regexReplace(body, R"(\bgl_FragColor\b)", "output.o_color");
@@ -689,6 +1349,13 @@ bool translateLegacyGLSLFragmentToHLSL(const std::string &source,
 	body = regexReplace(body, R"(\bmix\s*\()", "lerp(");
 	body = regexReplace(body, R"(\bfract\s*\()", "frac(");
 	body = regexReplace(body, R"(\bmod\s*\()", "fmod(");
+	body = regexReplace(body, R"(\.stpq\b)", ".xyzw");
+	body = regexReplace(body, R"(\.stp\b)", ".xyz");
+	body = regexReplace(body, R"(\.st\b)", ".xy");
+	body = regexReplace(body, R"(\.s\b)", ".x");
+	body = regexReplace(body, R"(\.t\b)", ".y");
+	body = regexReplace(body, R"(\.p\b)", ".z");
+	body = regexReplace(body, R"(\.q\b)", ".w");
 	body = regexReplace(body, R"(\breturn\s*;)", "return output;");
 
 	const std::regex mainRegex(R"(\bvoid\s+main\s*\(\s*(?:void)?\s*\)\s*\{)");
@@ -1040,6 +1707,74 @@ const char *shaderKindName(SDL3GPUShaderKind kind) {
 	}
 }
 
+void resetTelemetryCounters() {
+	const bool initialized = telemetry.initialized;
+	const bool enabled     = telemetry.enabled;
+	telemetry = SDL3GPUTelemetry{};
+	telemetry.initialized = initialized;
+	telemetry.enabled     = enabled;
+}
+
+void printAndResetTelemetry() {
+	if (!telemetryEnabled() || !telemetry.hasData)
+		return;
+
+	sendToLog(LogLevel::Info,
+	          "SDL3_GPU telemetry: command_buffers=%llu texture_uploads=%llu texture_upload_bytes=%llu "
+	          "readbacks=%llu readback_bytes=%llu native_fixed_draws=%llu native_fixed_vertices=%llu "
+	          "native_shader_compiles=%llu compatibility_shader_compiles=%llu native_shader_draws=%llu "
+	          "native_shader_vertices=%llu cpu_blit_draws=%llu cpu_blit_pixels=%llu "
+	          "cpu_shader_draws=%llu cpu_shader_pixels=%llu\n",
+	          static_cast<unsigned long long>(telemetry.commandBuffersSubmitted),
+	          static_cast<unsigned long long>(telemetry.textureUploads),
+	          static_cast<unsigned long long>(telemetry.textureUploadBytes),
+	          static_cast<unsigned long long>(telemetry.readbacks),
+	          static_cast<unsigned long long>(telemetry.readbackBytes),
+	          static_cast<unsigned long long>(telemetry.nativeFixedDraws),
+	          static_cast<unsigned long long>(telemetry.nativeFixedVertices),
+	          static_cast<unsigned long long>(telemetry.nativeShaderCompiles),
+	          static_cast<unsigned long long>(telemetry.compatibilityShaderCompiles),
+	          static_cast<unsigned long long>(telemetry.nativeShaderDraws),
+	          static_cast<unsigned long long>(telemetry.nativeShaderVertices),
+	          static_cast<unsigned long long>(telemetry.cpuBlitDraws),
+	          static_cast<unsigned long long>(telemetry.cpuBlitPixels),
+	          static_cast<unsigned long long>(telemetry.cpuShaderDraws),
+	          static_cast<unsigned long long>(telemetry.cpuShaderPixels));
+
+	for (const auto &stats : telemetry.transfers) {
+		if (stats.textureUploads == 0 && stats.readbacks == 0)
+			continue;
+
+		sendToLog(LogLevel::Info,
+		          "SDL3_GPU transfer telemetry: source=%s texture_uploads=%llu texture_upload_bytes=%llu "
+		          "readbacks=%llu readback_bytes=%llu\n",
+		          stats.source.c_str(),
+		          static_cast<unsigned long long>(stats.textureUploads),
+		          static_cast<unsigned long long>(stats.textureUploadBytes),
+		          static_cast<unsigned long long>(stats.readbacks),
+		          static_cast<unsigned long long>(stats.readbackBytes));
+	}
+
+	for (size_t i = 0; i < static_cast<size_t>(SDL3GPUShaderKind::Count); ++i) {
+		const auto &stats = telemetry.shaders[i];
+		if (stats.nativeCompiles == 0 && stats.compatibilityCompiles == 0 &&
+		    stats.nativeDraws == 0 && stats.cpuFallbackDraws == 0)
+			continue;
+
+		sendToLog(LogLevel::Info,
+		          "SDL3_GPU shader telemetry: shader=%s native_compiles=%llu compatibility_compiles=%llu "
+		          "native_draws=%llu cpu_fallback_draws=%llu cpu_fallback_pixels=%llu\n",
+		          shaderKindName(static_cast<SDL3GPUShaderKind>(i)),
+		          static_cast<unsigned long long>(stats.nativeCompiles),
+		          static_cast<unsigned long long>(stats.compatibilityCompiles),
+		          static_cast<unsigned long long>(stats.nativeDraws),
+		          static_cast<unsigned long long>(stats.cpuFallbackDraws),
+		          static_cast<unsigned long long>(stats.cpuFallbackPixels));
+	}
+
+	resetTelemetryCounters();
+}
+
 SDL3GPUProgramObject *activeProgramObject() {
 	if (!rendererState.current_context_target || !rendererState.current_context_target->context)
 		return nullptr;
@@ -1146,7 +1881,7 @@ void updateNativeUniformRegister(SDL3GPUProgramObject &program,
 
 	const int components = std::max(1, std::min(uniform->components, value.components));
 	for (int i = 0; i < components; ++i) {
-		if (uniform->type == SDL3GPUUniformType::Int) {
+		if (uniform->type == SDL3GPUUniformType::Int || uniform->type == SDL3GPUUniformType::Bool) {
 			const int intValue = value.type == SDL3GPUUniformType::Int ? value.intValue : static_cast<int>(value.values[i]);
 			reg.words[i] = packIntWord(intValue);
 		} else {
@@ -1229,7 +1964,19 @@ void initialiseImageDefaults(GPU_Image *image, Uint16 w, Uint16 h, GPU_FormatEnu
 	image->context_target      = rendererState.current_context_target;
 	image->pixels.resize(static_cast<size_t>(image->pitch) * h);
 	image->pixels_dirty        = false;
+	image->pixels_solid        = false;
+	image->solid_color         = SDL_Color{0, 0, 0, 0};
 	image->texture_initialized = false;
+}
+
+void registerImageTexture(GPU_Image *image) {
+	if (image && image->texture)
+		liveTextureImages.insert(image);
+}
+
+void unregisterImageTexture(GPU_Image *image) {
+	if (image)
+		liveTextureImages.erase(image);
 }
 
 bool createTexture(GPU_Image *image) {
@@ -1247,6 +1994,7 @@ bool createTexture(GPU_Image *image) {
 	textureInfo.sample_count         = SDL_GPU_SAMPLECOUNT_1;
 
 	image->texture = SDL_CreateGPUTexture(rendererState.device, &textureInfo);
+	registerImageTexture(image);
 	return image->texture != nullptr;
 }
 
@@ -1277,8 +2025,11 @@ bool clearImageTexture(GPU_Image *image, SDL_Color color = SDL_Color{0, 0, 0, 0}
 	SDL_EndGPURenderPass(renderPass);
 	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
 	if (submitted) {
+		noteCommandBufferSubmitted();
 		image->texture_initialized = true;
 		image->pixels_dirty        = false;
+		image->pixels_solid        = true;
+		image->solid_color         = color;
 		image->has_mipmaps         = false;
 	}
 	return submitted;
@@ -1290,36 +2041,102 @@ bool ensureImageTextureInitialized(GPU_Image *image) {
 	return clearImageTexture(image);
 }
 
-bool uploadImage(GPU_Image *image) {
-	if (!image || !image->texture || !rendererState.device || image->pixels.empty())
+Uint32 reusableBufferCapacity(Uint32 size) {
+	Uint32 capacity = 4096;
+	while (capacity < size && capacity <= (UINT32_MAX / 2))
+		capacity *= 2;
+	return std::max(capacity, size);
+}
+
+void releaseReusableTransferBuffer(SDL3GPUReusableTransferBuffer &buffer) {
+	if (buffer.transfer && rendererState.device)
+		SDL_ReleaseGPUTransferBuffer(rendererState.device, buffer.transfer);
+	buffer = SDL3GPUReusableTransferBuffer{};
+}
+
+void releaseReusableUploadedBuffer(SDL3GPUReusableUploadedBuffer &buffer) {
+	if (buffer.buffer && rendererState.device)
+		SDL_ReleaseGPUBuffer(rendererState.device, buffer.buffer);
+	if (buffer.transfer && rendererState.device)
+		SDL_ReleaseGPUTransferBuffer(rendererState.device, buffer.transfer);
+	buffer = SDL3GPUReusableUploadedBuffer{};
+}
+
+bool ensureReusableTransferBuffer(SDL3GPUReusableTransferBuffer &buffer, SDL_GPUTransferBufferUsage usage, Uint32 size) {
+	if (!rendererState.device || size == 0)
+		return false;
+	if (buffer.transfer && buffer.usage == usage && buffer.capacity >= size)
+		return true;
+
+	releaseReusableTransferBuffer(buffer);
+
+	SDL_GPUTransferBufferCreateInfo transferInfo{};
+	transferInfo.usage = usage;
+	transferInfo.size  = reusableBufferCapacity(size);
+	buffer.transfer    = SDL_CreateGPUTransferBuffer(rendererState.device, &transferInfo);
+	if (!buffer.transfer)
+		return false;
+	buffer.capacity = transferInfo.size;
+	buffer.usage    = usage;
+	return true;
+}
+
+bool ensureReusableUploadedBuffer(SDL3GPUReusableUploadedBuffer &buffer, SDL_GPUBufferUsageFlags usage, Uint32 size) {
+	if (!rendererState.device || size == 0)
+		return false;
+	if (buffer.buffer && buffer.transfer && buffer.usage == usage && buffer.capacity >= size) {
+		buffer.size = size;
+		return true;
+	}
+
+	releaseReusableUploadedBuffer(buffer);
+
+	const Uint32 capacity = reusableBufferCapacity(size);
+	SDL_GPUBufferCreateInfo bufferInfo{};
+	bufferInfo.usage = usage;
+	bufferInfo.size  = capacity;
+	buffer.buffer    = SDL_CreateGPUBuffer(rendererState.device, &bufferInfo);
+	if (!buffer.buffer)
 		return false;
 
 	SDL_GPUTransferBufferCreateInfo transferInfo{};
 	transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-	transferInfo.size  = static_cast<Uint32>(image->pixels.size());
-
-	SDL_GPUTransferBuffer *transfer = SDL_CreateGPUTransferBuffer(rendererState.device, &transferInfo);
-	if (!transfer)
-		return false;
-
-	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, transfer, false);
-	if (!mapped) {
-		SDL_ReleaseGPUTransferBuffer(rendererState.device, transfer);
+	transferInfo.size  = capacity;
+	buffer.transfer    = SDL_CreateGPUTransferBuffer(rendererState.device, &transferInfo);
+	if (!buffer.transfer) {
+		releaseReusableUploadedBuffer(buffer);
 		return false;
 	}
+
+	buffer.capacity = capacity;
+	buffer.size     = size;
+	buffer.usage    = usage;
+	return true;
+}
+
+bool uploadImage(GPU_Image *image, const char *telemetrySource = "upload_image") {
+	if (!image || !image->texture || !rendererState.device || image->pixels.empty())
+		return false;
+	materializeSolidPixels(image);
+
+	const Uint32 uploadSize = static_cast<Uint32>(image->pixels.size());
+	if (!ensureReusableTransferBuffer(textureUploadBuffer, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, uploadSize))
+		return false;
+
+	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, textureUploadBuffer.transfer, true);
+	if (!mapped)
+		return false;
 
 	std::memcpy(mapped, image->pixels.data(), image->pixels.size());
-	SDL_UnmapGPUTransferBuffer(rendererState.device, transfer);
+	SDL_UnmapGPUTransferBuffer(rendererState.device, textureUploadBuffer.transfer);
 
 	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
-	if (!commands) {
-		SDL_ReleaseGPUTransferBuffer(rendererState.device, transfer);
+	if (!commands)
 		return false;
-	}
 
 	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
 	SDL_GPUTextureTransferInfo source{};
-	source.transfer_buffer = transfer;
+	source.transfer_buffer = textureUploadBuffer.transfer;
 	source.pixels_per_row  = image->w;
 	source.rows_per_layer  = image->h;
 
@@ -1332,8 +2149,9 @@ bool uploadImage(GPU_Image *image) {
 	SDL_UploadToGPUTexture(copyPass, &source, &destination, true);
 	SDL_EndGPUCopyPass(copyPass);
 	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
-	SDL_ReleaseGPUTransferBuffer(rendererState.device, transfer);
 	if (submitted) {
+		noteCommandBufferSubmitted();
+		noteTextureUpload(uploadSize, telemetrySource);
 		image->pixels_dirty = false;
 		image->texture_initialized = true;
 		image->has_mipmaps = false;
@@ -1361,51 +2179,55 @@ bool imageRectCoversImage(const GPU_Image *image, const SDL_Rect &rect) {
 	return image && rect.x == 0 && rect.y == 0 && rect.w == image->w && rect.h == image->h;
 }
 
-bool uploadImageRegion(GPU_Image *image, SDL_Rect bounds) {
+std::string clearFullTelemetrySource(const GPU_Image *image, const SDL_Rect &bounds, bool coversImage) {
+	std::ostringstream out;
+	out << (coversImage ? "clear_full_native_fallback_" : "clear_full_clipped_upload_");
+	if (image)
+		out << image->w << "x" << image->h;
+	else
+		out << "unknown";
+	if (!coversImage)
+		out << "_rect_" << bounds.w << "x" << bounds.h;
+	return out.str();
+}
+
+bool uploadImageRegion(GPU_Image *image, SDL_Rect bounds, const char *telemetrySource = "upload_image_region") {
 	if (!image || !image->texture || !rendererState.device || image->pixels.empty())
 		return false;
+	materializeSolidPixels(image);
 
 	bounds = clampImageUploadRect(image, bounds);
 	if (bounds.w <= 0 || bounds.h <= 0)
 		return true;
 	if (imageRectCoversImage(image, bounds))
-		return uploadImage(image);
+		return uploadImage(image, telemetrySource);
 	if (!ensureImageTextureInitialized(image))
 		return false;
 
 	const Uint32 uploadPitch = static_cast<Uint32>(bounds.w * image->bytes_per_pixel);
 	const Uint32 uploadSize  = static_cast<Uint32>(uploadPitch * bounds.h);
 
-	SDL_GPUTransferBufferCreateInfo transferInfo{};
-	transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-	transferInfo.size  = uploadSize;
-
-	SDL_GPUTransferBuffer *transfer = SDL_CreateGPUTransferBuffer(rendererState.device, &transferInfo);
-	if (!transfer)
+	if (!ensureReusableTransferBuffer(textureUploadBuffer, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, uploadSize))
 		return false;
 
-	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, transfer, false);
-	if (!mapped) {
-		SDL_ReleaseGPUTransferBuffer(rendererState.device, transfer);
+	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, textureUploadBuffer.transfer, true);
+	if (!mapped)
 		return false;
-	}
 
 	auto *dst = static_cast<Uint8 *>(mapped);
 	for (int y = 0; y < bounds.h; ++y) {
 		const auto *src = image->pixels.data() + (bounds.y + y) * image->pitch + bounds.x * image->bytes_per_pixel;
 		std::memcpy(dst + y * uploadPitch, src, uploadPitch);
 	}
-	SDL_UnmapGPUTransferBuffer(rendererState.device, transfer);
+	SDL_UnmapGPUTransferBuffer(rendererState.device, textureUploadBuffer.transfer);
 
 	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
-	if (!commands) {
-		SDL_ReleaseGPUTransferBuffer(rendererState.device, transfer);
+	if (!commands)
 		return false;
-	}
 
 	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
 	SDL_GPUTextureTransferInfo source{};
-	source.transfer_buffer = transfer;
+	source.transfer_buffer = textureUploadBuffer.transfer;
 	source.pixels_per_row  = static_cast<Uint32>(bounds.w);
 	source.rows_per_layer  = static_cast<Uint32>(bounds.h);
 
@@ -1420,8 +2242,9 @@ bool uploadImageRegion(GPU_Image *image, SDL_Rect bounds) {
 	SDL_UploadToGPUTexture(copyPass, &source, &destination, false);
 	SDL_EndGPUCopyPass(copyPass);
 	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
-	SDL_ReleaseGPUTransferBuffer(rendererState.device, transfer);
 	if (submitted) {
+		noteCommandBufferSubmitted();
+		noteTextureUpload(uploadSize, telemetrySource);
 		image->pixels_dirty        = false;
 		image->texture_initialized = true;
 		image->has_mipmaps         = false;
@@ -1429,7 +2252,7 @@ bool uploadImageRegion(GPU_Image *image, SDL_Rect bounds) {
 	return submitted;
 }
 
-bool downloadImage(GPU_Image *image) {
+bool downloadImage(GPU_Image *image, const char *telemetrySource = "ensure_pixels_current") {
 	if (!image || !image->texture || !rendererState.device || image->pixels.empty())
 		return false;
 	if (!image->texture_initialized)
@@ -1437,18 +2260,15 @@ bool downloadImage(GPU_Image *image) {
 	if (!image->pixels_dirty)
 		return true;
 
-	SDL_GPUTransferBufferCreateInfo transferInfo{};
-	transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
-	transferInfo.size  = static_cast<Uint32>(image->pixels.size());
-	SDL_GPUTransferBuffer *transfer = SDL_CreateGPUTransferBuffer(rendererState.device, &transferInfo);
-	if (!transfer)
+	flushNativeBlitBatch();
+
+	const Uint32 downloadSize = static_cast<Uint32>(image->pixels.size());
+	if (!ensureReusableTransferBuffer(textureDownloadBuffer, SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, downloadSize))
 		return false;
 
 	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
-	if (!commands) {
-		SDL_ReleaseGPUTransferBuffer(rendererState.device, transfer);
+	if (!commands)
 		return false;
-	}
 
 	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
 	SDL_GPUTextureRegion source{};
@@ -1458,40 +2278,40 @@ bool downloadImage(GPU_Image *image) {
 	source.d       = 1;
 
 	SDL_GPUTextureTransferInfo destination{};
-	destination.transfer_buffer = transfer;
+	destination.transfer_buffer = textureDownloadBuffer.transfer;
 	destination.pixels_per_row  = image->w;
 	destination.rows_per_layer  = image->h;
 	SDL_DownloadFromGPUTexture(copyPass, &source, &destination);
 	SDL_EndGPUCopyPass(copyPass);
 
 	SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
-	if (!fence) {
-		SDL_ReleaseGPUTransferBuffer(rendererState.device, transfer);
+	if (!fence)
 		return false;
-	}
+	noteCommandBufferSubmitted();
 
 	const bool waited = SDL_WaitForGPUFences(rendererState.device, true, &fence, 1);
 	SDL_ReleaseGPUFence(rendererState.device, fence);
-	if (!waited) {
-		SDL_ReleaseGPUTransferBuffer(rendererState.device, transfer);
+	if (!waited)
 		return false;
-	}
 
-	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, transfer, false);
-	if (!mapped) {
-		SDL_ReleaseGPUTransferBuffer(rendererState.device, transfer);
+	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, textureDownloadBuffer.transfer, false);
+	if (!mapped)
 		return false;
-	}
 	std::memcpy(image->pixels.data(), mapped, image->pixels.size());
-	SDL_UnmapGPUTransferBuffer(rendererState.device, transfer);
-	SDL_ReleaseGPUTransferBuffer(rendererState.device, transfer);
+	SDL_UnmapGPUTransferBuffer(rendererState.device, textureDownloadBuffer.transfer);
+	noteReadback(downloadSize, telemetrySource);
 	image->pixels_dirty = false;
+	image->pixels_solid = false;
 	return true;
 }
 
 void ensureImagePixelsCurrent(GPU_Image *image) {
+	if (image)
+		flushNativeBlitBatch();
 	if (image && image->pixels_dirty)
 		downloadImage(image);
+	if (image && image->pixels_solid)
+		materializeSolidPixels(image);
 }
 
 SDL_PixelFormat canonicalSurfaceFormatForUpload(const GPU_Image *image) {
@@ -1546,6 +2366,62 @@ void copyPixelRow(Uint8 *dst, int dstBpp, const Uint8 *src, int srcBpp, int widt
 	}
 }
 
+void materializeSolidPixels(GPU_Image *image) {
+	if (!image || !image->pixels_solid || image->pixels.empty())
+		return;
+
+	const Uint8 source[4]{image->solid_color.r, image->solid_color.g, image->solid_color.b, image->solid_color.a};
+	for (int y = 0; y < image->h; ++y) {
+		auto *row = image->pixels.data() + y * image->pitch;
+		if (image->bytes_per_pixel == 4) {
+			std::memcpy(row, source, 4);
+			int filled = 1;
+			while (filled < image->w) {
+				const int copyPixels = std::min(filled, static_cast<int>(image->w) - filled);
+				std::memcpy(row + filled * 4, row, static_cast<size_t>(copyPixels) * 4);
+				filled += copyPixels;
+			}
+			continue;
+		}
+		for (int x = 0; x < image->w; ++x)
+			copyPixelRow(row + x * image->bytes_per_pixel, image->bytes_per_pixel, source, 4, 1);
+	}
+	image->pixels_solid = false;
+}
+
+void fillImagePixels(GPU_Image *image, SDL_Rect bounds, SDL_Color color) {
+	if (!image || image->pixels.empty())
+		return;
+
+	bounds = clampImageUploadRect(image, bounds);
+	if (bounds.w <= 0 || bounds.h <= 0)
+		return;
+
+	materializeSolidPixels(image);
+	image->pixels_solid = false;
+
+	const Uint8 source[4]{color.r, color.g, color.b, color.a};
+	if (image->bytes_per_pixel == 4) {
+		for (int y = bounds.y; y < bounds.y + bounds.h; ++y) {
+			auto *row = image->pixels.data() + y * image->pitch + bounds.x * image->bytes_per_pixel;
+			std::memcpy(row, source, 4);
+			int filled = 1;
+			while (filled < bounds.w) {
+				const int copyPixels = std::min(filled, bounds.w - filled);
+				std::memcpy(row + filled * 4, row, static_cast<size_t>(copyPixels) * 4);
+				filled += copyPixels;
+			}
+		}
+		return;
+	}
+
+	for (int y = bounds.y; y < bounds.y + bounds.h; ++y) {
+		auto *row = image->pixels.data() + y * image->pitch + bounds.x * image->bytes_per_pixel;
+		for (int x = 0; x < bounds.w; ++x)
+			copyPixelRow(row + x * image->bytes_per_pixel, image->bytes_per_pixel, source, 4, 1);
+	}
+}
+
 bool extensionIsBmp(const char *filename) {
 	if (!filename)
 		return false;
@@ -1578,67 +2454,103 @@ void pngWriteData(png_structp png_ptr, png_bytep data, png_size_t length) {
 
 void pngFlushData(png_structp) {}
 
+void finishPNGWrite(png_structp png_ptr, png_infop info_ptr, SDL_Surface *rgba, bool free_surface,
+                    bool surface_locked, SDL_RWops *rwops, bool free_rwops) {
+	if (png_ptr || info_ptr)
+		png_destroy_write_struct(png_ptr ? &png_ptr : nullptr, info_ptr ? &info_ptr : nullptr);
+	if (surface_locked)
+		SDL_UnlockSurface(rgba);
+	if (free_surface)
+		SDL_FreeSurface(rgba);
+	if (free_rwops)
+		SDL_RWclose(rwops);
+}
+
+struct PNGSurfaceWrite {
+	SDL_Surface *surface{nullptr};
+	SDL_RWops *rwops{nullptr};
+	png_bytep *rows{nullptr};
+};
+
+bool writePNGSurfaceData(png_structp png_ptr, png_infop info_ptr, const PNGSurfaceWrite *write) {
+	if (setjmp(png_jmpbuf(png_ptr)))
+		return false;
+
+	png_set_write_fn(png_ptr, write->rwops, pngWriteData, pngFlushData);
+	png_set_IHDR(png_ptr, info_ptr, write->surface->w, write->surface->h, 8, PNG_COLOR_TYPE_RGBA,
+	             PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+	png_write_info(png_ptr, info_ptr);
+	png_write_image(png_ptr, write->rows);
+	png_write_end(png_ptr, info_ptr);
+	return true;
+}
+
 bool saveSurfacePNG_RW(SDL_Surface *surface, SDL_RWops *rwops, bool free_rwops) {
 	if (!surface || !rwops)
 		return false;
 
-	SDL_Surface *rgba = surface;
-	bool freeSurface = false;
-	if (onsSurfacePixelFormatEnum(surface) != static_cast<Uint32>(SDL_PIXELFORMAT_RGBA32)) {
-		rgba = onsConvertSurfaceFormat(surface, SDL_PIXELFORMAT_RGBA32, SDL_SWSURFACE);
-		freeSurface = rgba != nullptr;
-	}
-	if (!rgba) {
-		if (free_rwops)
-			SDL_RWclose(rwops);
+	SDL_Surface *const inputSurface = surface;
+	SDL_RWops *const output         = rwops;
+	const bool closeOutput         = free_rwops;
+	SDL_Surface *convertedSurface  = nullptr;
+	const bool needsConversion     = onsSurfacePixelFormatEnum(inputSurface) != static_cast<Uint32>(SDL_PIXELFORMAT_RGBA32);
+	if (needsConversion)
+		convertedSurface = onsConvertSurfaceFormat(inputSurface, SDL_PIXELFORMAT_RGBA32, SDL_SWSURFACE);
+	if (needsConversion && !convertedSurface) {
+		if (closeOutput)
+			SDL_RWclose(output);
 		return false;
 	}
 
+	SDL_Surface *const rgba = convertedSurface ? convertedSurface : inputSurface;
+	const bool freeSurface = convertedSurface != nullptr;
+	const bool shouldLockSurface = SDL_MUSTLOCK(rgba);
+	if (shouldLockSurface && !SDL_LockSurface(rgba)) {
+		finishPNGWrite(nullptr, nullptr, rgba, freeSurface, false, output, closeOutput);
+		return false;
+	}
+	const bool surfaceLocked = shouldLockSurface;
+
+	std::vector<png_bytep> rows(static_cast<size_t>(rgba->h));
+	for (int y = 0; y < rgba->h; ++y)
+		rows[y] = static_cast<png_bytep>(rgba->pixels) + y * rgba->pitch;
+
 	png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
 	png_infop info_ptr = png_ptr ? png_create_info_struct(png_ptr) : nullptr;
-	bool saved = false;
-	if (!png_ptr || !info_ptr)
-		goto done;
-
-	if (setjmp(png_jmpbuf(png_ptr)))
-		goto done;
-
-	png_set_write_fn(png_ptr, rwops, pngWriteData, pngFlushData);
-	png_set_IHDR(png_ptr, info_ptr, rgba->w, rgba->h, 8, PNG_COLOR_TYPE_RGBA,
-	             PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
-	png_write_info(png_ptr, info_ptr);
-
-	if (SDL_MUSTLOCK(rgba) && !SDL_LockSurface(rgba))
-		goto done;
-	{
-		std::vector<png_bytep> rows(static_cast<size_t>(rgba->h));
-		for (int y = 0; y < rgba->h; ++y)
-			rows[y] = static_cast<png_bytep>(rgba->pixels) + y * rgba->pitch;
-		png_write_image(png_ptr, rows.data());
+	if (!png_ptr || !info_ptr) {
+		finishPNGWrite(png_ptr, info_ptr, rgba, freeSurface, surfaceLocked, output, closeOutput);
+		return false;
 	}
-	if (SDL_MUSTLOCK(rgba))
-		SDL_UnlockSurface(rgba);
 
-	png_write_end(png_ptr, info_ptr);
-	saved = true;
-
-done:
-	if (png_ptr || info_ptr)
-		png_destroy_write_struct(png_ptr ? &png_ptr : nullptr, info_ptr ? &info_ptr : nullptr);
-	if (freeSurface)
-		SDL_FreeSurface(rgba);
-	if (free_rwops)
-		SDL_RWclose(rwops);
+	PNGSurfaceWrite write{rgba, output, rows.data()};
+	const bool saved = writePNGSurfaceData(png_ptr, info_ptr, &write);
+	finishPNGWrite(png_ptr, info_ptr, rgba, freeSurface, surfaceLocked, output, closeOutput);
 	return saved;
 }
 
 void releaseImageTexture(GPU_Image *image) {
-	if (!image || !image->texture || !rendererState.device)
+	if (!image)
 		return;
-	SDL_ReleaseGPUTexture(rendererState.device, image->texture);
-	image->texture = nullptr;
+	if (image->texture && rendererState.device)
+		SDL_ReleaseGPUTexture(rendererState.device, image->texture);
+	unregisterImageTexture(image);
+	image->texture             = nullptr;
 	image->texture_initialized = false;
-	image->has_mipmaps = false;
+	image->has_mipmaps         = false;
+	if (image->target)
+		image->target->texture = nullptr;
+}
+
+void releaseAllImageTextures() {
+	if (!rendererState.device) {
+		liveTextureImages.clear();
+		return;
+	}
+
+	std::vector<GPU_Image *> images(liveTextureImages.begin(), liveTextureImages.end());
+	for (auto *image : images)
+		releaseImageTexture(image);
+	liveTextureImages.clear();
 }
 
 bool recreateImageTextureForMipmaps(GPU_Image *image) {
@@ -1662,12 +2574,17 @@ bool recreateImageTextureForMipmaps(GPU_Image *image) {
 	if (image->target)
 		image->target->texture = image->texture;
 
-	return uploadImage(image);
+	return uploadImage(image, "generate_mipmaps");
 }
 
 void releaseNativeRendererObjects() {
 	if (!rendererState.device)
 		return;
+	flushNativeBlitBatch();
+	releaseReusableTransferBuffer(textureUploadBuffer);
+	releaseReusableTransferBuffer(textureDownloadBuffer);
+	releaseReusableUploadedBuffer(vertexUploadBuffer);
+	releaseReusableUploadedBuffer(indexUploadBuffer);
 	for (auto &entry : pipelineCache) {
 		if (entry.pipeline)
 			SDL_ReleaseGPUGraphicsPipeline(rendererState.device, entry.pipeline);
@@ -1680,6 +2597,10 @@ void releaseNativeRendererObjects() {
 	if (linearSampler) {
 		SDL_ReleaseGPUSampler(rendererState.device, linearSampler);
 		linearSampler = nullptr;
+	}
+	if (solidWhiteTexture) {
+		SDL_ReleaseGPUTexture(rendererState.device, solidWhiteTexture);
+		solidWhiteTexture = nullptr;
 	}
 	if (texturedVertexShader) {
 		SDL_ReleaseGPUShader(rendererState.device, texturedVertexShader);
@@ -1726,7 +2647,7 @@ bool resizeTargetBacking(GPU_Target *target, Uint16 w, Uint16 h) {
 		return false;
 
 	target->texture = target->image->texture;
-	return uploadImage(target->image);
+	return clearImageTexture(target->image);
 }
 
 bool ensureTargetBacking(GPU_Target *target) {
@@ -1826,6 +2747,7 @@ void writeImagePixel(GPU_Image *image, int x, int y, SDL_Color color) {
 	if (!image || x < 0 || y < 0 || x >= image->w || y >= image->h)
 		return;
 
+	image->pixels_solid = false;
 	Uint8 *pixel = image->pixels.data() + y * image->pitch + x * image->bytes_per_pixel;
 	if (image->bytes_per_pixel == 1) {
 		pixel[0] = static_cast<Uint8>((static_cast<int>(color.r) + color.g + color.b) / 3);
@@ -2264,10 +3186,7 @@ SDL3GPUColorF evaluateShaderPixel(const SDL3GPUProgramObject &program,
 		case SDL3GPUShaderKind::RenderSubtitles: {
 			SDL3GPUColorF result{};
 			const int ntextures = std::min(std::max(uniformInt(program, "ntextures"), 0), 8);
-			const SDL3GPUColorF dstDims = uniformVec4(program, "dstDims", SDL3GPUColorF{
-			                                             textures[0].image ? static_cast<float>(textures[0].image->w) : 1.0f,
-			                                             textures[0].image ? static_cast<float>(textures[0].image->h) : 1.0f,
-			                                             0.0f, 0.0f});
+			const SDL3GPUColorF dstDims = uniformVec4(program, "dstDims", SDL3GPUColorF{textures[0].image ? static_cast<float>(textures[0].image->w) : 1.0f, textures[0].image ? static_cast<float>(textures[0].image->h) : 1.0f, 0.0f, 0.0f});
 			const float absX = dstDims.r * u;
 			const float absY = dstDims.g * v;
 			for (int i = 0; i < ntextures; ++i) {
@@ -2310,6 +3229,7 @@ void cpuBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float x, 
              float degrees, float scaleX, float scaleY) {
 	if (!image || !ensureTargetBacking(target) || scaleX == 0.0f || scaleY == 0.0f)
 		return;
+	GPU_TelemetryScope telemetryScope("cpu_blit_fallback");
 	ensureImagePixelsCurrent(image);
 	ensureImagePixelsCurrent(target->image);
 
@@ -2334,6 +3254,7 @@ void cpuBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float x, 
 	const float cosTheta = std::cos(radians);
 	const float sinTheta = std::sin(radians);
 	const bool rotated = std::abs(degrees) > 0.0001f;
+	Uint64 blendedPixels = 0;
 
 	for (int dstY = y0; dstY < y1; ++dstY) {
 		for (int dstX = x0; dstX < x1; ++dstX) {
@@ -2362,10 +3283,13 @@ void cpuBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float x, 
 
 			const SDL_Color destination = readImagePixel(target->image, dstX, dstY);
 			writeImagePixel(target->image, dstX, dstY, blendPixel(image, source, destination));
+			++blendedPixels;
 		}
 	}
 
-	uploadImage(target->image);
+	if (blendedPixels > 0)
+		noteCpuBlit(blendedPixels);
+	uploadImage(target->image, "cpu_blit_fallback");
 }
 
 bool cpuShaderBlit(const SDL3GPUProgramObject &program, GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target,
@@ -2374,6 +3298,7 @@ bool cpuShaderBlit(const SDL3GPUProgramObject &program, GPU_Image *image, GPU_Re
 		return false;
 	if (!image || !ensureTargetBacking(target) || scaleX == 0.0f || scaleY == 0.0f)
 		return false;
+	GPU_TelemetryScope telemetryScope("cpu_shader_fallback");
 
 	std::array<SDL3GPUTextureView, 8> textures{};
 	std::array<std::vector<Uint8>, 8> snapshots{};
@@ -2415,6 +3340,7 @@ bool cpuShaderBlit(const SDL3GPUProgramObject &program, GPU_Image *image, GPU_Re
 	const float cosTheta = std::cos(radians);
 	const float sinTheta = std::sin(radians);
 	const bool rotated = std::abs(degrees) > 0.0001f;
+	Uint64 evaluatedPixels = 0;
 
 	for (int dstY = y0; dstY < y1; ++dstY) {
 		for (int dstX = x0; dstX < x1; ++dstX) {
@@ -2438,6 +3364,7 @@ bool cpuShaderBlit(const SDL3GPUProgramObject &program, GPU_Image *image, GPU_Re
 			const float u = (srcX + sourceLocalX) / static_cast<float>(image->w);
 			const float v = (srcY + sourceLocalY) / static_cast<float>(image->h);
 			const SDL_Color source = toSDLColor(evaluateShaderPixel(program, textures, u, v));
+			++evaluatedPixels;
 			if (source.a == 0 && image->use_blending)
 				continue;
 
@@ -2446,7 +3373,9 @@ bool cpuShaderBlit(const SDL3GPUProgramObject &program, GPU_Image *image, GPU_Re
 		}
 	}
 
-	uploadImage(target->image);
+	if (evaluatedPixels > 0)
+		noteCpuShaderFallback(program.kind, evaluatedPixels);
+	uploadImage(target->image, "cpu_shader_fallback");
 	return true;
 }
 
@@ -2461,6 +3390,7 @@ bool cpuShaderTriangles(const SDL3GPUProgramObject &program, GPU_Image *image, G
 		return false;
 	if (!image || !target || !vertices || !indices || numVertices == 0 || numIndices < 3 || !ensureTargetBacking(target))
 		return false;
+	GPU_TelemetryScope telemetryScope("cpu_shader_fallback");
 
 	std::array<SDL3GPUTextureView, 8> textures{};
 	std::array<std::vector<Uint8>, 8> snapshots{};
@@ -2480,6 +3410,7 @@ bool cpuShaderTriangles(const SDL3GPUProgramObject &program, GPU_Image *image, G
 		}
 	}
 	ensureImagePixelsCurrent(target->image);
+	Uint64 evaluatedPixels = 0;
 
 	for (Uint32 i = 0; i + 2 < numIndices; i += 3) {
 		if (indices[i] >= numVertices || indices[i + 1] >= numVertices || indices[i + 2] >= numVertices)
@@ -2514,6 +3445,7 @@ bool cpuShaderTriangles(const SDL3GPUProgramObject &program, GPU_Image *image, G
 				const float u = w0 * a.s + w1 * b.s + w2 * c.s;
 				const float v = w0 * a.t + w1 * b.t + w2 * c.t;
 				SDL3GPUColorF fragment = evaluateShaderPixel(program, textures, u, v);
+				++evaluatedPixels;
 				fragment.r *= w0 * a.r + w1 * b.r + w2 * c.r;
 				fragment.g *= w0 * a.g + w1 * b.g + w2 * c.g;
 				fragment.b *= w0 * a.b + w1 * b.b + w2 * c.b;
@@ -2528,62 +3460,207 @@ bool cpuShaderTriangles(const SDL3GPUProgramObject &program, GPU_Image *image, G
 		}
 	}
 
-	uploadImage(target->image);
+	if (evaluatedPixels > 0)
+		noteCpuShaderFallback(program.kind, evaluatedPixels);
+	uploadImage(target->image, "cpu_shader_fallback");
 	return true;
 }
 
-struct UploadedBuffer {
-	SDL_GPUBuffer *buffer{nullptr};
-	SDL_GPUTransferBuffer *transfer{nullptr};
-	Uint32 size{0};
-};
-
-void releaseUploadedBuffer(UploadedBuffer &uploaded) {
-	if (uploaded.buffer && rendererState.device)
-		SDL_ReleaseGPUBuffer(rendererState.device, uploaded.buffer);
-	if (uploaded.transfer && rendererState.device)
-		SDL_ReleaseGPUTransferBuffer(rendererState.device, uploaded.transfer);
-	uploaded = UploadedBuffer{};
-}
-
-bool prepareUploadedBuffer(UploadedBuffer &uploaded, SDL_GPUBufferUsageFlags usage, const void *data, Uint32 size) {
+bool prepareUploadedBuffer(SDL3GPUReusableUploadedBuffer &uploaded, SDL_GPUBufferUsageFlags usage, const void *data, Uint32 size) {
 	if (!rendererState.device || !data || size == 0)
 		return false;
 
-	SDL_GPUBufferCreateInfo bufferInfo{};
-	bufferInfo.usage = usage;
-	bufferInfo.size  = size;
-	uploaded.buffer = SDL_CreateGPUBuffer(rendererState.device, &bufferInfo);
-	if (!uploaded.buffer)
+	if (!ensureReusableUploadedBuffer(uploaded, usage, size))
 		return false;
 
-	SDL_GPUTransferBufferCreateInfo transferInfo{};
-	transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-	transferInfo.size  = size;
-	uploaded.transfer = SDL_CreateGPUTransferBuffer(rendererState.device, &transferInfo);
-	if (!uploaded.transfer) {
-		releaseUploadedBuffer(uploaded);
+	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, uploaded.transfer, true);
+	if (!mapped)
 		return false;
-	}
-
-	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, uploaded.transfer, false);
-	if (!mapped) {
-		releaseUploadedBuffer(uploaded);
-		return false;
-	}
 	std::memcpy(mapped, data, size);
 	SDL_UnmapGPUTransferBuffer(rendererState.device, uploaded.transfer);
-	uploaded.size = size;
 	return true;
 }
 
-void encodeBufferUpload(SDL_GPUCopyPass *copyPass, const UploadedBuffer &uploaded) {
+void encodeBufferUpload(SDL_GPUCopyPass *copyPass, const SDL3GPUReusableUploadedBuffer &uploaded) {
 	SDL_GPUTransferBufferLocation source{};
 	source.transfer_buffer = uploaded.transfer;
 	SDL_GPUBufferRegion destination{};
 	destination.buffer = uploaded.buffer;
 	destination.size   = uploaded.size;
-	SDL_UploadToGPUBuffer(copyPass, &source, &destination, false);
+	SDL_UploadToGPUBuffer(copyPass, &source, &destination, true);
+}
+
+bool ensureSolidWhiteTexture() {
+	if (solidWhiteTexture)
+		return true;
+	if (!rendererState.device)
+		return false;
+
+	SDL_GPUTextureCreateInfo textureInfo{};
+	textureInfo.type                 = SDL_GPU_TEXTURETYPE_2D;
+	textureInfo.format               = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+	textureInfo.usage                = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+	textureInfo.width                = 1;
+	textureInfo.height               = 1;
+	textureInfo.layer_count_or_depth = 1;
+	textureInfo.num_levels           = 1;
+	textureInfo.sample_count         = SDL_GPU_SAMPLECOUNT_1;
+
+	SDL_GPUTexture *texture = SDL_CreateGPUTexture(rendererState.device, &textureInfo);
+	if (!texture)
+		return false;
+
+	const Uint8 white[4]{255, 255, 255, 255};
+	if (!ensureReusableTransferBuffer(textureUploadBuffer, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, sizeof(white))) {
+		SDL_ReleaseGPUTexture(rendererState.device, texture);
+		return false;
+	}
+
+	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, textureUploadBuffer.transfer, true);
+	if (!mapped) {
+		SDL_ReleaseGPUTexture(rendererState.device, texture);
+		return false;
+	}
+	std::memcpy(mapped, white, sizeof(white));
+	SDL_UnmapGPUTransferBuffer(rendererState.device, textureUploadBuffer.transfer);
+
+	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	if (!commands) {
+		SDL_ReleaseGPUTexture(rendererState.device, texture);
+		return false;
+	}
+
+	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
+	SDL_GPUTextureTransferInfo source{};
+	source.transfer_buffer = textureUploadBuffer.transfer;
+	source.pixels_per_row  = 1;
+	source.rows_per_layer  = 1;
+
+	SDL_GPUTextureRegion destination{};
+	destination.texture = texture;
+	destination.w       = 1;
+	destination.h       = 1;
+	destination.d       = 1;
+	SDL_UploadToGPUTexture(copyPass, &source, &destination, true);
+	SDL_EndGPUCopyPass(copyPass);
+
+	if (!SDL_SubmitGPUCommandBuffer(commands)) {
+		SDL_ReleaseGPUTexture(rendererState.device, texture);
+		return false;
+	}
+
+	noteCommandBufferSubmitted();
+	solidWhiteTexture = texture;
+	return true;
+}
+
+bool nativeSolidRect(GPU_Target *target, const SDL_Rect &bounds, SDL_Color color) {
+	if (!rendererState.device || !target || !target->image || bounds.w <= 0 || bounds.h <= 0)
+		return false;
+	if (!ensureTargetBacking(target) || !target->texture || !target->image->texture)
+		return false;
+	if (!isNativeTextureFormat(target->image->format))
+		return false;
+	if (!ensureImageTextureInitialized(target->image) || !ensureNativeShaders() || !ensureSolidWhiteTexture())
+		return false;
+
+	SDL_GPUGraphicsPipeline *pipeline = getPipeline(textureFormat(target->image->format), false, normalBlendMode());
+	SDL_GPUSampler *sampler = getSampler(GPU_FILTER_NEAREST);
+	if (!pipeline || !sampler)
+		return false;
+
+	const float r = color.r / 255.0f;
+	const float g = color.g / 255.0f;
+	const float b = color.b / 255.0f;
+	const float a = color.a / 255.0f;
+	const float x0 = static_cast<float>(bounds.x);
+	const float y0 = static_cast<float>(bounds.y);
+	const float x1 = static_cast<float>(bounds.x + bounds.w);
+	const float y1 = static_cast<float>(bounds.y + bounds.h);
+
+	const std::array<SDL3GPUVertex, 4> vertices{{
+	    SDL3GPUVertex{x0, y0, r, g, b, a, 0.0f, 0.0f},
+	    SDL3GPUVertex{x1, y0, r, g, b, a, 0.0f, 0.0f},
+	    SDL3GPUVertex{x0, y1, r, g, b, a, 0.0f, 0.0f},
+	    SDL3GPUVertex{x1, y1, r, g, b, a, 0.0f, 0.0f},
+	}};
+	const Uint16 indices[6]{0, 1, 2, 2, 1, 3};
+	const Uint32 vertexBytes = static_cast<Uint32>(vertices.size() * sizeof(SDL3GPUVertex));
+	const Uint32 indexBytes  = static_cast<Uint32>(sizeof(indices));
+	if (!prepareUploadedBuffer(vertexUploadBuffer, SDL_GPU_BUFFERUSAGE_VERTEX, vertices.data(), vertexBytes) ||
+	    !prepareUploadedBuffer(indexUploadBuffer, SDL_GPU_BUFFERUSAGE_INDEX, indices, indexBytes)) {
+		return false;
+	}
+
+	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	if (!commands)
+		return false;
+
+	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
+	encodeBufferUpload(copyPass, vertexUploadBuffer);
+	encodeBufferUpload(copyPass, indexUploadBuffer);
+	SDL_EndGPUCopyPass(copyPass);
+
+	SDL_GPUColorTargetInfo colorTarget{};
+	colorTarget.texture  = target->texture;
+	colorTarget.load_op  = SDL_GPU_LOADOP_LOAD;
+	colorTarget.store_op = SDL_GPU_STOREOP_STORE;
+
+	SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(commands, &colorTarget, 1, nullptr);
+	if (!renderPass) {
+		SDL_CancelGPUCommandBuffer(commands);
+		return false;
+	}
+
+	SDL_BindGPUGraphicsPipeline(renderPass, pipeline);
+
+	SDL_GPUBufferBinding vertexBinding{};
+	vertexBinding.buffer = vertexUploadBuffer.buffer;
+	SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
+
+	SDL_GPUBufferBinding indexBinding{};
+	indexBinding.buffer = indexUploadBuffer.buffer;
+	SDL_BindGPUIndexBuffer(renderPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
+
+	SDL_GPUTextureSamplerBinding samplerBinding{};
+	samplerBinding.texture = solidWhiteTexture;
+	samplerBinding.sampler = sampler;
+	SDL_BindGPUFragmentSamplers(renderPass, 0, &samplerBinding, 1);
+
+	struct VertexUniforms {
+		float mvp[4][4];
+	} vertexUniforms{};
+	vertexUniforms.mvp[0][0] = 2.0f / static_cast<float>(target->image->w);
+	vertexUniforms.mvp[1][1] = -2.0f / static_cast<float>(target->image->h);
+	vertexUniforms.mvp[2][2] = 1.0f;
+	vertexUniforms.mvp[3][0] = -1.0f;
+	vertexUniforms.mvp[3][1] = 1.0f;
+	vertexUniforms.mvp[3][3] = 1.0f;
+	SDL_PushGPUVertexUniformData(commands, 0, &vertexUniforms, sizeof(vertexUniforms));
+
+	const float colorScale = 1.0f;
+	SDL_PushGPUFragmentUniformData(commands, 0, &colorScale, sizeof(colorScale));
+
+	SDL_GPUViewport viewport{};
+	viewport.w = static_cast<float>(target->image->w);
+	viewport.h = static_cast<float>(target->image->h);
+	viewport.min_depth = 0.0f;
+	viewport.max_depth = 1.0f;
+	SDL_SetGPUViewport(renderPass, &viewport);
+	SDL_SetGPUScissor(renderPass, &bounds);
+	SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(sizeof(indices) / sizeof(indices[0])), 1, 0, 0, 0);
+	SDL_EndGPURenderPass(renderPass);
+
+	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
+	if (submitted) {
+		noteCommandBufferSubmitted();
+		noteNativeFixedDraw(vertices.size());
+		target->image->pixels_dirty        = true;
+		target->image->pixels_solid        = false;
+		target->image->texture_initialized = true;
+		target->image->has_mipmaps         = false;
+	}
+	return submitted;
 }
 
 SDL_Rect targetScissor(const GPU_Target *target) {
@@ -2614,9 +3691,7 @@ bool renderNativeProgramIndexedTriangles(const SDL3GPUProgramObject &program,
 		return false;
 	if (!image->texture || !ensureTargetBacking(target) || !target->texture || !target->image)
 		return false;
-	if (target->image == image)
-		return false;
-	if (!isNativeTextureFormat(image->format) || !isNativeTextureFormat(target->image->format))
+	if (!isNativeShaderSamplerFormat(image->format) || !isNativeTextureFormat(target->image->format))
 		return false;
 	if (!ensureImageTextureInitialized(image) || !ensureImageTextureInitialized(target->image))
 		return false;
@@ -2632,103 +3707,42 @@ bool renderNativeProgramIndexedTriangles(const SDL3GPUProgramObject &program,
 	if (!pipeline)
 		return false;
 
-	UploadedBuffer vertexUpload;
-	UploadedBuffer indexUpload;
-	const Uint32 vertexBytes = static_cast<Uint32>(numVertices * sizeof(SDL3GPUVertex));
-	const Uint32 indexBytes  = static_cast<Uint32>(numIndices * sizeof(Uint16));
-	if (!prepareUploadedBuffer(vertexUpload, SDL_GPU_BUFFERUSAGE_VERTEX, vertices, vertexBytes) ||
-	    !prepareUploadedBuffer(indexUpload, SDL_GPU_BUFFERUSAGE_INDEX, indices, indexBytes)) {
-		releaseUploadedBuffer(vertexUpload);
-		releaseUploadedBuffer(indexUpload);
-		return false;
-	}
-
-	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
-	if (!commands) {
-		releaseUploadedBuffer(vertexUpload);
-		releaseUploadedBuffer(indexUpload);
-		return false;
-	}
-
-	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
-	encodeBufferUpload(copyPass, vertexUpload);
-	encodeBufferUpload(copyPass, indexUpload);
-	SDL_EndGPUCopyPass(copyPass);
-
-	SDL_GPUColorTargetInfo colorTarget{};
-	colorTarget.texture  = target->texture;
-	colorTarget.load_op  = SDL_GPU_LOADOP_LOAD;
-	colorTarget.store_op = SDL_GPU_STOREOP_STORE;
-
-	SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(commands, &colorTarget, 1, nullptr);
-	if (!renderPass) {
-		SDL_CancelGPUCommandBuffer(commands);
-		releaseUploadedBuffer(vertexUpload);
-		releaseUploadedBuffer(indexUpload);
-		return false;
-	}
-
-	SDL_BindGPUGraphicsPipeline(renderPass, pipeline);
-
-	SDL_GPUBufferBinding vertexBinding{};
-	vertexBinding.buffer = vertexUpload.buffer;
-	SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
-
-	SDL_GPUBufferBinding indexBinding{};
-	indexBinding.buffer = indexUpload.buffer;
-	SDL_BindGPUIndexBuffer(renderPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-
 	const Uint32 samplerCount = std::min<Uint32>(program.nativeFragmentResources.numSamplers,
 	                                             static_cast<Uint32>(program.images.size()));
-	std::vector<SDL_GPUTextureSamplerBinding> samplerBindings;
-	samplerBindings.reserve(samplerCount);
+	std::vector<SDL_GPUTexture *> samplerTextures;
+	std::vector<SDL_GPUSampler *> samplers;
+	samplerTextures.reserve(samplerCount);
+	samplers.reserve(samplerCount);
 	for (Uint32 i = 0; i < samplerCount; ++i) {
-		GPU_Image *boundImage = program.images[i];
-		if (i == 0 && !boundImage)
+		const int mappedImageUnit = program.nativeSamplerImageUnits[i] >= 0 ?
+		                                program.nativeSamplerImageUnits[i] :
+		                                static_cast<int>(i);
+		if (mappedImageUnit < 0 || mappedImageUnit >= static_cast<int>(program.images.size())) {
+			setShaderMessage("SDL3 native shader program references an invalid sampler image unit");
+			return false;
+		}
+
+		GPU_Image *boundImage = program.images[static_cast<size_t>(mappedImageUnit)];
+		if (mappedImageUnit == 0 && !boundImage)
 			boundImage = image;
-		if (!boundImage || !boundImage->texture) {
-			SDL_EndGPURenderPass(renderPass);
-			SDL_CancelGPUCommandBuffer(commands);
-			releaseUploadedBuffer(vertexUpload);
-			releaseUploadedBuffer(indexUpload);
+		if (!boundImage || !boundImage->texture || !isNativeShaderSamplerFormat(boundImage->format) ||
+		    !ensureImageTextureInitialized(boundImage)) {
 			setShaderMessage("SDL3 native shader program is missing a bound sampler texture");
 			return false;
 		}
-		SDL_GPUSampler *sampler = getSampler(boundImage->filter_mode);
-		if (!sampler) {
-			SDL_EndGPURenderPass(renderPass);
-			SDL_CancelGPUCommandBuffer(commands);
-			releaseUploadedBuffer(vertexUpload);
-			releaseUploadedBuffer(indexUpload);
+		if (boundImage == target->image) {
+			setShaderMessage("SDL3 native shader program cannot sample from its render target");
 			return false;
 		}
-		SDL_GPUTextureSamplerBinding binding{};
-		binding.texture = boundImage->texture;
-		binding.sampler = sampler;
-		samplerBindings.push_back(binding);
+		SDL_GPUSampler *sampler = getSampler(boundImage->filter_mode);
+		if (!sampler)
+			return false;
+		samplerTextures.push_back(boundImage->texture);
+		samplers.push_back(sampler);
 	}
-	if (!samplerBindings.empty())
-		SDL_BindGPUFragmentSamplers(renderPass, 0, samplerBindings.data(), static_cast<Uint32>(samplerBindings.size()));
 
-	struct VertexUniforms {
-		float mvp[4][4];
-	} vertexUniforms{};
 	const float viewportW = target->viewport.w > 0.0f ? target->viewport.w : static_cast<float>(target->w);
 	const float viewportH = target->viewport.h > 0.0f ? target->viewport.h : static_cast<float>(target->h);
-	vertexUniforms.mvp[0][0] = 2.0f / viewportW;
-	vertexUniforms.mvp[1][1] = -2.0f / viewportH;
-	vertexUniforms.mvp[2][2] = 1.0f;
-	vertexUniforms.mvp[3][0] = -1.0f;
-	vertexUniforms.mvp[3][1] = 1.0f;
-	vertexUniforms.mvp[3][3] = 1.0f;
-	SDL_PushGPUVertexUniformData(commands, 0, &vertexUniforms, sizeof(vertexUniforms));
-
-	if (!program.nativeUniformRegisters.empty()) {
-		SDL_PushGPUFragmentUniformData(commands, 0,
-		                               program.nativeUniformRegisters.data(),
-		                               static_cast<Uint32>(program.nativeUniformRegisters.size() * sizeof(SDL3GPUNativeUniformRegister)));
-	}
-
 	SDL_GPUViewport viewport{};
 	viewport.x = target->viewport.x;
 	viewport.y = target->viewport.y;
@@ -2736,22 +3750,11 @@ bool renderNativeProgramIndexedTriangles(const SDL3GPUProgramObject &program,
 	viewport.h = viewportH;
 	viewport.min_depth = 0.0f;
 	viewport.max_depth = 1.0f;
-	SDL_SetGPUViewport(renderPass, &viewport);
 
 	const SDL_Rect scissor = targetScissor(target);
-	SDL_SetGPUScissor(renderPass, &scissor);
-
-	SDL_DrawGPUIndexedPrimitives(renderPass, numIndices, 1, 0, 0, 0);
-	SDL_EndGPURenderPass(renderPass);
-	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
-	releaseUploadedBuffer(vertexUpload);
-	releaseUploadedBuffer(indexUpload);
-
-	if (submitted) {
-		target->image->pixels_dirty = true;
-		target->image->has_mipmaps  = false;
-	}
-	return submitted;
+	return queueNativeTriangleDraw(image, target, pipeline, viewport, scissor, samplerTextures, samplers,
+	                               true, program.kind, false, program.nativeUniformRegisters,
+	                               vertices, numVertices, indices, numIndices);
 }
 
 bool renderNativeIndexedTriangles(GPU_Image *image, GPU_Target *target, const SDL3GPUVertex *vertices,
@@ -2761,10 +3764,16 @@ bool renderNativeIndexedTriangles(GPU_Image *image, GPU_Target *target, const SD
 
 	if (auto *program = activeProgramObject()) {
 		if (program->nativeFragmentShader) {
-			if (!renderNativeProgramIndexedTriangles(*program, image, target, vertices, numVertices, indices, numIndices))
+			if (renderNativeProgramIndexedTriangles(*program, image, target, vertices, numVertices, indices, numIndices))
+				return true;
+			flushNativeBlitBatch();
+			if (cpuShaderTriangles(*program, image, target, vertices, numVertices, indices, numIndices))
+				return true;
+			if (program->kind == SDL3GPUShaderKind::Unknown || program->kind == SDL3GPUShaderKind::DefaultVertex)
 				setShaderMessage("SDL3_GPU backend could not execute the active native shader program");
 			return true;
 		}
+		flushNativeBlitBatch();
 		if (cpuShaderTriangles(*program, image, target, vertices, numVertices, indices, numIndices))
 			return true;
 		setShaderMessage("SDL3_GPU backend cannot execute the active external triangle shader program");
@@ -2785,64 +3794,354 @@ bool renderNativeIndexedTriangles(GPU_Image *image, GPU_Target *target, const SD
 	if (!pipeline || !sampler)
 		return false;
 
-	UploadedBuffer vertexUpload;
-	UploadedBuffer indexUpload;
-	const Uint32 vertexBytes = static_cast<Uint32>(numVertices * sizeof(SDL3GPUVertex));
-	const Uint32 indexBytes  = static_cast<Uint32>(numIndices * sizeof(Uint16));
-	if (!prepareUploadedBuffer(vertexUpload, SDL_GPU_BUFFERUSAGE_VERTEX, vertices, vertexBytes) ||
-	    !prepareUploadedBuffer(indexUpload, SDL_GPU_BUFFERUSAGE_INDEX, indices, indexBytes)) {
-		releaseUploadedBuffer(vertexUpload);
-		releaseUploadedBuffer(indexUpload);
+	const float viewportW = target->viewport.w > 0.0f ? target->viewport.w : static_cast<float>(target->w);
+	const float viewportH = target->viewport.h > 0.0f ? target->viewport.h : static_cast<float>(target->h);
+	SDL_GPUViewport viewport{};
+	viewport.x = target->viewport.x;
+	viewport.y = target->viewport.y;
+	viewport.w = viewportW;
+	viewport.h = viewportH;
+	viewport.min_depth = 0.0f;
+	viewport.max_depth = 1.0f;
+
+	const SDL_Rect scissor = targetScissor(target);
+	std::vector<SDL_GPUTexture *> samplerTextures{image->texture};
+	std::vector<SDL_GPUSampler *> samplers{sampler};
+	const std::vector<SDL3GPUNativeUniformRegister> noFragmentUniforms;
+	return queueNativeTriangleDraw(image, target, pipeline, viewport, scissor, samplerTextures, samplers,
+	                               false, SDL3GPUShaderKind::Unknown, true, noFragmentUniforms,
+	                               vertices, numVertices, indices, numIndices);
+}
+
+bool nativeBlitBatchActive() {
+	return !nativeBlitBatch.vertices.empty();
+}
+
+bool blendModesEqual(const GPU_BlendMode &a, const GPU_BlendMode &b) {
+	return a.source_color == b.source_color &&
+	       a.dest_color == b.dest_color &&
+	       a.source_alpha == b.source_alpha &&
+	       a.dest_alpha == b.dest_alpha &&
+	       a.color_equation == b.color_equation &&
+	       a.alpha_equation == b.alpha_equation;
+}
+
+bool viewportsEqual(const SDL_GPUViewport &a, const SDL_GPUViewport &b) {
+	return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h &&
+	       a.min_depth == b.min_depth && a.max_depth == b.max_depth;
+}
+
+bool scissorsEqual(const SDL_Rect &a, const SDL_Rect &b) {
+	return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
+}
+
+bool nativeUniformRegistersEqual(const std::vector<SDL3GPUNativeUniformRegister> &a,
+                                 const std::vector<SDL3GPUNativeUniformRegister> &b) {
+	if (a.size() != b.size())
+		return false;
+	if (a.empty())
+		return true;
+	return std::memcmp(a.data(), b.data(), a.size() * sizeof(SDL3GPUNativeUniformRegister)) == 0;
+}
+
+bool nativeTriangleBatchActive() {
+	return !nativeTriangleBatch.vertices.empty();
+}
+
+void resetNativeTriangleBatch() {
+	nativeTriangleBatch.target          = nullptr;
+	nativeTriangleBatch.targetImage     = nullptr;
+	nativeTriangleBatch.targetTexture   = nullptr;
+	nativeTriangleBatch.pipeline        = nullptr;
+	nativeTriangleBatch.viewport        = SDL_GPUViewport{};
+	nativeTriangleBatch.scissor         = SDL_Rect{};
+	nativeTriangleBatch.useBlending     = false;
+	nativeTriangleBatch.blendMode       = GPU_BlendMode{};
+	nativeTriangleBatch.nativeShaderProgram = false;
+	nativeTriangleBatch.shaderKind      = SDL3GPUShaderKind::Unknown;
+	nativeTriangleBatch.pushColorScale  = false;
+	nativeTriangleBatch.samplerTextures.clear();
+	nativeTriangleBatch.samplers.clear();
+	nativeTriangleBatch.fragmentUniformRegisters.clear();
+	nativeTriangleBatch.vertices.clear();
+	nativeTriangleBatch.indices.clear();
+}
+
+bool flushNativeTriangleBatch() {
+	if (!nativeTriangleBatchActive())
+		return true;
+
+	if (!rendererState.device || !nativeTriangleBatch.targetImage || !nativeTriangleBatch.targetTexture ||
+	    !nativeTriangleBatch.pipeline) {
+		resetNativeTriangleBatch();
+		return false;
+	}
+
+	const Uint32 vertexBytes = static_cast<Uint32>(nativeTriangleBatch.vertices.size() * sizeof(SDL3GPUVertex));
+	const Uint32 indexBytes  = static_cast<Uint32>(nativeTriangleBatch.indices.size() * sizeof(Uint16));
+	if (!prepareUploadedBuffer(vertexUploadBuffer, SDL_GPU_BUFFERUSAGE_VERTEX, nativeTriangleBatch.vertices.data(), vertexBytes) ||
+	    !prepareUploadedBuffer(indexUploadBuffer, SDL_GPU_BUFFERUSAGE_INDEX, nativeTriangleBatch.indices.data(), indexBytes)) {
+		resetNativeTriangleBatch();
 		return false;
 	}
 
 	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
 	if (!commands) {
-		releaseUploadedBuffer(vertexUpload);
-		releaseUploadedBuffer(indexUpload);
+		resetNativeTriangleBatch();
 		return false;
 	}
 
 	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
-	encodeBufferUpload(copyPass, vertexUpload);
-	encodeBufferUpload(copyPass, indexUpload);
+	encodeBufferUpload(copyPass, vertexUploadBuffer);
+	encodeBufferUpload(copyPass, indexUploadBuffer);
 	SDL_EndGPUCopyPass(copyPass);
 
 	SDL_GPUColorTargetInfo colorTarget{};
-	colorTarget.texture  = target->texture;
+	colorTarget.texture  = nativeTriangleBatch.targetTexture;
 	colorTarget.load_op  = SDL_GPU_LOADOP_LOAD;
 	colorTarget.store_op = SDL_GPU_STOREOP_STORE;
 
 	SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(commands, &colorTarget, 1, nullptr);
 	if (!renderPass) {
 		SDL_CancelGPUCommandBuffer(commands);
-		releaseUploadedBuffer(vertexUpload);
-		releaseUploadedBuffer(indexUpload);
+		resetNativeTriangleBatch();
 		return false;
 	}
 
-	SDL_BindGPUGraphicsPipeline(renderPass, pipeline);
+	SDL_BindGPUGraphicsPipeline(renderPass, nativeTriangleBatch.pipeline);
 
 	SDL_GPUBufferBinding vertexBinding{};
-	vertexBinding.buffer = vertexUpload.buffer;
+	vertexBinding.buffer = vertexUploadBuffer.buffer;
 	SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
 
 	SDL_GPUBufferBinding indexBinding{};
-	indexBinding.buffer = indexUpload.buffer;
+	indexBinding.buffer = indexUploadBuffer.buffer;
+	SDL_BindGPUIndexBuffer(renderPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
+
+	std::vector<SDL_GPUTextureSamplerBinding> samplerBindings;
+	samplerBindings.reserve(nativeTriangleBatch.samplerTextures.size());
+	for (size_t i = 0; i < nativeTriangleBatch.samplerTextures.size(); ++i) {
+		SDL_GPUTextureSamplerBinding binding{};
+		binding.texture = nativeTriangleBatch.samplerTextures[i];
+		binding.sampler = nativeTriangleBatch.samplers[i];
+		samplerBindings.push_back(binding);
+	}
+	if (!samplerBindings.empty())
+		SDL_BindGPUFragmentSamplers(renderPass, 0, samplerBindings.data(), static_cast<Uint32>(samplerBindings.size()));
+
+	struct VertexUniforms {
+		float mvp[4][4];
+	} vertexUniforms{};
+	vertexUniforms.mvp[0][0] = 2.0f / nativeTriangleBatch.viewport.w;
+	vertexUniforms.mvp[1][1] = -2.0f / nativeTriangleBatch.viewport.h;
+	vertexUniforms.mvp[2][2] = 1.0f;
+	vertexUniforms.mvp[3][0] = -1.0f;
+	vertexUniforms.mvp[3][1] = 1.0f;
+	vertexUniforms.mvp[3][3] = 1.0f;
+	SDL_PushGPUVertexUniformData(commands, 0, &vertexUniforms, sizeof(vertexUniforms));
+
+	if (nativeTriangleBatch.pushColorScale) {
+		const float colorScale = 1.0f;
+		SDL_PushGPUFragmentUniformData(commands, 0, &colorScale, sizeof(colorScale));
+	} else if (!nativeTriangleBatch.fragmentUniformRegisters.empty()) {
+		SDL_PushGPUFragmentUniformData(commands, 0,
+		                               nativeTriangleBatch.fragmentUniformRegisters.data(),
+		                               static_cast<Uint32>(nativeTriangleBatch.fragmentUniformRegisters.size() * sizeof(SDL3GPUNativeUniformRegister)));
+	}
+
+	SDL_SetGPUViewport(renderPass, &nativeTriangleBatch.viewport);
+	SDL_SetGPUScissor(renderPass, &nativeTriangleBatch.scissor);
+	SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(nativeTriangleBatch.indices.size()), 1, 0, 0, 0);
+	SDL_EndGPURenderPass(renderPass);
+	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
+
+	if (submitted) {
+		noteCommandBufferSubmitted();
+		if (nativeTriangleBatch.nativeShaderProgram) {
+			noteNativeShaderDraw(nativeTriangleBatch.shaderKind, nativeTriangleBatch.vertices.size());
+		} else {
+			noteNativeFixedDraw(nativeTriangleBatch.vertices.size());
+		}
+		nativeTriangleBatch.targetImage->pixels_dirty = true;
+		nativeTriangleBatch.targetImage->has_mipmaps  = false;
+	}
+	resetNativeTriangleBatch();
+	return submitted;
+}
+
+bool nativeTriangleBatchMatches(GPU_Image *image,
+                                GPU_Target *target,
+                                SDL_GPUGraphicsPipeline *pipeline,
+                                const SDL_GPUViewport &viewport,
+                                const SDL_Rect &scissor,
+                                const std::vector<SDL_GPUTexture *> &samplerTextures,
+                                const std::vector<SDL_GPUSampler *> &samplers,
+                                bool nativeShaderProgram,
+                                SDL3GPUShaderKind shaderKind,
+                                bool pushColorScale,
+                                const std::vector<SDL3GPUNativeUniformRegister> &fragmentUniformRegisters) {
+	if (!nativeTriangleBatchActive())
+		return false;
+	return nativeTriangleBatch.target == target &&
+	       nativeTriangleBatch.targetImage == target->image &&
+	       nativeTriangleBatch.targetTexture == target->texture &&
+	       nativeTriangleBatch.pipeline == pipeline &&
+	       nativeTriangleBatch.useBlending == image->use_blending &&
+	       blendModesEqual(nativeTriangleBatch.blendMode, image->blend_mode) &&
+	       viewportsEqual(nativeTriangleBatch.viewport, viewport) &&
+	       scissorsEqual(nativeTriangleBatch.scissor, scissor) &&
+	       nativeTriangleBatch.nativeShaderProgram == nativeShaderProgram &&
+	       nativeTriangleBatch.shaderKind == shaderKind &&
+	       nativeTriangleBatch.pushColorScale == pushColorScale &&
+	       nativeTriangleBatch.samplerTextures == samplerTextures &&
+	       nativeTriangleBatch.samplers == samplers &&
+	       nativeUniformRegistersEqual(nativeTriangleBatch.fragmentUniformRegisters, fragmentUniformRegisters);
+}
+
+bool queueNativeTriangleDraw(GPU_Image *image,
+                             GPU_Target *target,
+                             SDL_GPUGraphicsPipeline *pipeline,
+                             const SDL_GPUViewport &viewport,
+                             const SDL_Rect &scissor,
+                             const std::vector<SDL_GPUTexture *> &samplerTextures,
+                             const std::vector<SDL_GPUSampler *> &samplers,
+                             bool nativeShaderProgram,
+                             SDL3GPUShaderKind shaderKind,
+                             bool pushColorScale,
+                             const std::vector<SDL3GPUNativeUniformRegister> &fragmentUniformRegisters,
+                             const SDL3GPUVertex *vertices,
+                             Uint32 numVertices,
+                             const Uint16 *indices,
+                             Uint32 numIndices) {
+	if (!image || !target || !target->image || !pipeline || !vertices || !indices ||
+	    numVertices == 0 || numIndices == 0 || samplerTextures.size() != samplers.size())
+		return false;
+	if (viewport.w <= 0.0f || viewport.h <= 0.0f)
+		return false;
+
+	constexpr size_t maxVertices = UINT16_MAX;
+	if (numVertices > maxVertices)
+		return false;
+	for (Uint32 i = 0; i < numIndices; ++i) {
+		if (indices[i] >= numVertices)
+			return false;
+	}
+
+	if (nativeBlitBatchActive()) {
+		if (!flushNativeBlitBatchOnly())
+			return false;
+	}
+
+	if (nativeTriangleBatchActive() &&
+	    (!nativeTriangleBatchMatches(image, target, pipeline, viewport, scissor, samplerTextures, samplers,
+	                                 nativeShaderProgram, shaderKind, pushColorScale, fragmentUniformRegisters) ||
+	     nativeTriangleBatch.vertices.size() + numVertices > maxVertices)) {
+		if (!flushNativeTriangleBatch())
+			return false;
+	}
+
+	if (!nativeTriangleBatchActive()) {
+		nativeTriangleBatch.target          = target;
+		nativeTriangleBatch.targetImage     = target->image;
+		nativeTriangleBatch.targetTexture   = target->texture;
+		nativeTriangleBatch.pipeline        = pipeline;
+		nativeTriangleBatch.viewport        = viewport;
+		nativeTriangleBatch.scissor         = scissor;
+		nativeTriangleBatch.useBlending     = image->use_blending;
+		nativeTriangleBatch.blendMode       = image->blend_mode;
+		nativeTriangleBatch.nativeShaderProgram = nativeShaderProgram;
+		nativeTriangleBatch.shaderKind      = shaderKind;
+		nativeTriangleBatch.pushColorScale  = pushColorScale;
+		nativeTriangleBatch.samplerTextures = samplerTextures;
+		nativeTriangleBatch.samplers        = samplers;
+		nativeTriangleBatch.fragmentUniformRegisters = fragmentUniformRegisters;
+		nativeTriangleBatch.vertices.reserve(4096);
+		nativeTriangleBatch.indices.reserve(6144);
+	}
+
+	const Uint16 base = static_cast<Uint16>(nativeTriangleBatch.vertices.size());
+	nativeTriangleBatch.vertices.insert(nativeTriangleBatch.vertices.end(), vertices, vertices + numVertices);
+	for (Uint32 i = 0; i < numIndices; ++i)
+		nativeTriangleBatch.indices.push_back(static_cast<Uint16>(base + indices[i]));
+	return true;
+}
+
+void resetNativeBlitBatch() {
+	nativeBlitBatch.target        = nullptr;
+	nativeBlitBatch.targetImage   = nullptr;
+	nativeBlitBatch.targetTexture = nullptr;
+	nativeBlitBatch.sourceTexture = nullptr;
+	nativeBlitBatch.pipeline      = nullptr;
+	nativeBlitBatch.sampler       = nullptr;
+	nativeBlitBatch.viewport      = SDL_GPUViewport{};
+	nativeBlitBatch.scissor       = SDL_Rect{};
+	nativeBlitBatch.useBlending   = false;
+	nativeBlitBatch.blendMode     = GPU_BlendMode{};
+	nativeBlitBatch.vertices.clear();
+	nativeBlitBatch.indices.clear();
+}
+
+bool flushNativeBlitBatchOnly() {
+	if (!nativeBlitBatchActive())
+		return true;
+
+	if (!rendererState.device || !nativeBlitBatch.targetImage || !nativeBlitBatch.targetTexture ||
+	    !nativeBlitBatch.sourceTexture || !nativeBlitBatch.pipeline || !nativeBlitBatch.sampler) {
+		resetNativeBlitBatch();
+		return false;
+	}
+
+	const Uint32 vertexBytes = static_cast<Uint32>(nativeBlitBatch.vertices.size() * sizeof(SDL3GPUVertex));
+	const Uint32 indexBytes  = static_cast<Uint32>(nativeBlitBatch.indices.size() * sizeof(Uint16));
+	if (!prepareUploadedBuffer(vertexUploadBuffer, SDL_GPU_BUFFERUSAGE_VERTEX, nativeBlitBatch.vertices.data(), vertexBytes) ||
+	    !prepareUploadedBuffer(indexUploadBuffer, SDL_GPU_BUFFERUSAGE_INDEX, nativeBlitBatch.indices.data(), indexBytes)) {
+		resetNativeBlitBatch();
+		return false;
+	}
+
+	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	if (!commands) {
+		resetNativeBlitBatch();
+		return false;
+	}
+
+	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
+	encodeBufferUpload(copyPass, vertexUploadBuffer);
+	encodeBufferUpload(copyPass, indexUploadBuffer);
+	SDL_EndGPUCopyPass(copyPass);
+
+	SDL_GPUColorTargetInfo colorTarget{};
+	colorTarget.texture  = nativeBlitBatch.targetTexture;
+	colorTarget.load_op  = SDL_GPU_LOADOP_LOAD;
+	colorTarget.store_op = SDL_GPU_STOREOP_STORE;
+
+	SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(commands, &colorTarget, 1, nullptr);
+	if (!renderPass) {
+		SDL_CancelGPUCommandBuffer(commands);
+		resetNativeBlitBatch();
+		return false;
+	}
+
+	SDL_BindGPUGraphicsPipeline(renderPass, nativeBlitBatch.pipeline);
+
+	SDL_GPUBufferBinding vertexBinding{};
+	vertexBinding.buffer = vertexUploadBuffer.buffer;
+	SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
+
+	SDL_GPUBufferBinding indexBinding{};
+	indexBinding.buffer = indexUploadBuffer.buffer;
 	SDL_BindGPUIndexBuffer(renderPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
 	SDL_GPUTextureSamplerBinding samplerBinding{};
-	samplerBinding.texture = image->texture;
-	samplerBinding.sampler = sampler;
+	samplerBinding.texture = nativeBlitBatch.sourceTexture;
+	samplerBinding.sampler = nativeBlitBatch.sampler;
 	SDL_BindGPUFragmentSamplers(renderPass, 0, &samplerBinding, 1);
 
 	struct VertexUniforms {
 		float mvp[4][4];
 	} vertexUniforms{};
-	const float viewportW = target->viewport.w > 0.0f ? target->viewport.w : static_cast<float>(target->w);
-	const float viewportH = target->viewport.h > 0.0f ? target->viewport.h : static_cast<float>(target->h);
-	vertexUniforms.mvp[0][0] = 2.0f / viewportW;
-	vertexUniforms.mvp[1][1] = -2.0f / viewportH;
+	vertexUniforms.mvp[0][0] = 2.0f / nativeBlitBatch.viewport.w;
+	vertexUniforms.mvp[1][1] = -2.0f / nativeBlitBatch.viewport.h;
 	vertexUniforms.mvp[2][2] = 1.0f;
 	vertexUniforms.mvp[3][0] = -1.0f;
 	vertexUniforms.mvp[3][1] = 1.0f;
@@ -2852,29 +4151,84 @@ bool renderNativeIndexedTriangles(GPU_Image *image, GPU_Target *target, const SD
 	const float colorScale = 1.0f;
 	SDL_PushGPUFragmentUniformData(commands, 0, &colorScale, sizeof(colorScale));
 
-	SDL_GPUViewport viewport{};
-	viewport.x = target->viewport.x;
-	viewport.y = target->viewport.y;
-	viewport.w = viewportW;
-	viewport.h = viewportH;
-	viewport.min_depth = 0.0f;
-	viewport.max_depth = 1.0f;
-	SDL_SetGPUViewport(renderPass, &viewport);
-
-	const SDL_Rect scissor = targetScissor(target);
-	SDL_SetGPUScissor(renderPass, &scissor);
-
-	SDL_DrawGPUIndexedPrimitives(renderPass, numIndices, 1, 0, 0, 0);
+	SDL_SetGPUViewport(renderPass, &nativeBlitBatch.viewport);
+	SDL_SetGPUScissor(renderPass, &nativeBlitBatch.scissor);
+	SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(nativeBlitBatch.indices.size()), 1, 0, 0, 0);
 	SDL_EndGPURenderPass(renderPass);
 	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
-	releaseUploadedBuffer(vertexUpload);
-	releaseUploadedBuffer(indexUpload);
 
 	if (submitted) {
-		target->image->pixels_dirty = true;
-		target->image->has_mipmaps  = false;
+		noteCommandBufferSubmitted();
+		noteNativeFixedDraw(nativeBlitBatch.vertices.size());
+		nativeBlitBatch.targetImage->pixels_dirty = true;
+		nativeBlitBatch.targetImage->has_mipmaps  = false;
 	}
+	resetNativeBlitBatch();
 	return submitted;
+}
+
+bool flushNativeBlitBatch() {
+	const bool trianglesFlushed = flushNativeTriangleBatch();
+	const bool blitsFlushed     = flushNativeBlitBatchOnly();
+	return trianglesFlushed && blitsFlushed;
+}
+
+bool nativeBlitBatchMatches(GPU_Target *target, GPU_Image *image, SDL_GPUGraphicsPipeline *pipeline,
+                            SDL_GPUSampler *sampler, const SDL_GPUViewport &viewport, const SDL_Rect &scissor) {
+	if (!nativeBlitBatchActive())
+		return false;
+	return nativeBlitBatch.target == target &&
+	       nativeBlitBatch.targetImage == target->image &&
+	       nativeBlitBatch.targetTexture == target->texture &&
+	       nativeBlitBatch.sourceTexture == image->texture &&
+	       nativeBlitBatch.pipeline == pipeline &&
+	       nativeBlitBatch.sampler == sampler &&
+	       nativeBlitBatch.useBlending == image->use_blending &&
+	       blendModesEqual(nativeBlitBatch.blendMode, image->blend_mode) &&
+	       viewportsEqual(nativeBlitBatch.viewport, viewport) &&
+	       scissorsEqual(nativeBlitBatch.scissor, scissor);
+}
+
+bool queueNativeBlit(GPU_Image *image, GPU_Target *target, SDL_GPUGraphicsPipeline *pipeline,
+                     SDL_GPUSampler *sampler, const SDL_GPUViewport &viewport, const SDL_Rect &scissor,
+                     const std::array<SDL3GPUVertex, 4> &vertices) {
+	if (!image || !target || !target->image || !pipeline || !sampler)
+		return false;
+
+	if (nativeTriangleBatchActive()) {
+		if (!flushNativeTriangleBatch())
+			return false;
+	}
+
+	constexpr size_t maxVertices = UINT16_MAX;
+	if (nativeBlitBatchActive() &&
+	    (!nativeBlitBatchMatches(target, image, pipeline, sampler, viewport, scissor) ||
+	     nativeBlitBatch.vertices.size() + vertices.size() > maxVertices)) {
+		if (!flushNativeBlitBatchOnly())
+			return false;
+	}
+
+	if (!nativeBlitBatchActive()) {
+		nativeBlitBatch.target        = target;
+		nativeBlitBatch.targetImage   = target->image;
+		nativeBlitBatch.targetTexture = target->texture;
+		nativeBlitBatch.sourceTexture = image->texture;
+		nativeBlitBatch.pipeline      = pipeline;
+		nativeBlitBatch.sampler       = sampler;
+		nativeBlitBatch.viewport      = viewport;
+		nativeBlitBatch.scissor       = scissor;
+		nativeBlitBatch.useBlending   = image->use_blending;
+		nativeBlitBatch.blendMode     = image->blend_mode;
+		nativeBlitBatch.vertices.reserve(4096);
+		nativeBlitBatch.indices.reserve(6144);
+	}
+
+	const Uint16 base = static_cast<Uint16>(nativeBlitBatch.vertices.size());
+	nativeBlitBatch.vertices.insert(nativeBlitBatch.vertices.end(), vertices.begin(), vertices.end());
+	const Uint16 indices[6]{base, static_cast<Uint16>(base + 1), static_cast<Uint16>(base + 2),
+	                        static_cast<Uint16>(base + 2), static_cast<Uint16>(base + 1), static_cast<Uint16>(base + 3)};
+	nativeBlitBatch.indices.insert(nativeBlitBatch.indices.end(), indices, indices + 6);
+	return true;
 }
 
 bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float x, float y,
@@ -2882,13 +4236,14 @@ bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float 
 	if (!image || scaleX == 0.0f || scaleY == 0.0f)
 		return false;
 
-	if (auto *program = activeProgramObject()) {
-		if (!program->nativeFragmentShader) {
-			if (cpuShaderBlit(*program, image, src_rect, target, x, y, degrees, scaleX, scaleY))
-				return true;
-			setShaderMessage("SDL3_GPU backend cannot execute the active external shader program");
+	SDL3GPUProgramObject *program = activeProgramObject();
+	const bool activeNativeProgram = program && program->nativeFragmentShader;
+	if (program && !program->nativeFragmentShader) {
+		flushNativeBlitBatch();
+		if (cpuShaderBlit(*program, image, src_rect, target, x, y, degrees, scaleX, scaleY))
 			return true;
-		}
+		setShaderMessage("SDL3_GPU backend cannot execute the active external shader program");
+		return true;
 	}
 
 	const float srcX = src_rect ? src_rect->x : 0.0f;
@@ -2933,9 +4288,37 @@ bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float 
 	    transform(halfW, -halfH, u1, v0),
 	    transform(-halfW, halfH, u0, v1),
 	    transform(halfW, halfH, u1, v1)};
-	std::array<Uint16, 6> indices{{0, 1, 2, 2, 1, 3}};
-	return renderNativeIndexedTriangles(image, target, vertices.data(), static_cast<Uint32>(vertices.size()),
-	                                    indices.data(), static_cast<Uint32>(indices.size()));
+
+	if (activeNativeProgram) {
+		std::array<Uint16, 6> indices{{0, 1, 2, 2, 1, 3}};
+		return renderNativeIndexedTriangles(image, target, vertices.data(), static_cast<Uint32>(vertices.size()),
+		                                    indices.data(), static_cast<Uint32>(indices.size()));
+	}
+
+	if (!image->texture || !ensureTargetBacking(target) || !target->texture || !target->image)
+		return false;
+	if (target->image == image)
+		return false;
+	if (!isNativeTextureFormat(image->format) || !isNativeTextureFormat(target->image->format))
+		return false;
+	if (!ensureImageTextureInitialized(image) || !ensureImageTextureInitialized(target->image))
+		return false;
+
+	SDL_GPUGraphicsPipeline *pipeline = getPipeline(textureFormat(target->image->format), image->use_blending, image->blend_mode);
+	SDL_GPUSampler *sampler = getSampler(image->filter_mode);
+	if (!pipeline || !sampler)
+		return false;
+
+	SDL_GPUViewport viewport{};
+	viewport.x = target->viewport.x;
+	viewport.y = target->viewport.y;
+	viewport.w = target->viewport.w > 0.0f ? target->viewport.w : static_cast<float>(target->w);
+	viewport.h = target->viewport.h > 0.0f ? target->viewport.h : static_cast<float>(target->h);
+	viewport.min_depth = 0.0f;
+	viewport.max_depth = 1.0f;
+
+	const SDL_Rect scissor = targetScissor(target);
+	return queueNativeBlit(image, target, pipeline, sampler, viewport, scissor, vertices);
 }
 
 SDL_GPUFilter toSDLFilter(GPU_FilterEnum filter) {
@@ -2962,7 +4345,188 @@ bool presentTarget(GPU_Target *target, SDL_GPUCommandBuffer *commands, SDL_GPUTe
 	SDL_BlitGPUTexture(commands, &blit);
 	return true;
 }
+
+template <typename Fn>
+double benchmarkMs(Fn &&fn) {
+	const Uint64 start = SDL_GetPerformanceCounter();
+	fn();
+	const Uint64 end = SDL_GetPerformanceCounter();
+	return static_cast<double>(end - start) * 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
+}
+
+void printBenchmarkLine(FILE *output, const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	std::vprintf(fmt, args);
+	va_end(args);
+	std::fflush(stdout);
+
+	if (!output)
+		return;
+
+	va_start(args, fmt);
+	std::vfprintf(output, fmt, args);
+	va_end(args);
+	std::fflush(output);
+}
+
+void printBenchmarkResult(FILE *output, const char *name, int iterations, double elapsedMs) {
+	const double averageUs = iterations > 0 ? (elapsedMs * 1000.0 / static_cast<double>(iterations)) : 0.0;
+	printBenchmarkLine(output, "%s,%d,%.3f,%.3f\n", name, iterations, elapsedMs, averageUs);
+}
+
+struct BenchmarkOutputFile {
+	FILE *file{nullptr};
+
+	explicit BenchmarkOutputFile(const char *path) {
+		if (path && path[0])
+			file = std::fopen(path, "wb");
+	}
+
+	~BenchmarkOutputFile() {
+		if (file)
+			std::fclose(file);
+	}
+};
+
+SDL_Surface *createBenchmarkSurface(int width, int height) {
+	SDL_Surface *surface = onsCreateRGBSurface(SDL_SWSURFACE, width, height, 32,
+	                                           0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
+	if (!surface)
+		return nullptr;
+
+	if (SDL_MUSTLOCK(surface) && !SDL_LockSurface(surface)) {
+		SDL_FreeSurface(surface);
+		return nullptr;
+	}
+
+	for (int y = 0; y < surface->h; ++y) {
+		auto *row = static_cast<Uint8 *>(surface->pixels) + y * surface->pitch;
+		for (int x = 0; x < surface->w; ++x) {
+			Uint8 *pixel = row + x * 4;
+			pixel[0]     = static_cast<Uint8>((x * 3 + y) & 0xff);
+			pixel[1]     = static_cast<Uint8>((x + y * 5) & 0xff);
+			pixel[2]     = static_cast<Uint8>((x * 7 + y * 11) & 0xff);
+			pixel[3]     = 255;
+		}
+	}
+
+	if (SDL_MUSTLOCK(surface))
+		SDL_UnlockSurface(surface);
+	return surface;
+}
+
+void finishBenchmarkWork(GPU_Image *image) {
+	SDL_Surface *surface = GPU_CopySurfaceFromImage(image);
+	if (surface)
+		SDL_FreeSurface(surface);
+}
+
+bool copyImageRowsToSurface(const GPU_Image *image, SDL_Surface *surface, const Uint8 *pixels) {
+	if (!image || !surface || !pixels)
+		return false;
+
+	if (SDL_MUSTLOCK(surface) && !SDL_LockSurface(surface))
+		return false;
+
+	const int dstBpp = onsSurfaceBytesPerPixel(surface);
+	for (int y = 0; y < image->h; ++y) {
+		auto *dst       = static_cast<Uint8 *>(surface->pixels) + y * surface->pitch;
+		const auto *src = pixels + y * image->pitch;
+		copyPixelRow(dst, dstBpp, src, image->bytes_per_pixel, image->w);
+	}
+
+	if (SDL_MUSTLOCK(surface))
+		SDL_UnlockSurface(surface);
+	return true;
+}
+
+bool fillSurfaceWithSolidImageColor(const GPU_Image *image, SDL_Surface *surface) {
+	if (!image || !surface)
+		return false;
+
+	if (SDL_MUSTLOCK(surface) && !SDL_LockSurface(surface))
+		return false;
+
+	const int dstBpp = onsSurfaceBytesPerPixel(surface);
+	const Uint8 source[4]{image->solid_color.r, image->solid_color.g, image->solid_color.b, image->solid_color.a};
+	for (int y = 0; y < image->h; ++y) {
+		auto *row = static_cast<Uint8 *>(surface->pixels) + y * surface->pitch;
+		copyPixelRow(row, dstBpp, source, 4, 1);
+		int filled = 1;
+		while (filled < image->w) {
+			const int copyPixels = std::min(filled, static_cast<int>(image->w) - filled);
+			std::memcpy(row + filled * dstBpp, row, static_cast<size_t>(copyPixels) * dstBpp);
+			filled += copyPixels;
+		}
+	}
+
+	if (SDL_MUSTLOCK(surface))
+		SDL_UnlockSurface(surface);
+	return true;
+}
+
+bool downloadImageToSurface(GPU_Image *image, SDL_Surface *surface) {
+	if (!image || !surface || !image->texture || !rendererState.device || !image->texture_initialized)
+		return false;
+
+	flushNativeBlitBatch();
+
+	const Uint32 downloadSize = static_cast<Uint32>(static_cast<size_t>(image->pitch) * image->h);
+	if (!ensureReusableTransferBuffer(textureDownloadBuffer, SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, downloadSize))
+		return false;
+
+	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	if (!commands)
+		return false;
+
+	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
+	SDL_GPUTextureRegion source{};
+	source.texture = image->texture;
+	source.w       = image->w;
+	source.h       = image->h;
+	source.d       = 1;
+
+	SDL_GPUTextureTransferInfo destination{};
+	destination.transfer_buffer = textureDownloadBuffer.transfer;
+	destination.pixels_per_row  = image->w;
+	destination.rows_per_layer  = image->h;
+	SDL_DownloadFromGPUTexture(copyPass, &source, &destination);
+	SDL_EndGPUCopyPass(copyPass);
+
+	SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
+	if (!fence)
+		return false;
+	noteCommandBufferSubmitted();
+
+	const bool waited = SDL_WaitForGPUFences(rendererState.device, true, &fence, 1);
+	SDL_ReleaseGPUFence(rendererState.device, fence);
+	if (!waited)
+		return false;
+
+	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, textureDownloadBuffer.transfer, false);
+	if (!mapped)
+		return false;
+	const bool copied = copyImageRowsToSurface(image, surface, static_cast<const Uint8 *>(mapped));
+	SDL_UnmapGPUTransferBuffer(rendererState.device, textureDownloadBuffer.transfer);
+	if (copied)
+		noteReadback(downloadSize, "copy_surface_from_image");
+	return copied;
+}
 } // namespace
+
+void SDLCALL GPU_PushTelemetryScope(const char *source) {
+	if (!telemetryEnabled())
+		return;
+	telemetrySourceStack.push_back(normalizedTelemetrySource(source));
+}
+
+void SDLCALL GPU_PopTelemetryScope(void) {
+	if (!telemetryEnabled())
+		return;
+	if (!telemetrySourceStack.empty())
+		telemetrySourceStack.pop_back();
+}
 
 GPU_RendererID SDLCALL GPU_MakeRendererID(const char *name, GPU_RendererEnum renderer, int major_version, int minor_version) {
 	GPU_RendererID id{};
@@ -3041,6 +4605,10 @@ GPU_Target *SDLCALL GPU_InitRendererByID(GPU_RendererID renderer_request, Uint16
 }
 
 void SDLCALL GPU_Quit(void) {
+	if (rendererState.device)
+		flushNativeBlitBatch();
+	printAndResetTelemetry();
+
 	if (rendererState.current_context_target) {
 		auto *target = rendererState.current_context_target;
 		if (target->image && !target->image->target) {
@@ -3058,6 +4626,7 @@ void SDLCALL GPU_Quit(void) {
 		SDL_ReleaseWindowFromGPUDevice(rendererState.device, rendererState.window);
 	}
 
+	releaseAllImageTextures();
 	releaseNativeRendererObjects();
 
 	if (rendererState.window) {
@@ -3087,6 +4656,7 @@ GPU_bool SDLCALL GPU_SetWindowResolution(Uint16 w, Uint16 h) {
 	if (!rendererState.window || !rendererState.current_context_target)
 		return false;
 
+	flushNativeBlitBatch();
 	if (!SDL_SetWindowSize(rendererState.window, w, h))
 		return false;
 
@@ -3140,6 +4710,7 @@ GPU_Target *SDLCALL GPU_GetTarget(GPU_Image *image) {
 void SDLCALL GPU_SetVirtualResolution(GPU_Target *target, Uint16 w, Uint16 h) {
 	if (!target)
 		return;
+	flushNativeBlitBatch();
 	target->w = w;
 	target->h = h;
 	target->viewport = GPU_Rect{0, 0, static_cast<float>(w), static_cast<float>(h)};
@@ -3173,16 +4744,20 @@ GPU_Image *SDLCALL GPU_CreateImage(Uint16 w, Uint16 h, GPU_FormatEnum format) {
 GPU_Image *SDLCALL GPU_CopyImage(GPU_Image *image) {
 	if (!image)
 		return nullptr;
+	GPU_TelemetryScope telemetryScope("copy_image");
+	flushNativeBlitBatch();
 	ensureImagePixelsCurrent(image);
 	GPU_Image *copy = GPU_CreateImage(image->w, image->h, image->format);
 	copy->pixels    = image->pixels;
 	copy->pitch     = image->pitch;
+	copy->pixels_solid = image->pixels_solid;
+	copy->solid_color  = image->solid_color;
 	copy->color     = image->color;
 	copy->use_blending = image->use_blending;
 	copy->blend_mode = image->blend_mode;
 	copy->snap_mode  = image->snap_mode;
 	copy->filter_mode = image->filter_mode;
-	uploadImage(copy);
+	uploadImage(copy, "copy_image");
 	return copy;
 }
 
@@ -3190,13 +4765,13 @@ void SDLCALL GPU_FreeImage(GPU_Image *image) {
 	if (!image)
 		return;
 
+	flushNativeBlitBatch();
 	if (image->refcount > 1) {
 		--image->refcount;
 		return;
 	}
 
-	if (image->texture && rendererState.device)
-		SDL_ReleaseGPUTexture(rendererState.device, image->texture);
+	releaseImageTexture(image);
 	delete image->target;
 	delete image;
 }
@@ -3205,6 +4780,7 @@ void SDLCALL GPU_UpdateImage(GPU_Image *image, const GPU_Rect *image_rect, SDL_S
 	if (!image || !surface)
 		return;
 
+	flushNativeBlitBatch();
 	SDL_Surface *working = surface;
 	bool freeWorking     = false;
 	working = convertSurfaceForUpload(surface, image, freeWorking);
@@ -3276,19 +4852,21 @@ void SDLCALL GPU_UpdateImage(GPU_Image *image, const GPU_Rect *image_rect, SDL_S
 		auto *dst       = image->pixels.data() + (copyDstY + y) * image->pitch + copyDstX * image->bytes_per_pixel;
 		copyPixelRow(dst, image->bytes_per_pixel, src, srcBpp, copyW);
 	}
+	image->pixels_solid = false;
 
 	if (SDL_MUSTLOCK(working))
 		SDL_UnlockSurface(working);
 	if (freeWorking)
 		SDL_FreeSurface(working);
 
-	uploadImageRegion(image, bounds);
+	uploadImageRegion(image, bounds, "update_image");
 }
 
 void SDLCALL GPU_UpdateImageBytes(GPU_Image *image, const GPU_Rect *image_rect, const unsigned char *bytes, int bytes_per_row) {
 	if (!image || !bytes)
 		return;
 
+	flushNativeBlitBatch();
 	const int dstX   = image_rect ? static_cast<int>(image_rect->x) : 0;
 	const int dstY   = image_rect ? static_cast<int>(image_rect->y) : 0;
 	const int width  = image_rect ? static_cast<int>(image_rect->w) : image->w;
@@ -3333,8 +4911,9 @@ void SDLCALL GPU_UpdateImageBytes(GPU_Image *image, const GPU_Rect *image_rect, 
 		auto *dst = image->pixels.data() + (copyDstY + y) * image->pitch + copyDstX * image->bytes_per_pixel;
 		std::memcpy(dst, bytes + (srcOffsetY + y) * bytes_per_row + srcByteOffset, static_cast<size_t>(rowBytes));
 	}
+	image->pixels_solid = false;
 
-	uploadImageRegion(image, bounds);
+	uploadImageRegion(image, bounds, "update_image_bytes");
 }
 
 GPU_bool SDLCALL GPU_SaveImage(GPU_Image *image, const char *filename, GPU_FileFormatEnum format) {
@@ -3384,6 +4963,7 @@ GPU_bool SDLCALL GPU_SaveImage_RW(GPU_Image *image, SDL_RWops *rwops, GPU_bool f
 void SDLCALL GPU_GenerateMipmaps(GPU_Image *image) {
 	if (!image || !image->texture || !rendererState.device)
 		return;
+	flushNativeBlitBatch();
 	if (mipLevelCountForSize(image->w, image->h) <= 1)
 		return;
 	if (!recreateImageTextureForMipmaps(image))
@@ -3395,8 +4975,10 @@ void SDLCALL GPU_GenerateMipmaps(GPU_Image *image) {
 	if (!commands)
 		return;
 	SDL_GenerateMipmapsForGPUTexture(commands, image->texture);
-	if (SDL_SubmitGPUCommandBuffer(commands))
+	if (SDL_SubmitGPUCommandBuffer(commands)) {
+		noteCommandBufferSubmitted();
 		image->has_mipmaps = true;
+	}
 }
 
 void SDLCALL GPU_SetRGBA(GPU_Image *image, Uint8 r, Uint8 g, Uint8 b, Uint8 a) {
@@ -3433,6 +5015,7 @@ void SDLCALL GPU_SetSnapMode(GPU_Image *image, GPU_SnapEnum mode) {
 GPU_Image *SDLCALL GPU_CopyImageFromSurface(SDL_Surface *surface) {
 	if (!surface)
 		return nullptr;
+	GPU_TelemetryScope telemetryScope("copy_image_from_surface");
 	GPU_Image *image = GPU_CreateImage(surface->w, surface->h, onsSurfaceBytesPerPixel(surface) == 4 ? GPU_FORMAT_RGBA : GPU_FORMAT_RGB);
 	GPU_UpdateImage(image, nullptr, surface, nullptr);
 	return image;
@@ -3441,6 +5024,7 @@ GPU_Image *SDLCALL GPU_CopyImageFromSurface(SDL_Surface *surface) {
 GPU_Image *SDLCALL GPU_CopyImageFromTarget(GPU_Target *target) {
 	if (!target)
 		return nullptr;
+	GPU_TelemetryScope telemetryScope("copy_image_from_target");
 	ensureTargetBacking(target);
 	if (target->image)
 		return GPU_CopyImage(target->image);
@@ -3452,26 +5036,25 @@ GPU_Image *SDLCALL GPU_CopyImageFromTarget(GPU_Target *target) {
 SDL_Surface *SDLCALL GPU_CopySurfaceFromImage(GPU_Image *image) {
 	if (!image)
 		return nullptr;
-	ensureImagePixelsCurrent(image);
+	GPU_TelemetryScope telemetryScope("copy_surface_from_image");
+	flushNativeBlitBatch();
 
 	SDL_Surface *surface = onsCreateRGBSurface(SDL_SWSURFACE, image->w, image->h, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
 	if (!surface)
 		return nullptr;
 
-	if (SDL_MUSTLOCK(surface) && !SDL_LockSurface(surface)) {
-		SDL_FreeSurface(surface);
-		return nullptr;
-	}
+	if (image->pixels_dirty && downloadImageToSurface(image, surface))
+		return surface;
 
-	for (int y = 0; y < image->h; ++y) {
-		auto *dst       = static_cast<Uint8 *>(surface->pixels) + y * surface->pitch;
-		const auto *src = image->pixels.data() + y * image->pitch;
-		copyPixelRow(dst, onsSurfaceBytesPerPixel(surface), src, image->bytes_per_pixel, image->w);
-	}
+	if (image->pixels_solid && fillSurfaceWithSolidImageColor(image, surface))
+		return surface;
 
-	if (SDL_MUSTLOCK(surface))
-		SDL_UnlockSurface(surface);
-	return surface;
+	ensureImagePixelsCurrent(image);
+	if (copyImageRowsToSurface(image, surface, image->pixels.data()))
+		return surface;
+
+	SDL_FreeSurface(surface);
+	return nullptr;
 }
 
 void SDLCALL GPU_MatrixMode(int matrix_mode) {
@@ -3487,6 +5070,7 @@ void SDLCALL GPU_Frustum(float, float, float, float, float, float) {}
 void SDLCALL GPU_ClearRGBA(GPU_Target *target, Uint8 r, Uint8 g, Uint8 b, Uint8 a) {
 	if (!target)
 		return;
+	flushNativeBlitBatch();
 	target->color = SDL_Color{r, g, b, a};
 	target->use_color = true;
 
@@ -3496,36 +5080,49 @@ void SDLCALL GPU_ClearRGBA(GPU_Target *target, Uint8 r, Uint8 g, Uint8 b, Uint8 
 		if (bounds.w <= 0 || bounds.h <= 0)
 			return;
 
-		if (!imageRectCoversImage(target->image, bounds))
+		const bool coversImage = imageRectCoversImage(target->image, bounds);
+		if (coversImage && clearImageTexture(target->image, target->color))
+			return;
+
+		const std::string telemetrySource = clearFullTelemetrySource(target->image, bounds, coversImage);
+		if (!coversImage && nativeSolidRect(target, bounds, target->color))
+			return;
+
+		GPU_TelemetryScope telemetryScope(telemetrySource.c_str());
+		if (!coversImage)
 			ensureImagePixelsCurrent(target->image);
 
-		for (int y = bounds.y; y < bounds.y + bounds.h; ++y) {
-			auto *row = target->image->pixels.data() + y * target->image->pitch;
-			for (int x = bounds.x; x < bounds.x + bounds.w; ++x)
-				copyPixelRow(row + x * target->image->bytes_per_pixel, target->image->bytes_per_pixel, reinterpret_cast<const Uint8 *>(&target->color), 4, 1);
-		}
-		uploadImageRegion(target->image, bounds);
+		fillImagePixels(target->image, bounds, target->color);
+		uploadImageRegion(target->image, bounds, telemetrySource.c_str());
 	}
 }
 
 void SDLCALL GPU_Blit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float x, float y) {
-	if (!nativeBlit(image, src_rect, target, x, y, 0.0f, 1.0f, 1.0f))
+	if (!nativeBlit(image, src_rect, target, x, y, 0.0f, 1.0f, 1.0f)) {
+		flushNativeBlitBatch();
 		cpuBlit(image, src_rect, target, x, y, 0.0f, 1.0f, 1.0f);
+	}
 }
 
 void SDLCALL GPU_BlitRotate(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float x, float y, float degrees) {
-	if (!nativeBlit(image, src_rect, target, x, y, degrees, 1.0f, 1.0f))
+	if (!nativeBlit(image, src_rect, target, x, y, degrees, 1.0f, 1.0f)) {
+		flushNativeBlitBatch();
 		cpuBlit(image, src_rect, target, x, y, degrees, 1.0f, 1.0f);
+	}
 }
 
 void SDLCALL GPU_BlitScale(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float x, float y, float scaleX, float scaleY) {
-	if (!nativeBlit(image, src_rect, target, x, y, 0.0f, scaleX, scaleY))
+	if (!nativeBlit(image, src_rect, target, x, y, 0.0f, scaleX, scaleY)) {
+		flushNativeBlitBatch();
 		cpuBlit(image, src_rect, target, x, y, 0.0f, scaleX, scaleY);
+	}
 }
 
 void SDLCALL GPU_BlitTransform(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float x, float y, float degrees, float scaleX, float scaleY) {
-	if (!nativeBlit(image, src_rect, target, x, y, degrees, scaleX, scaleY))
+	if (!nativeBlit(image, src_rect, target, x, y, degrees, scaleX, scaleY)) {
+		flushNativeBlitBatch();
 		cpuBlit(image, src_rect, target, x, y, degrees, scaleX, scaleY);
+	}
 }
 
 void SDLCALL GPU_TriangleBatch(GPU_Image *image, GPU_Target *target, unsigned short num_vertices, float *values,
@@ -3564,11 +5161,14 @@ void SDLCALL GPU_TriangleBatch(GPU_Image *image, GPU_Target *target, unsigned sh
 		setUnsupported("GPU_TriangleBatch native draw");
 }
 
-void SDLCALL GPU_FlushBlitBuffer(void) {}
+void SDLCALL GPU_FlushBlitBuffer(void) {
+	flushNativeBlitBatch();
+}
 
 void SDLCALL GPU_Flip(GPU_Target *target) {
 	if (!rendererState.device || !rendererState.window)
 		return;
+	flushNativeBlitBatch();
 	if (!target)
 		target = rendererState.current_context_target;
 	if (!ensureTargetBacking(target))
@@ -3587,26 +5187,31 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 	}
 
 	presentTarget(target, commands, swapchainTexture, width, height);
-	SDL_SubmitGPUCommandBuffer(commands);
+	if (SDL_SubmitGPUCommandBuffer(commands))
+		noteCommandBufferSubmitted();
 }
 
 void SDLCALL GPU_RectangleFilled2(GPU_Target *target, GPU_Rect rect, SDL_Color color) {
 	if (!target || !ensureTargetBacking(target))
 		return;
 
+	flushNativeBlitBatch();
 	const SDL_Rect bounds = targetPixelBounds(target, rect);
 	if (bounds.w <= 0 || bounds.h <= 0)
 		return;
 
-	if (!imageRectCoversImage(target->image, bounds))
+	const bool coversImage = imageRectCoversImage(target->image, bounds);
+	if (coversImage && clearImageTexture(target->image, color))
+		return;
+
+	if (!coversImage && nativeSolidRect(target, bounds, color))
+		return;
+
+	if (!coversImage)
 		ensureImagePixelsCurrent(target->image);
 
-	for (int y = bounds.y; y < bounds.y + bounds.h; ++y) {
-		auto *row = target->image->pixels.data() + y * target->image->pitch;
-		for (int x = bounds.x; x < bounds.x + bounds.w; ++x)
-			copyPixelRow(row + x * target->image->bytes_per_pixel, target->image->bytes_per_pixel, reinterpret_cast<const Uint8 *>(&color), 4, 1);
-	}
-	uploadImageRegion(target->image, bounds);
+	fillImagePixels(target->image, bounds, color);
+	uploadImageRegion(target->image, bounds, "clear_rect");
 }
 
 Uint32 SDLCALL GPU_CompileShader_RW(GPU_ShaderEnum shader_type, SDL_RWops *shader_source, GPU_bool free_rwops) {
@@ -3631,15 +5236,26 @@ Uint32 SDLCALL GPU_CompileShader_RW(GPU_ShaderEnum shader_type, SDL_RWops *shade
 	shaderObject.type = shader_type;
 	shaderObject.kind = kind;
 	shaderObject.source = std::move(source);
+	if (kind != SDL3GPUShaderKind::Unknown)
+		compilePrecompiledBuiltInShader(shader_type, kind, shaderObject);
 	if (kind == SDL3GPUShaderKind::Unknown &&
 	    !compileNativeExternalShader(shader_type, shaderObject.source, shaderObject))
 		return 0;
+#if defined(ONS_USE_SDL3_SHADERCROSS)
+	if (kind != SDL3GPUShaderKind::Unknown && !shaderObject.nativeShader && shader_type != GPU_VERTEX_SHADER &&
+	    !compileNativeExternalShader(shader_type, shaderObject.source, shaderObject)) {
+		shaderObject.nativeResources = SDL3GPUNativeResourceInfo{};
+		shaderObject.nativeUniforms.clear();
+		shaderObject.translatedLegacyGLSL = false;
+	}
+#endif
 
 	const Uint32 shader = nextShaderObject++;
 	const bool native = shaderObject.nativeShader != nullptr;
+	noteShaderCompilation(kind, native);
 	shaderObjects[shader] = std::move(shaderObject);
 	if (native) {
-		std::snprintf(shaderMessage, sizeof(shaderMessage), "Compiled SDL3 native shadercross shader");
+		std::snprintf(shaderMessage, sizeof(shaderMessage), "Compiled SDL3 native shader");
 	} else {
 		std::snprintf(shaderMessage, sizeof(shaderMessage), "Compiled SDL3 compatibility shader: %s", shaderKindName(kind));
 	}
@@ -3676,6 +5292,8 @@ Uint32 SDLCALL GPU_LinkManyShaders(Uint32 *shader_objects, int count) {
 				program.nativeFragmentShader = it->second.nativeShader;
 				program.nativeFragmentResources = it->second.nativeResources;
 				program.nativeUniforms = it->second.nativeUniforms;
+				program.nativeSamplerImageUnits = it->second.nativeSamplerImageUnits;
+				program.kind = it->second.kind;
 			} else {
 				program.kind = it->second.kind;
 			}
@@ -3722,6 +5340,7 @@ void SDLCALL GPU_ActivateShaderProgram(Uint32 program_object, GPU_ShaderBlock *b
 		setShaderMessage("Cannot activate unknown SDL3 compatibility shader program");
 		return;
 	}
+	flushNativeBlitBatch();
 	if (rendererState.current_context_target && rendererState.current_context_target->context) {
 		rendererState.current_context_target->context->current_shader_program = program_object;
 		if (block)
@@ -3730,6 +5349,7 @@ void SDLCALL GPU_ActivateShaderProgram(Uint32 program_object, GPU_ShaderBlock *b
 }
 
 void SDLCALL GPU_DeactivateShaderProgram(void) {
+	flushNativeBlitBatch();
 	if (rendererState.current_context_target && rendererState.current_context_target->context)
 		rendererState.current_context_target->context->current_shader_program = 0;
 }
@@ -3835,6 +5455,7 @@ void SDLCALL GPU_SetUniformfv(int location, int num_elements_per_value, int, flo
 GPU_bool SDLCALL GPU_MultiplyAlpha(GPU_Image *image, const GPU_Rect *dst_clip) {
 	if (!image || image->format == GPU_FORMAT_RGB)
 		return true;
+	flushNativeBlitBatch();
 	GPU_Target *target = GPU_GetTarget(image);
 	if (!target)
 		return false;
@@ -3856,7 +5477,172 @@ GPU_bool SDLCALL GPU_MultiplyAlpha(GPU_Image *image, const GPU_Rect *dst_clip) {
 		}
 	}
 
-	return uploadImageRegion(image, bounds);
+	return uploadImageRegion(image, bounds, "multiply_alpha");
+}
+
+int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const char *outputPath) {
+	iterations = std::max(1, iterations);
+	width      = std::max(320, width);
+	height     = std::max(240, height);
+
+	BenchmarkOutputFile benchmarkOutput(outputPath);
+	if (outputPath && outputPath[0] && !benchmarkOutput.file) {
+		std::fprintf(stderr, "Benchmark output open failed: %s\n", outputPath);
+		return 1;
+	}
+
+	if (!onsSDLInit(SDL_INIT_VIDEO)) {
+		std::fprintf(stderr, "SDL init failed: %s\n", SDL_GetError());
+		return 1;
+	}
+
+	GPU_SetDebugLevel(GPU_DEBUG_LEVEL_0);
+	GPU_SetPreInitFlags(GPU_INIT_DISABLE_VSYNC);
+	GPU_Target *screen = GPU_InitRendererByID(GPU_MakeRendererID("SDL3_GPU", GPU_RENDERER_SDL3_GPU, 3, 0),
+	                                          static_cast<Uint16>(width), static_cast<Uint16>(height),
+	                                          SDL_WINDOW_HIDDEN);
+	if (!screen) {
+		std::fprintf(stderr, "SDL3_GPU init failed: %s\n", SDL_GetError());
+		SDL_Quit();
+		return 1;
+	}
+
+	SDL_Surface *fullSurface  = createBenchmarkSurface(width, height);
+	SDL_Surface *smallSurface = createBenchmarkSurface(256, 256);
+	if (!fullSurface || !smallSurface) {
+		std::fprintf(stderr, "Benchmark surface creation failed: %s\n", SDL_GetError());
+		if (fullSurface)
+			SDL_FreeSurface(fullSurface);
+		if (smallSurface)
+			SDL_FreeSurface(smallSurface);
+		GPU_Quit();
+		SDL_Quit();
+		return 1;
+	}
+
+	GPU_Image *uploadTarget   = GPU_CreateImage(static_cast<Uint16>(width), static_cast<Uint16>(height), GPU_FORMAT_RGBA);
+	GPU_Image *source         = GPU_CopyImageFromSurface(smallSurface);
+	GPU_Image *target         = GPU_CreateImage(static_cast<Uint16>(width), static_cast<Uint16>(height), GPU_FORMAT_RGBA);
+	GPU_Target *targetSurface = GPU_GetTarget(target);
+	if (!uploadTarget || !source || !target || !targetSurface) {
+		std::fprintf(stderr, "Benchmark image creation failed: %s\n", SDL_GetError());
+		SDL_FreeSurface(fullSurface);
+		SDL_FreeSurface(smallSurface);
+		if (uploadTarget)
+			GPU_FreeImage(uploadTarget);
+		if (source)
+			GPU_FreeImage(source);
+		if (target)
+			GPU_FreeImage(target);
+		GPU_Quit();
+		SDL_Quit();
+		return 1;
+	}
+
+	std::vector<float> triangleValues;
+	std::vector<Uint16> triangleIndices;
+	const int quadsX = 32;
+	const int quadsY = 32;
+	triangleValues.reserve(static_cast<size_t>(quadsX * quadsY * 4 * 4));
+	triangleIndices.reserve(static_cast<size_t>(quadsX * quadsY * 6));
+	for (int y = 0; y < quadsY; ++y) {
+		for (int x = 0; x < quadsX; ++x) {
+			const float dstX  = 8.0f + x * 8.0f;
+			const float dstY  = 8.0f + y * 8.0f;
+			const float dstW  = 7.0f;
+			const float dstH  = 7.0f;
+			const Uint16 base = static_cast<Uint16>(triangleValues.size() / 4);
+			const float vertices[16]{
+			    dstX, dstY, 0.0f, 0.0f,
+			    dstX + dstW, dstY, 1.0f, 0.0f,
+			    dstX, dstY + dstH, 0.0f, 1.0f,
+			    dstX + dstW, dstY + dstH, 1.0f, 1.0f};
+			triangleValues.insert(triangleValues.end(), vertices, vertices + 16);
+			const Uint16 indices[6]{base, static_cast<Uint16>(base + 1), static_cast<Uint16>(base + 2),
+			                        static_cast<Uint16>(base + 2), static_cast<Uint16>(base + 1), static_cast<Uint16>(base + 3)};
+			triangleIndices.insert(triangleIndices.end(), indices, indices + 6);
+		}
+	}
+
+	for (int i = 0; i < 8; ++i) {
+		GPU_UpdateImage(uploadTarget, nullptr, fullSurface, nullptr);
+		GPU_ClearRGBA(targetSurface, 0, 0, 0, 0);
+		GPU_Blit(source, nullptr, targetSurface, 128.0f, 128.0f);
+		GPU_TriangleBatch(source, targetSurface, static_cast<unsigned short>(triangleValues.size() / 4),
+		                  triangleValues.data(), static_cast<unsigned int>(triangleIndices.size()),
+		                  triangleIndices.data(), GPU_BATCH_XY_ST);
+	}
+	finishBenchmarkWork(target);
+
+	printBenchmarkLine(benchmarkOutput.file, "case,iterations,total_ms,avg_us\n");
+	printBenchmarkResult(benchmarkOutput.file, "texture_upload_full_submit", iterations, benchmarkMs([&]() {
+		                     for (int i = 0; i < iterations; ++i)
+			                     GPU_UpdateImage(uploadTarget, nullptr, fullSurface, nullptr);
+	                     }));
+	finishBenchmarkWork(uploadTarget);
+
+	printBenchmarkResult(benchmarkOutput.file, "clear_full_submit", iterations, benchmarkMs([&]() {
+		                     for (int i = 0; i < iterations; ++i)
+			                     GPU_ClearRGBA(targetSurface, static_cast<Uint8>(i), static_cast<Uint8>(i * 3), static_cast<Uint8>(i * 7), 255);
+	                     }));
+	finishBenchmarkWork(target);
+
+	printBenchmarkResult(benchmarkOutput.file, "clear_full_copy_surface_completed", iterations, benchmarkMs([&]() {
+		                     for (int i = 0; i < iterations; ++i) {
+			                     GPU_ClearRGBA(targetSurface, static_cast<Uint8>(i), static_cast<Uint8>(i * 3), static_cast<Uint8>(i * 7), 255);
+			                     finishBenchmarkWork(target);
+		                     }
+	                     }));
+
+	const GPU_Rect rect{17.0f, 19.0f, 256.0f, 256.0f};
+	const SDL_Color rectColor{64, 128, 192, 255};
+	printBenchmarkResult(benchmarkOutput.file, "clear_rect_256_submit", iterations, benchmarkMs([&]() {
+		                     for (int i = 0; i < iterations; ++i)
+			                     GPU_RectangleFilled2(targetSurface, rect, rectColor);
+	                     }));
+	finishBenchmarkWork(target);
+
+	printBenchmarkResult(benchmarkOutput.file, "blit_256_immediate_flush", iterations, benchmarkMs([&]() {
+		                     for (int i = 0; i < iterations; ++i) {
+			                     const float x = 128.0f + static_cast<float>((i * 37) % std::max(1, width - 256));
+			                     const float y = 128.0f + static_cast<float>((i * 53) % std::max(1, height - 256));
+			                     GPU_Blit(source, nullptr, targetSurface, x, y);
+			                     GPU_FlushBlitBuffer();
+		                     }
+	                     }));
+	finishBenchmarkWork(target);
+
+	printBenchmarkResult(benchmarkOutput.file, "blit_256_batched_submit", iterations, benchmarkMs([&]() {
+		                     for (int i = 0; i < iterations; ++i) {
+			                     const float x = 128.0f + static_cast<float>((i * 37) % std::max(1, width - 256));
+			                     const float y = 128.0f + static_cast<float>((i * 53) % std::max(1, height - 256));
+			                     GPU_Blit(source, nullptr, targetSurface, x, y);
+		                     }
+		                     GPU_FlushBlitBuffer();
+	                     }));
+	finishBenchmarkWork(target);
+
+	printBenchmarkResult(benchmarkOutput.file, "triangle_batch_1024_quads_submit", iterations, benchmarkMs([&]() {
+		                     for (int i = 0; i < iterations; ++i)
+			                     GPU_TriangleBatch(source, targetSurface, static_cast<unsigned short>(triangleValues.size() / 4),
+			                                       triangleValues.data(), static_cast<unsigned int>(triangleIndices.size()),
+			                                       triangleIndices.data(), GPU_BATCH_XY_ST);
+	                     }));
+	finishBenchmarkWork(target);
+
+	printBenchmarkResult(benchmarkOutput.file, "readback_full_completed", iterations, benchmarkMs([&]() {
+		                     for (int i = 0; i < iterations; ++i)
+			                     finishBenchmarkWork(target);
+	                     }));
+
+	GPU_FreeImage(uploadTarget);
+	GPU_FreeImage(source);
+	GPU_FreeImage(target);
+	SDL_FreeSurface(fullSurface);
+	SDL_FreeSurface(smallSurface);
+	GPU_Quit();
+	SDL_Quit();
+	return 0;
 }
 
 RenderDriverId GPUController::makeRendererIdSDL3GPU() {

@@ -28,7 +28,7 @@ struct ChannelState {
 	MIX_Track *track{nullptr};
 	Mix_Chunk *chunk{nullptr};
 	SDL_AudioStream *stream{nullptr};
-	int volume{MIX_MAX_VOLUME};
+	float volume{static_cast<float>(MIX_MAX_VOLUME)};
 	int index{-1};
 	Mix_EffectFunc_t effect{nullptr};
 	Mix_EffectDone_t effectDone{nullptr};
@@ -42,17 +42,25 @@ SDL_AudioSpec mixerSpec{MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, MIX_DEFAULT_FR
 std::vector<ChannelState> channels;
 void(SDLCALL *channelFinishedCallback)(int channel){nullptr};
 void(SDLCALL *musicFinishedCallback)(){nullptr};
-int musicVolume{MIX_MAX_VOLUME};
+float musicVolume{static_cast<float>(MIX_MAX_VOLUME)};
 std::string musicCommand;
 
-int clampVolume(int volume) {
-	if (volume < 0)
+float clampVolumeFloat(float volume) {
+	if (volume < 0.0f)
 		return volume;
-	return std::min(volume, MIX_MAX_VOLUME);
+	return std::min(volume, static_cast<float>(MIX_MAX_VOLUME));
 }
 
-float volumeToGain(int volume) {
-	return static_cast<float>(std::max(0, clampVolume(volume))) / static_cast<float>(MIX_MAX_VOLUME);
+float volumeToGain(float volume) {
+	return std::max(0.0f, clampVolumeFloat(volume)) / static_cast<float>(MIX_MAX_VOLUME);
+}
+
+int volumeFloatToInt(float volume) {
+	return static_cast<int>(clampVolumeFloat(volume) + 0.5f);
+}
+
+void setTrackVolume(MIX_Track *track, float volume) {
+	MIX_SetTrackGain(track, volumeToGain(volume));
 }
 
 ChannelState *getChannel(int channel) {
@@ -200,7 +208,7 @@ int Mix_OpenAudioDevice(int frequency, SDL_AudioFormat format, int channelCount,
 		return -1;
 	}
 	MIX_SetTrackStoppedCallback(musicTrack, trackStopped, nullptr);
-	MIX_SetTrackGain(musicTrack, volumeToGain(musicVolume));
+	setTrackVolume(musicTrack, musicVolume);
 	return 0;
 }
 
@@ -258,7 +266,7 @@ int Mix_AllocateChannels(int numchans) {
 			channels[i].index = i;
 			channels[i].track = MIX_CreateTrack(mixer);
 			if (channels[i].track) {
-				MIX_SetTrackGain(channels[i].track, volumeToGain(channels[i].volume));
+				setTrackVolume(channels[i].track, channels[i].volume);
 				MIX_SetTrackStoppedCallback(channels[i].track, trackStopped, nullptr);
 			}
 		}
@@ -272,14 +280,19 @@ void Mix_ChannelFinished(void(SDLCALL *callback)(int channel)) {
 }
 
 int Mix_Volume(int channel, int volume) {
+	return Mix_VolumeFloat(channel, static_cast<float>(volume));
+}
+
+int Mix_VolumeFloat(int channel, float volume) {
 	if (channel == -1) {
 		int previous = 0;
 		for (auto &state : channels) {
-			previous += state.volume;
-			if (volume >= 0) {
-				state.volume = clampVolume(volume);
+			previous += volumeFloatToInt(state.volume);
+			if (volume >= 0.0f) {
+				const float clamped = clampVolumeFloat(volume);
+				state.volume        = clamped;
 				if (state.track)
-					MIX_SetTrackGain(state.track, volumeToGain(state.volume));
+					setTrackVolume(state.track, state.volume);
 			}
 		}
 		return channels.empty() ? 0 : previous / static_cast<int>(channels.size());
@@ -288,21 +301,27 @@ int Mix_Volume(int channel, int volume) {
 	ChannelState *state = getChannel(channel);
 	if (!state)
 		return 0;
-	const int previous = state->volume;
-	if (volume >= 0) {
-		state->volume = clampVolume(volume);
+	const int previous = volumeFloatToInt(state->volume);
+	if (volume >= 0.0f) {
+		const float clamped = clampVolumeFloat(volume);
+		state->volume      = clamped;
 		if (state->track)
-			MIX_SetTrackGain(state->track, volumeToGain(state->volume));
+			setTrackVolume(state->track, state->volume);
 	}
 	return previous;
 }
 
 int Mix_VolumeMusic(int volume) {
-	const int previous = musicVolume;
-	if (volume >= 0) {
-		musicVolume = clampVolume(volume);
+	return Mix_VolumeMusicFloat(static_cast<float>(volume));
+}
+
+int Mix_VolumeMusicFloat(float volume) {
+	const int previous = volumeFloatToInt(musicVolume);
+	if (volume >= 0.0f) {
+		const float clamped = clampVolumeFloat(volume);
+		musicVolume         = clamped;
 		if (musicTrack)
-			MIX_SetTrackGain(musicTrack, volumeToGain(musicVolume));
+			setTrackVolume(musicTrack, musicVolume);
 	}
 	return previous;
 }
@@ -420,11 +439,13 @@ int Mix_PlayChannel(int channel, Mix_Chunk *chunk, int loops) {
 		return -1;
 	}
 
-	MIX_SetTrackGain(state->track, volumeToGain(state->volume));
+	setTrackVolume(state->track, state->volume);
 	SDL_PropertiesID props = makePlayProperties(loops, streamInput);
 	const bool ok          = MIX_PlayTrack(state->track, props);
 	if (props)
 		SDL_DestroyProperties(props);
+	if (ok)
+		setTrackVolume(state->track, state->volume);
 	return ok ? channel : -1;
 }
 
@@ -536,13 +557,15 @@ int Mix_PlayMusic(Mix_Music *music, int loops) {
 	if (!MIX_SetTrackAudio(musicTrack, music->audio))
 		return -1;
 
-	MIX_SetTrackGain(musicTrack, volumeToGain(musicVolume));
+	setTrackVolume(musicTrack, musicVolume);
 	SDL_PropertiesID props = makePlayProperties(loops, false);
 	const bool ok          = MIX_PlayTrack(musicTrack, props);
 	if (props)
 		SDL_DestroyProperties(props);
-	if (ok)
+	if (ok) {
+		setTrackVolume(musicTrack, musicVolume);
 		currentMusic = music;
+	}
 	return ok ? 0 : -1;
 }
 

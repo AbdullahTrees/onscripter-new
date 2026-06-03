@@ -228,6 +228,15 @@ inline int onsSDLSetEnv(const char *name, const char *value, bool overwrite) {
 #endif
 }
 
+inline const char *onsSDLGetEnv(const char *name) {
+#if defined(ONS_USE_SDL3)
+	const char *value = SDL_getenv(name);
+	return value ? value : SDL_getenv_unsafe(name);
+#else
+	return SDL_getenv(name);
+#endif
+}
+
 inline size_t onsRWread(SDL_RWops *context, void *ptr, size_t size, size_t maxnum) {
 #if defined(ONS_USE_SDL3)
 	if (size == 0)
