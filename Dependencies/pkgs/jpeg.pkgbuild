@@ -1,13 +1,112 @@
 pkgname=jpeg
-pkgver=9c
+pkgver=3.1.4.1
 pkgrel=1
-sources=("https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/jpegsrc.v$pkgver.tar.gz")
-hashes=('650250979303a649e21f87b5ccd02672af1ea6954b911342ea491f351ceb7122')
+sources=("https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/${pkgver}/libjpeg-turbo-${pkgver}.tar.gz")
+hashes=('ecae8008e2cc9ade2f2c1bb9d5e6d4fb73e7c433866a056bd82980741571a022')
 
-configopts=(
-    '--disable-dependency-tracking'
-    '--disable-shared'
-    "--libdir=$outdir/lib"
+cflags="-O3"
+
+cmakeopts=(
+    '-DCMAKE_BUILD_TYPE=Release'
+    '-DCMAKE_INSTALL_LIBDIR=lib'
+    '-DENABLE_SHARED=OFF'
+    '-DENABLE_STATIC=ON'
+    '-DWITH_JPEG8=ON'
+    '-DWITH_TURBOJPEG=OFF'
+    '-DWITH_JAVA=OFF'
 )
+
+cmake_command() {
+    if command -v cmake >/dev/null 2>&1; then
+        echo cmake
+        return
+    fi
+    if [ -x "/c/Program Files/CMake/bin/cmake.exe" ]; then
+        echo "/c/Program Files/CMake/bin/cmake.exe"
+        return
+    fi
+    error_out "cmake is required to build %s" "$pkgname"
+}
+
+cmake_generator() {
+    if command -v ninja >/dev/null 2>&1; then
+        echo Ninja
+    elif [ "$(getHost)" == "win32" ]; then
+        echo "MSYS Makefiles"
+    else
+        echo "Unix Makefiles"
+    fi
+}
+
+prebuild() {
+    pushd "libjpeg-turbo-$pkgver" &>/dev/null
+}
+
+configure() {
+    msg "Running cmake"
+
+    local ret=0
+    local logfile="$logdir/$pkgname.cmake.log"
+    local lcf="$CFLAGS ${cflags[@]} $CFLAGS_EXTRA"
+    local lcxf="$CPPFLAGS ${cppflags[@]} ${cflags[@]} $CPPFLAGS_EXTRA $CFLAGS_EXTRA"
+    local llf="$LDFLAGS ${ldflags[@]} $LDFLAGS_EXTRA"
+    local cmake_outdir="$outdir"
+
+    rm -rf build
+
+    if [ "$(getHost)" == "win32" ]; then
+        cmake_outdir="$(cygpath -m "$outdir")"
+        lcf="${lcf//$outdir/$cmake_outdir}"
+        lcxf="${lcxf//$outdir/$cmake_outdir}"
+        llf="${llf//$outdir/$cmake_outdir}"
+    fi
+
+    local cmake_cmd="$(cmake_command)"
+    local generator="$(cmake_generator)"
+
+    "$cmake_cmd" -S . -B build -G "$generator" \
+        -DCMAKE_INSTALL_PREFIX="$cmake_outdir" \
+        -DCMAKE_PREFIX_PATH="$cmake_outdir" \
+        -DCMAKE_C_COMPILER="$(getCC)" \
+        -DCMAKE_C_FLAGS="$lcf" \
+        -DCMAKE_EXE_LINKER_FLAGS="$llf" \
+        "${cmakeopts[@]}" &>"$logfile" || ret=$?
+
+    if (( ret )); then
+        tail -n 20 "$logfile"
+        error "CMake setup %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
+}
+
+compile() {
+    local logfile="$logdir/$pkgname.build.log"
+    local ret=0
+    if [ -f build/build.ninja ]; then
+        ninja -C build &>"$logfile" || ret=$?
+    else
+        make -C build $MAKEOPTS &>"$logfile" || ret=$?
+    fi
+    if (( ret )); then
+        tail -n 20 "$logfile"
+        error "Compiling %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
+}
+
+copy() {
+    local logfile="$logdir/$pkgname.install.log"
+    local ret=0
+    local cmake_cmd="$(cmake_command)"
+    "$cmake_cmd" --install build &>"$logfile" || ret=$?
+    if (( ret )); then
+        tail -n 20 "$logfile"
+        error "Installing %s failed" "$pkgname"
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
+}
 
 # vim: set syntax=sh:

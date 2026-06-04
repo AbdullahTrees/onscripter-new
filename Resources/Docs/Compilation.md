@@ -113,6 +113,11 @@ updated executable was copied again to `D:\Umineko Project\onscripter-ru.exe`.
 The same documentation pass refreshed the root `README.md` so the repository is
 presented as `onscripter-new`, an Umineko Project ONScripter-RU modernization
 branch with SDL3_GPU/SDL3_image/SDL3_mixer as the active build stack.
+The 2026-06-03 dependency refresh replaced IJG jpeg 9c with libjpeg-turbo
+3.1.4.1, updated Lua to 5.4.8, and updated libusb to 1.0.30. The local UCRT64
+release rebuild relinked SDL3_image against the new static JPEG provider,
+emitted no `warning:` lines, and was copied to
+`D:\Umineko Project\onscripter-ru.exe`.
 
 SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
 `ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,

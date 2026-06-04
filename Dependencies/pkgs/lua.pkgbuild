@@ -1,8 +1,8 @@
 pkgname=lua
-pkgver=5.3.5
+pkgver=5.4.8
 pkgrel=1
-sources=("https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/lua-$pkgver.tar.gz")
-hashes=('0c2eed3f960446e1a3e4b9a1ca2f3ff893b6ce41942cf54d5dd59ab4b3b058ac')
+sources=("https://www.lua.org/ftp/lua-$pkgver.tar.gz")
+hashes=('4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae')
 
 build() {
     msg "Compiling %s" "$pkgname"
@@ -11,13 +11,13 @@ build() {
 
     local ret=0
     local logfile="$logdir/$pkgname.compile.log"
-    
+
     lcf="$CFLAGS ${cflags[@]} $CFLAGS_EXTRA"
     lldf="$LDFLAGS ${ldflags[@]} $LDFLAGS_EXTRA"
-    
+
     case $(getTarget) in
         win32)
-            make $MAKEOPTS mingw CXX="$(getCXX)" CC="$(getCC)" MYCFLAGS="$lcf" MYLDFLAGS="$lldf" &>"$logfile" || ret=$?
+            make $MAKEOPTS generic CXX="$(getCXX)" CC="$(getCC)" MYCFLAGS="$lcf" MYLDFLAGS="$lldf" &>"$logfile" || ret=$?
         ;;
         darwin*)
             make $MAKEOPTS macosx CXX="$(getCXX)" CC="$(getCC)" MYCFLAGS="$lcf" MYLDFLAGS="$lldf" &>"$logfile" || ret=$?
@@ -26,25 +26,25 @@ build() {
             make $MAKEOPTS linux MYCFLAGS="$lcf" MYLDFLAGS="$lldf" &>"$logfile" || ret=$?
         ;;
     esac
-        
+
     if (( $ret )); then
         tail -n 20 "$logfile"
         error "Compiling %s failed" "$pkgname"
         error "The full log is: %s" "$logfile"
         exit 1
     fi
-    
+
     msg "Installing"
-      
+
     cp "src/liblua.a" "$outdir/lib/liblua.a"
     cp "src/lua.h" "$outdir/include/lua.h"
     cp "src/luaconf.h" "$outdir/include/luaconf.h"
     cp "src/lualib.h" "$outdir/include/lualib.h"
     cp "src/lauxlib.h" "$outdir/include/lauxlib.h"
     cp "src/lua.hpp" "$outdir/include/lua.hpp"
-    
+
     msg "Finishing %s" "$pkgname"
-    
+
     postbuild
 }
 

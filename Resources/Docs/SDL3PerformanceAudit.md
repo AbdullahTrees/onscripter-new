@@ -383,6 +383,14 @@ The root `README.md` was also refreshed during this pass to identify
 to point readers at the local compilation, dependency, and SDL3 performance
 status documents.
 
+### Leaf Dependency Refresh
+
+The 2026-06-03 dependency refresh replaced IJG jpeg 9c with libjpeg-turbo
+3.1.4.1, updated Lua to 5.4.8, and updated libusb to 1.0.30. SDL3_image 3.4.4
+was rebuilt against the new static `jpeg` provider during the local UCRT64
+release build. The engine linked without `warning:` lines and the updated
+executable was copied to `D:\Umineko Project\onscripter-ru.exe`.
+
 ### Umineko Project Startup/Video Telemetry
 
 Runtime pass:

@@ -11,8 +11,8 @@ complete investigation log.
 
 - The supported platform floors have been raised and encoded in the build
   scripts, packaging scripts, and docs.
-- The low-risk compression/media leaf libraries, text stack, FFmpeg, and SDL3
-  stack have been updated.
+- The low-risk compression/media leaf libraries, text stack, FFmpeg, SDL3
+  stack, Lua, libusb, and JPEG provider have been updated.
 - smpeg2 has been removed from package metadata, engine includes, configure
   metadata, and Xcode references.
 - SDL3, SDL3_image, and SDL3_mixer are the configure renderer, image, and mixer
@@ -56,9 +56,9 @@ complete investigation log.
 | SDL3_image | 3.4.4 | Default image stack; PNG/JPEG enabled through local dependencies. |
 | SDL3_mixer | 3.2.2 | Default mixer stack; WAV, MP3/dr_mp3, and Ogg Vorbis/libvorbisfile enabled. |
 | smpeg2 | removed | Retired from dependency graph and build metadata. |
-| jpeg | IJG 9c | Still pending replacement evaluation, likely libjpeg-turbo. |
-| Lua | 5.3.5 | Pending compatibility review before any 5.4/5.5 move. |
-| libusb | 1.0.22 | Pending update. |
+| jpeg | libjpeg-turbo 3.1.4.1 | Replaces IJG 9c while still providing the `jpeg` package and static `libjpeg` API for SDL3_image. Built with JPEG v8 API emulation and TurboJPEG API disabled. |
+| Lua | 5.4.8 | Latest Lua 5.4 line; Windows recipe builds the static `liblua.a` archive instead of Lua's DLL-oriented MinGW target. |
+| libusb | 1.0.30 | Updated from the official release tarball. The old MinGW GUID patch is obsolete because current libusb uses `DEFINE_GUID()`. |
 | libunwind | Android legacy package | Pending removal if modern NDK unwinder coverage is sufficient. |
 | libc++/libc++abi | legacy 8.0.0 packages | Pending removal with the old macOS/iOS floor cleanup. |
 
@@ -87,6 +87,13 @@ Dependency modernization:
   local patches removed or replaced by configure/cache options.
 - FFmpeg was updated to 7.1.4 and the engine decode path was ported away from
   removed/deprecated FFmpeg 3.x APIs.
+- IJG jpeg 9c was replaced by libjpeg-turbo 3.1.4.1. The local package remains
+  named `jpeg` to preserve SDL_image/configure dependencies.
+- Lua was updated from 5.3.5 to 5.4.8, with the Windows recipe changed to build
+  the static archive expected by the engine dependency layout.
+- libusb was updated from 1.0.22 to 1.0.30. The obsolete MinGW GUID patch was
+  removed, and the recipe creates libusb's resource dependency directory before
+  the Windows `windres` compile step.
 - SDL2, SDL2_image, and SDL2_mixer were updated for the fallback window and are
   now retired from the engine dependency graph.
 - SDL2_gpu and libepoxy were removed after the fallback window, along with the
@@ -360,6 +367,10 @@ SDL3 source-tagged runtime telemetry:
   ONScripter-RU modernization branch, points at the local compilation,
   dependency, and SDL3 performance docs, and reflects the current SDL3-only
   active renderer/dependency stack.
+- The 2026-06-03 dependency refresh rebuilt libjpeg-turbo 3.1.4.1, SDL3_image
+  3.4.4 against that JPEG provider, Lua 5.4.8, and libusb 1.0.30 during a local
+  UCRT64 release configure/build. The build linked without `warning:` lines and
+  the updated executable was copied to `D:\Umineko Project\onscripter-ru.exe`.
 
 ## Packaging Notes
 
@@ -405,12 +416,15 @@ SDL3 source-tagged runtime telemetry:
    current simple SDL2_gpu-style translator.
 10. Replace Android packaging with a Gradle/AGP, aapt2, apksigner, scoped-storage,
    and modern manifest flow.
-11. Evaluate libjpeg-turbo, Lua, libusb, Android libunwind removal, and removal of
-   legacy custom libc++/libc++abi packages.
+11. Evaluate Android libunwind removal and removal of legacy custom
+   libc++/libc++abi packages.
 
 ## References
 
 - Main compilation guide: `Resources/Docs/Compilation.md`
+- libjpeg-turbo releases: https://github.com/libjpeg-turbo/libjpeg-turbo/releases
+- Lua release archive: https://www.lua.org/ftp/
+- libusb releases: https://github.com/libusb/libusb/releases
 - SDL3 GPU API: https://wiki.libsdl.org/SDL3/CategoryGPU
 - SDL release archive: https://www.libsdl.org/release/
 - SDL_image release archive: https://www.libsdl.org/projects/SDL_image/release/

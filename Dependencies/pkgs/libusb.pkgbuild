@@ -1,14 +1,8 @@
 pkgname=libusb
-pkgver=1.0.22
-pkgrel=2
-sources=(
-    "https://raw.githubusercontent.com/umineko-project/onscripter-deps/master/archives/libusb-${pkgver}.tar.bz2"
-    'libusb-guid-mingw.patch'
-)
-hashes=(
-    '75aeb9d59a4fdb800d329a545c2e6799f732362193b465ea198f2aa275518157'
-    'f19d21164def820af8f2d3621f5c0d7e5da50ccb8513494f5c205f0062862a9b'
-)
+pkgver=1.0.30
+pkgrel=1
+sources=("https://github.com/libusb/libusb/releases/download/v${pkgver}/libusb-${pkgver}.tar.bz2")
+hashes=('fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf')
 
 configopts=(
     '--disable-dependency-tracking'
@@ -19,10 +13,18 @@ configopts_linux=(
     '--disable-udev'
 )
 
-prebuild() {
-    pushd "$pkgname-$pkgver" &>/dev/null
-
-    apply_patch "${sources[1]}"
+compile() {
+    local logfile="$logdir/$pkgname.compile.log"
+    local ret=0
+    mkdir -p libusb/.deps
+    make $MAKEOPTS &>"$logfile" || ret=$?
+    if (( ret )); then
+        tail -n 20 "$logfile"
+        error "Compiling %s failed" "$pkgname"
+        error "The last 20 lines of the log are shown above."
+        error "The full log is: %s" "$logfile"
+        exit 1
+    fi
 }
 
 # vim: set syntax=sh:
