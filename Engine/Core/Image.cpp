@@ -76,6 +76,7 @@ RenderImage *ONScripter::loadGpuImage(const char *file_name, bool allow_rgb) {
 	}
 
 	gpu.multiplyAlpha(img);
+	GPU_DiscardImagePixels(img);
 	SDL_FreeSurface(input_surface);
 
 	return img;

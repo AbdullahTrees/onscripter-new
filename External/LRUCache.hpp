@@ -97,8 +97,22 @@ public:
 	}
 	
 	
-	size_t size() {
+	size_t size() const {
 		return capacity;
+	}
+
+	size_t count() const {
+		return cache.size();
+	}
+
+	bool empty() const {
+		return cache.empty();
+	}
+
+	template <typename Fn>
+	void for_each_value(Fn &&fn) const {
+		for (const auto &entry : cache)
+			fn(entry.first, entry.second.first);
 	}
 	
 	
@@ -194,7 +208,7 @@ public:
 	/**
 	 * Return a list of keys in the order of most to least recently used.
 	 */
-	KeyTypeList list() {
+	KeyTypeList list() const {
 		return KeyTypeList(lru.rbegin(), lru.rend());
 	}
 };

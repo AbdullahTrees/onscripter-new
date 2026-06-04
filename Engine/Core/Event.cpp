@@ -22,6 +22,7 @@
 
 const uint32_t MAX_TOUCH_TAP_TIMESPAN{80};
 const uint32_t MAX_TOUCH_SWIPE_TIMESPAN{300};
+const int EVENT_QUEUE_IDLE_WAIT_MS{8};
 const float TOUCH_ACTION_THRESHOLD_X = 0.1;
 const float TOUCH_ACTION_THRESHOLD_Y = 0.15;
 
@@ -214,7 +215,7 @@ void ONScripter::fetchEventsToQueue() {
 	auto event = std::make_unique<SDL_Event>();
 	std::unique_ptr<SDL_Event> tmp_event;
 
-	while (SDL_WaitEventTimeout(event.get(), 1)) {
+	while (SDL_WaitEventTimeout(event.get(), EVENT_QUEUE_IDLE_WAIT_MS)) {
 		// ignore continuous SDL_MOUSEMOTION
 		while (event->type == SDL_MOUSEMOTION) {
 			if (!tmp_event)

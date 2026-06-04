@@ -1076,12 +1076,7 @@ int ONScripter::ownInit() {
 	media.init();
 	auto hwdec  = ons_cfg_options.find("hwdecoder");
 	auto hwconv = ons_cfg_options.find("hwconvert");
-#ifdef DROID
-	// At this moment hardware video decoding is slower on droid, only enable it by an explicit flag.
-	bool enableHwdec = hwdec != ons_cfg_options.end() && hwdec->second == "on";
-#else
 	bool enableHwdec = hwdec == ons_cfg_options.end() || hwdec->second == "on";
-#endif
 	bool enableHwConv = hwconv == ons_cfg_options.end() || hwconv->second == "on";
 	media.setHardwareDecoding(enableHwdec, enableHwConv);
 

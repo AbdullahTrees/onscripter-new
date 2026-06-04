@@ -869,6 +869,55 @@ Findings from the post-triangle-batching startup/video run:
   synthetic benchmark is the cleaner comparison for the triangle batching
   change.
 
+### Umineko Project Main-Menu Resource Pass
+
+Runtime passes:
+
+- Executable: `D:\Umineko Project\onscripter-ru.exe`
+- Arguments: `--use-logfile --sdl3-gpu-telemetry`
+- Working directory: `D:\Umineko Project`
+- Profile output:
+  `DerivedData\profile-submit-throttle`,
+  `DerivedData\profile-final-default-hw-on`,
+  `DerivedData\profile-final-default-throttle8`
+- Scenario: boot Umineko Project release data to the visible main menu and
+  sample process memory/CPU while the menu video continues playing.
+
+Fixes applied in this pass:
+
+- Command-buffer submission now goes through a shared SDL3_GPU submit helper.
+  The helper records telemetry and waits for the GPU after a small backlog of
+  queued command buffers, preventing the SDL3/D3D12 private-memory backlog that
+  previously grew past 6 GB during menu loading.
+- `GPU_Image` CPU pixel mirrors are allocated lazily, clean mirrors can be
+  discarded after upload, and `GPU_UpdateImageBytes()` uploads rows directly
+  without keeping a persistent CPU copy of video planes.
+- Decoded image caching now has a default 256 MiB budget configurable with
+  `ONS_IMAGE_CACHE_MB`, and animation surfaces are freed after equivalent GPU
+  images/big images exist unless the CPU surface is still required.
+- The event-fetch thread now waits longer when idle, reducing idle polling.
+- Hardware video decoding and hardware format conversion are enabled by default
+  unless explicitly disabled with `--hwdecoder off` or `--hwconvert off`.
+
+Validated menu observations:
+
+- The visible menu screenshot at
+  `DerivedData\profile-submit-throttle\attached-shot-090s.png` showed Task
+  Manager reporting ONScripter-RU at 475.7 MB memory and 4.7% CPU.
+- The default hardware-on menu screenshot at
+  `DerivedData\profile-final-default-hw-on\screen-030s.png` showed Task Manager
+  reporting ONScripter-RU at 410.0 MB memory and 4.6% CPU.
+- The matching CSV samples in
+  `DerivedData\profile-final-default-hw-on\perf-final-default-hw-on.csv`
+  recorded 891.7 MB private / 464.9 MB working set / 4.05% CPU at 30 seconds
+  and 969.7 MB private / 526.3 MB working set / 4.40% CPU at 60 seconds.
+- Shutdown telemetry from the default hardware-on run showed the intended YUV
+  plane upload path: `video_frame_yuv420p` recorded 624 uploads totaling
+  690,094,080 bytes, with zero CPU blit/shader fallback and zero persistent CPU
+  pixel mirrors for live images.
+- The final UCRT64 build after tightening the command-buffer backlog cap linked
+  successfully and was copied to `D:\Umineko Project\onscripter-ru.exe`.
+
 ## Findings
 
 ### 1. Readback and Upload Traffic Dominate the Measured Boot/Video Path

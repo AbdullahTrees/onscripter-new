@@ -268,6 +268,8 @@ std::unordered_map<Uint32, SDL3GPUShaderObject> shaderObjects;
 std::unordered_map<Uint32, SDL3GPUProgramObject> programObjects;
 std::unordered_map<int, Uint32> uniformLocationOwners;
 std::unordered_set<GPU_Image *> liveTextureImages;
+Uint64 nextLiveTextureTelemetryBytes{256ull * 1024ull * 1024ull};
+Uint64 submittedCommandBuffersSinceIdle{0};
 int nextUniformLocation{1};
 #if defined(ONS_USE_SDL3_SHADERCROSS)
 bool shaderCrossInitialized{false};
@@ -294,6 +296,10 @@ bool queueNativeTriangleDraw(GPU_Image *image,
                              Uint32 numIndices);
 void fillImagePixels(GPU_Image *image, SDL_Rect bounds, SDL_Color color);
 void materializeSolidPixels(GPU_Image *image);
+bool ensureImagePixelStorage(GPU_Image *image);
+void discardCleanImagePixels(GPU_Image *image);
+SDL_Rect clampImageUploadRect(const GPU_Image *image, SDL_Rect rect);
+bool imageRectCoversImage(const GPU_Image *image, const SDL_Rect &rect);
 void printAndResetTelemetry();
 
 bool telemetryValueEnabled(const char *value) {
@@ -321,6 +327,39 @@ void noteCommandBufferSubmitted() {
 		return;
 	++telemetry.commandBuffersSubmitted;
 	telemetry.hasData = true;
+}
+
+void noteBlockingGPUWait() {
+	submittedCommandBuffersSinceIdle = 0;
+}
+
+void throttleGPUSubmissionBacklog() {
+	if (!rendererState.device)
+		return;
+	constexpr Uint64 maxQueuedCommandBuffers = 8;
+	++submittedCommandBuffersSinceIdle;
+	if (submittedCommandBuffersSinceIdle < maxQueuedCommandBuffers)
+		return;
+	SDL_WaitForGPUIdle(rendererState.device);
+	noteBlockingGPUWait();
+}
+
+bool submitGPUCommandBuffer(SDL_GPUCommandBuffer *commands) {
+	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
+	if (submitted) {
+		noteCommandBufferSubmitted();
+		throttleGPUSubmissionBacklog();
+	}
+	return submitted;
+}
+
+SDL_GPUFence *submitGPUCommandBufferAndAcquireFence(SDL_GPUCommandBuffer *commands) {
+	SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
+	if (fence) {
+		noteCommandBufferSubmitted();
+		throttleGPUSubmissionBacklog();
+	}
+	return fence;
 }
 
 std::string normalizedTelemetrySource(const char *source) {
@@ -430,6 +469,49 @@ int textureBytesPerPixel(GPU_FormatEnum format) {
 		case GPU_FORMAT_RGBA:
 		default:
 			return 4;
+	}
+}
+
+size_t imagePixelBytes(const GPU_Image *image) {
+	return image ? static_cast<size_t>(image->pitch) * image->h : 0;
+}
+
+Uint32 alignUp(Uint32 value, Uint32 alignment) {
+	if (alignment == 0)
+		return value;
+	const Uint32 remainder = value % alignment;
+	return remainder == 0 ? value : value + (alignment - remainder);
+}
+
+bool ensureImagePixelStorage(GPU_Image *image) {
+	if (!image)
+		return false;
+	const size_t bytes = imagePixelBytes(image);
+	if (bytes == 0)
+		return false;
+	if (image->pixels.size() == bytes)
+		return true;
+	try {
+		image->pixels.assign(bytes, 0);
+	} catch (...) {
+		image->pixels.clear();
+		return false;
+	}
+	return true;
+}
+
+void discardCleanImagePixels(GPU_Image *image) {
+	if (!image || image->pixels_dirty || image->pixels.empty())
+		return;
+	std::vector<Uint8>().swap(image->pixels);
+}
+
+void liveImageMemoryTotals(size_t &textureBytes, size_t &pixelBytes) {
+	textureBytes = 0;
+	pixelBytes   = 0;
+	for (auto *image : liveTextureImages) {
+		textureBytes += imagePixelBytes(image);
+		pixelBytes += image ? image->pixels.size() : 0;
 	}
 }
 
@@ -1713,18 +1795,24 @@ void resetTelemetryCounters() {
 	telemetry = SDL3GPUTelemetry{};
 	telemetry.initialized = initialized;
 	telemetry.enabled     = enabled;
+	nextLiveTextureTelemetryBytes = 256ull * 1024ull * 1024ull;
 }
 
 void printAndResetTelemetry() {
 	if (!telemetryEnabled() || !telemetry.hasData)
 		return;
 
+	size_t liveTextureBytes = 0;
+	size_t livePixelBytes   = 0;
+	liveImageMemoryTotals(liveTextureBytes, livePixelBytes);
+
 	sendToLog(LogLevel::Info,
 	          "SDL3_GPU telemetry: command_buffers=%llu texture_uploads=%llu texture_upload_bytes=%llu "
 	          "readbacks=%llu readback_bytes=%llu native_fixed_draws=%llu native_fixed_vertices=%llu "
 	          "native_shader_compiles=%llu compatibility_shader_compiles=%llu native_shader_draws=%llu "
 	          "native_shader_vertices=%llu cpu_blit_draws=%llu cpu_blit_pixels=%llu "
-	          "cpu_shader_draws=%llu cpu_shader_pixels=%llu\n",
+	          "cpu_shader_draws=%llu cpu_shader_pixels=%llu live_images=%llu "
+	          "live_texture_bytes=%llu live_cpu_pixel_bytes=%llu\n",
 	          static_cast<unsigned long long>(telemetry.commandBuffersSubmitted),
 	          static_cast<unsigned long long>(telemetry.textureUploads),
 	          static_cast<unsigned long long>(telemetry.textureUploadBytes),
@@ -1739,7 +1827,10 @@ void printAndResetTelemetry() {
 	          static_cast<unsigned long long>(telemetry.cpuBlitDraws),
 	          static_cast<unsigned long long>(telemetry.cpuBlitPixels),
 	          static_cast<unsigned long long>(telemetry.cpuShaderDraws),
-	          static_cast<unsigned long long>(telemetry.cpuShaderPixels));
+	          static_cast<unsigned long long>(telemetry.cpuShaderPixels),
+	          static_cast<unsigned long long>(liveTextureImages.size()),
+	          static_cast<unsigned long long>(liveTextureBytes),
+	          static_cast<unsigned long long>(livePixelBytes));
 
 	for (const auto &stats : telemetry.transfers) {
 		if (stats.textureUploads == 0 && stats.readbacks == 0)
@@ -1962,7 +2053,6 @@ void initialiseImageDefaults(GPU_Image *image, Uint16 w, Uint16 h, GPU_FormatEnu
 	image->refcount            = 1;
 	image->renderer            = rendererState.device ? &rendererState : nullptr;
 	image->context_target      = rendererState.current_context_target;
-	image->pixels.resize(static_cast<size_t>(image->pitch) * h);
 	image->pixels_dirty        = false;
 	image->pixels_solid        = false;
 	image->solid_color         = SDL_Color{0, 0, 0, 0};
@@ -1970,8 +2060,26 @@ void initialiseImageDefaults(GPU_Image *image, Uint16 w, Uint16 h, GPU_FormatEnu
 }
 
 void registerImageTexture(GPU_Image *image) {
-	if (image && image->texture)
+	if (image && image->texture) {
 		liveTextureImages.insert(image);
+		if (telemetryEnabled()) {
+			size_t liveTextureBytes = 0;
+			size_t livePixelBytes   = 0;
+			liveImageMemoryTotals(liveTextureBytes, livePixelBytes);
+			if (liveTextureBytes >= nextLiveTextureTelemetryBytes) {
+				while (liveTextureBytes >= nextLiveTextureTelemetryBytes)
+					nextLiveTextureTelemetryBytes += 256ull * 1024ull * 1024ull;
+				sendToLog(LogLevel::Info,
+				          "SDL3_GPU live texture telemetry: live_images=%llu live_texture_bytes=%llu live_cpu_pixel_bytes=%llu latest_image=%ux%u format=%d\n",
+				          static_cast<unsigned long long>(liveTextureImages.size()),
+				          static_cast<unsigned long long>(liveTextureBytes),
+				          static_cast<unsigned long long>(livePixelBytes),
+				          static_cast<unsigned>(image->w),
+				          static_cast<unsigned>(image->h),
+				          static_cast<int>(image->format));
+			}
+		}
+	}
 }
 
 void unregisterImageTexture(GPU_Image *image) {
@@ -2023,9 +2131,8 @@ bool clearImageTexture(GPU_Image *image, SDL_Color color = SDL_Color{0, 0, 0, 0}
 	}
 
 	SDL_EndGPURenderPass(renderPass);
-	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
+	const bool submitted = submitGPUCommandBuffer(commands);
 	if (submitted) {
-		noteCommandBufferSubmitted();
 		image->texture_initialized = true;
 		image->pixels_dirty        = false;
 		image->pixels_solid        = true;
@@ -2046,6 +2153,12 @@ Uint32 reusableBufferCapacity(Uint32 size) {
 	while (capacity < size && capacity <= (UINT32_MAX / 2))
 		capacity *= 2;
 	return std::max(capacity, size);
+}
+
+Uint32 textureUploadPitchBytes(const GPU_Image *image, Uint32 rowBytes) {
+	const Uint32 texelSize = std::max<Uint32>(1, image ? static_cast<Uint32>(image->bytes_per_pixel) : 1);
+	const Uint32 d3d12AlignedPitch = alignUp(rowBytes, 256);
+	return alignUp(d3d12AlignedPitch, texelSize);
 }
 
 void releaseReusableTransferBuffer(SDL3GPUReusableTransferBuffer &buffer) {
@@ -2114,12 +2227,24 @@ bool ensureReusableUploadedBuffer(SDL3GPUReusableUploadedBuffer &buffer, SDL_GPU
 	return true;
 }
 
-bool uploadImage(GPU_Image *image, const char *telemetrySource = "upload_image") {
-	if (!image || !image->texture || !rendererState.device || image->pixels.empty())
+bool uploadImageRows(GPU_Image *image,
+                     SDL_Rect bounds,
+                     const Uint8 *rows,
+                     Uint32 rowBytes,
+                     Uint32 sourcePitch,
+                     const char *telemetrySource,
+                     bool cycleTexture) {
+	if (!image || !image->texture || !rendererState.device || !rows || rowBytes == 0 || sourcePitch == 0)
 		return false;
-	materializeSolidPixels(image);
 
-	const Uint32 uploadSize = static_cast<Uint32>(image->pixels.size());
+	bounds = clampImageUploadRect(image, bounds);
+	if (bounds.w <= 0 || bounds.h <= 0)
+		return true;
+	if (!imageRectCoversImage(image, bounds) && !ensureImageTextureInitialized(image))
+		return false;
+
+	const Uint32 uploadPitch = textureUploadPitchBytes(image, rowBytes);
+	const Uint32 uploadSize  = uploadPitch * static_cast<Uint32>(bounds.h);
 	if (!ensureReusableTransferBuffer(textureUploadBuffer, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, uploadSize))
 		return false;
 
@@ -2127,7 +2252,13 @@ bool uploadImage(GPU_Image *image, const char *telemetrySource = "upload_image")
 	if (!mapped)
 		return false;
 
-	std::memcpy(mapped, image->pixels.data(), image->pixels.size());
+	auto *dst = static_cast<Uint8 *>(mapped);
+	for (int y = 0; y < bounds.h; ++y) {
+		Uint8 *dstRow = dst + static_cast<size_t>(y) * uploadPitch;
+		std::memcpy(dstRow, rows + static_cast<size_t>(y) * sourcePitch, rowBytes);
+		if (uploadPitch > rowBytes)
+			std::memset(dstRow + rowBytes, 0, uploadPitch - rowBytes);
+	}
 	SDL_UnmapGPUTransferBuffer(rendererState.device, textureUploadBuffer.transfer);
 
 	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
@@ -2137,26 +2268,45 @@ bool uploadImage(GPU_Image *image, const char *telemetrySource = "upload_image")
 	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
 	SDL_GPUTextureTransferInfo source{};
 	source.transfer_buffer = textureUploadBuffer.transfer;
-	source.pixels_per_row  = image->w;
-	source.rows_per_layer  = image->h;
+	source.pixels_per_row  = uploadPitch / static_cast<Uint32>(image->bytes_per_pixel);
+	source.rows_per_layer  = static_cast<Uint32>(bounds.h);
 
 	SDL_GPUTextureRegion destination{};
 	destination.texture = image->texture;
-	destination.w       = image->w;
-	destination.h       = image->h;
+	destination.x       = static_cast<Uint32>(bounds.x);
+	destination.y       = static_cast<Uint32>(bounds.y);
+	destination.w       = static_cast<Uint32>(bounds.w);
+	destination.h       = static_cast<Uint32>(bounds.h);
 	destination.d       = 1;
 
-	SDL_UploadToGPUTexture(copyPass, &source, &destination, true);
+	SDL_UploadToGPUTexture(copyPass, &source, &destination, cycleTexture);
 	SDL_EndGPUCopyPass(copyPass);
-	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
+	const bool submitted = submitGPUCommandBuffer(commands);
 	if (submitted) {
-		noteCommandBufferSubmitted();
 		noteTextureUpload(uploadSize, telemetrySource);
-		image->pixels_dirty = false;
+		image->pixels_dirty        = false;
+		image->pixels_solid        = false;
 		image->texture_initialized = true;
-		image->has_mipmaps = false;
+		image->has_mipmaps         = false;
 	}
 	return submitted;
+}
+
+bool uploadImage(GPU_Image *image, const char *telemetrySource = "upload_image") {
+	if (!image || !image->texture || !rendererState.device)
+		return false;
+	materializeSolidPixels(image);
+	if (image->pixels.empty())
+		return false;
+
+	const SDL_Rect bounds{0, 0, image->w, image->h};
+	return uploadImageRows(image,
+	                       bounds,
+	                       image->pixels.data(),
+	                       static_cast<Uint32>(image->pitch),
+	                       static_cast<Uint32>(image->pitch),
+	                       telemetrySource,
+	                       true);
 }
 
 SDL_Rect clampImageUploadRect(const GPU_Image *image, SDL_Rect rect) {
@@ -2192,9 +2342,11 @@ std::string clearFullTelemetrySource(const GPU_Image *image, const SDL_Rect &bou
 }
 
 bool uploadImageRegion(GPU_Image *image, SDL_Rect bounds, const char *telemetrySource = "upload_image_region") {
-	if (!image || !image->texture || !rendererState.device || image->pixels.empty())
+	if (!image || !image->texture || !rendererState.device)
 		return false;
 	materializeSolidPixels(image);
+	if (image->pixels.empty())
+		return false;
 
 	bounds = clampImageUploadRect(image, bounds);
 	if (bounds.w <= 0 || bounds.h <= 0)
@@ -2204,60 +2356,27 @@ bool uploadImageRegion(GPU_Image *image, SDL_Rect bounds, const char *telemetryS
 	if (!ensureImageTextureInitialized(image))
 		return false;
 
-	const Uint32 uploadPitch = static_cast<Uint32>(bounds.w * image->bytes_per_pixel);
-	const Uint32 uploadSize  = static_cast<Uint32>(uploadPitch * bounds.h);
-
-	if (!ensureReusableTransferBuffer(textureUploadBuffer, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, uploadSize))
-		return false;
-
-	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, textureUploadBuffer.transfer, true);
-	if (!mapped)
-		return false;
-
-	auto *dst = static_cast<Uint8 *>(mapped);
-	for (int y = 0; y < bounds.h; ++y) {
-		const auto *src = image->pixels.data() + (bounds.y + y) * image->pitch + bounds.x * image->bytes_per_pixel;
-		std::memcpy(dst + y * uploadPitch, src, uploadPitch);
-	}
-	SDL_UnmapGPUTransferBuffer(rendererState.device, textureUploadBuffer.transfer);
-
-	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
-	if (!commands)
-		return false;
-
-	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
-	SDL_GPUTextureTransferInfo source{};
-	source.transfer_buffer = textureUploadBuffer.transfer;
-	source.pixels_per_row  = static_cast<Uint32>(bounds.w);
-	source.rows_per_layer  = static_cast<Uint32>(bounds.h);
-
-	SDL_GPUTextureRegion destination{};
-	destination.texture = image->texture;
-	destination.x       = static_cast<Uint32>(bounds.x);
-	destination.y       = static_cast<Uint32>(bounds.y);
-	destination.w       = static_cast<Uint32>(bounds.w);
-	destination.h       = static_cast<Uint32>(bounds.h);
-	destination.d       = 1;
-
-	SDL_UploadToGPUTexture(copyPass, &source, &destination, false);
-	SDL_EndGPUCopyPass(copyPass);
-	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
-	if (submitted) {
-		noteCommandBufferSubmitted();
-		noteTextureUpload(uploadSize, telemetrySource);
-		image->pixels_dirty        = false;
-		image->texture_initialized = true;
-		image->has_mipmaps         = false;
-	}
-	return submitted;
+	const Uint32 rowBytes = static_cast<Uint32>(bounds.w * image->bytes_per_pixel);
+	const auto *src       = image->pixels.data() + bounds.y * image->pitch + bounds.x * image->bytes_per_pixel;
+	return uploadImageRows(image,
+	                       bounds,
+	                       src,
+	                       rowBytes,
+	                       static_cast<Uint32>(image->pitch),
+	                       telemetrySource,
+	                       false);
 }
 
-bool downloadImage(GPU_Image *image, const char *telemetrySource = "ensure_pixels_current") {
-	if (!image || !image->texture || !rendererState.device || image->pixels.empty())
+bool downloadImage(GPU_Image *image, const char *telemetrySource = "ensure_pixels_current", bool force = false) {
+	if (!image)
+		return false;
+	if (!ensureImagePixelStorage(image))
 		return false;
 	if (!image->texture_initialized)
 		return true;
-	if (!image->pixels_dirty)
+	if (!image->texture || !rendererState.device)
+		return false;
+	if (!force && !image->pixels_dirty)
 		return true;
 
 	flushNativeBlitBatch();
@@ -2284,12 +2403,12 @@ bool downloadImage(GPU_Image *image, const char *telemetrySource = "ensure_pixel
 	SDL_DownloadFromGPUTexture(copyPass, &source, &destination);
 	SDL_EndGPUCopyPass(copyPass);
 
-	SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
+	SDL_GPUFence *fence = submitGPUCommandBufferAndAcquireFence(commands);
 	if (!fence)
 		return false;
-	noteCommandBufferSubmitted();
 
 	const bool waited = SDL_WaitForGPUFences(rendererState.device, true, &fence, 1);
+	noteBlockingGPUWait();
 	SDL_ReleaseGPUFence(rendererState.device, fence);
 	if (!waited)
 		return false;
@@ -2312,6 +2431,8 @@ void ensureImagePixelsCurrent(GPU_Image *image) {
 		downloadImage(image);
 	if (image && image->pixels_solid)
 		materializeSolidPixels(image);
+	if (image && image->pixels.empty() && image->texture_initialized)
+		downloadImage(image, "ensure_pixels_current", true);
 }
 
 SDL_PixelFormat canonicalSurfaceFormatForUpload(const GPU_Image *image) {
@@ -2367,7 +2488,9 @@ void copyPixelRow(Uint8 *dst, int dstBpp, const Uint8 *src, int srcBpp, int widt
 }
 
 void materializeSolidPixels(GPU_Image *image) {
-	if (!image || !image->pixels_solid || image->pixels.empty())
+	if (!image || !image->pixels_solid)
+		return;
+	if (!ensureImagePixelStorage(image))
 		return;
 
 	const Uint8 source[4]{image->solid_color.r, image->solid_color.g, image->solid_color.b, image->solid_color.a};
@@ -2390,7 +2513,9 @@ void materializeSolidPixels(GPU_Image *image) {
 }
 
 void fillImagePixels(GPU_Image *image, SDL_Rect bounds, SDL_Color color) {
-	if (!image || image->pixels.empty())
+	if (!image)
+		return;
+	if (!ensureImagePixelStorage(image))
 		return;
 
 	bounds = clampImageUploadRect(image, bounds);
@@ -3544,12 +3669,11 @@ bool ensureSolidWhiteTexture() {
 	SDL_UploadToGPUTexture(copyPass, &source, &destination, true);
 	SDL_EndGPUCopyPass(copyPass);
 
-	if (!SDL_SubmitGPUCommandBuffer(commands)) {
+	if (!submitGPUCommandBuffer(commands)) {
 		SDL_ReleaseGPUTexture(rendererState.device, texture);
 		return false;
 	}
 
-	noteCommandBufferSubmitted();
 	solidWhiteTexture = texture;
 	return true;
 }
@@ -3651,9 +3775,8 @@ bool nativeSolidRect(GPU_Target *target, const SDL_Rect &bounds, SDL_Color color
 	SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(sizeof(indices) / sizeof(indices[0])), 1, 0, 0, 0);
 	SDL_EndGPURenderPass(renderPass);
 
-	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
+	const bool submitted = submitGPUCommandBuffer(commands);
 	if (submitted) {
-		noteCommandBufferSubmitted();
 		noteNativeFixedDraw(vertices.size());
 		target->image->pixels_dirty        = true;
 		target->image->pixels_solid        = false;
@@ -3953,10 +4076,9 @@ bool flushNativeTriangleBatch() {
 	SDL_SetGPUScissor(renderPass, &nativeTriangleBatch.scissor);
 	SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(nativeTriangleBatch.indices.size()), 1, 0, 0, 0);
 	SDL_EndGPURenderPass(renderPass);
-	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
+	const bool submitted = submitGPUCommandBuffer(commands);
 
 	if (submitted) {
-		noteCommandBufferSubmitted();
 		if (nativeTriangleBatch.nativeShaderProgram) {
 			noteNativeShaderDraw(nativeTriangleBatch.shaderKind, nativeTriangleBatch.vertices.size());
 		} else {
@@ -4155,10 +4277,9 @@ bool flushNativeBlitBatchOnly() {
 	SDL_SetGPUScissor(renderPass, &nativeBlitBatch.scissor);
 	SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(nativeBlitBatch.indices.size()), 1, 0, 0, 0);
 	SDL_EndGPURenderPass(renderPass);
-	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
+	const bool submitted = submitGPUCommandBuffer(commands);
 
 	if (submitted) {
-		noteCommandBufferSubmitted();
 		noteNativeFixedDraw(nativeBlitBatch.vertices.size());
 		nativeBlitBatch.targetImage->pixels_dirty = true;
 		nativeBlitBatch.targetImage->has_mipmaps  = false;
@@ -4494,12 +4615,12 @@ bool downloadImageToSurface(GPU_Image *image, SDL_Surface *surface) {
 	SDL_DownloadFromGPUTexture(copyPass, &source, &destination);
 	SDL_EndGPUCopyPass(copyPass);
 
-	SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
+	SDL_GPUFence *fence = submitGPUCommandBufferAndAcquireFence(commands);
 	if (!fence)
 		return false;
-	noteCommandBufferSubmitted();
 
 	const bool waited = SDL_WaitForGPUFences(rendererState.device, true, &fence, 1);
+	noteBlockingGPUWait();
 	SDL_ReleaseGPUFence(rendererState.device, fence);
 	if (!waited)
 		return false;
@@ -4838,8 +4959,16 @@ void SDLCALL GPU_UpdateImage(GPU_Image *image, const GPU_Rect *image_rect, SDL_S
 	}
 
 	const SDL_Rect bounds{copyDstX, copyDstY, copyW, copyH};
-	if (!imageRectCoversImage(image, bounds))
+	if (!imageRectCoversImage(image, bounds)) {
 		ensureImagePixelsCurrent(image);
+		if (image->pixels_dirty)
+			return;
+	}
+	if (!ensureImagePixelStorage(image)) {
+		if (freeWorking)
+			SDL_FreeSurface(working);
+		return;
+	}
 
 	if (SDL_MUSTLOCK(working) && !SDL_LockSurface(working)) {
 		if (freeWorking)
@@ -4904,16 +5033,18 @@ void SDLCALL GPU_UpdateImageBytes(GPU_Image *image, const GPU_Rect *image_rect, 
 		return;
 
 	const SDL_Rect bounds{copyDstX, copyDstY, copyW, copyH};
-	if (!imageRectCoversImage(image, bounds))
-		ensureImagePixelsCurrent(image);
-
-	for (int y = 0; y < copyH; ++y) {
-		auto *dst = image->pixels.data() + (copyDstY + y) * image->pitch + copyDstX * image->bytes_per_pixel;
-		std::memcpy(dst, bytes + (srcOffsetY + y) * bytes_per_row + srcByteOffset, static_cast<size_t>(rowBytes));
+	const auto *src = bytes + srcOffsetY * bytes_per_row + srcByteOffset;
+	if (uploadImageRows(image,
+	                    bounds,
+	                    src,
+	                    static_cast<Uint32>(rowBytes),
+	                    static_cast<Uint32>(bytes_per_row),
+	                    "update_image_bytes",
+	                    imageRectCoversImage(image, bounds))) {
+		std::vector<Uint8>().swap(image->pixels);
+		image->pixels_dirty = false;
+		image->pixels_solid = false;
 	}
-	image->pixels_solid = false;
-
-	uploadImageRegion(image, bounds, "update_image_bytes");
 }
 
 GPU_bool SDLCALL GPU_SaveImage(GPU_Image *image, const char *filename, GPU_FileFormatEnum format) {
@@ -4975,8 +5106,7 @@ void SDLCALL GPU_GenerateMipmaps(GPU_Image *image) {
 	if (!commands)
 		return;
 	SDL_GenerateMipmapsForGPUTexture(commands, image->texture);
-	if (SDL_SubmitGPUCommandBuffer(commands)) {
-		noteCommandBufferSubmitted();
+	if (submitGPUCommandBuffer(commands)) {
 		image->has_mipmaps = true;
 	}
 }
@@ -5187,8 +5317,7 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 	}
 
 	presentTarget(target, commands, swapchainTexture, width, height);
-	if (SDL_SubmitGPUCommandBuffer(commands))
-		noteCommandBufferSubmitted();
+	submitGPUCommandBuffer(commands);
 }
 
 void SDLCALL GPU_RectangleFilled2(GPU_Target *target, GPU_Rect rect, SDL_Color color) {
@@ -5460,6 +5589,8 @@ GPU_bool SDLCALL GPU_MultiplyAlpha(GPU_Image *image, const GPU_Rect *dst_clip) {
 	if (!target)
 		return false;
 	ensureImagePixelsCurrent(image);
+	if (image->pixels.empty())
+		return false;
 
 	const GPU_Rect full{0.0f, 0.0f, static_cast<float>(image->w), static_cast<float>(image->h)};
 	const SDL_Rect bounds = imagePixelBounds(image, dst_clip ? *dst_clip : full);
@@ -5477,7 +5608,14 @@ GPU_bool SDLCALL GPU_MultiplyAlpha(GPU_Image *image, const GPU_Rect *dst_clip) {
 		}
 	}
 
-	return uploadImageRegion(image, bounds, "multiply_alpha");
+	const bool uploaded = uploadImageRegion(image, bounds, "multiply_alpha");
+	if (uploaded)
+		discardCleanImagePixels(image);
+	return uploaded;
+}
+
+void SDLCALL GPU_DiscardImagePixels(GPU_Image *image) {
+	discardCleanImagePixels(image);
 }
 
 int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const char *outputPath) {

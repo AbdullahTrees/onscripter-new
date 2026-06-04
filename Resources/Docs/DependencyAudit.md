@@ -21,6 +21,10 @@ complete investigation log.
   `--sdl2-renderer` fallback now exits with an error.
 - The SDL3 Windows public-release executable has booted Umineko Project release
   data to the main menu with SDL3_GPU rendering and SDL3_mixer audio active.
+- The SDL3 main-menu resource pass reduced Umineko Project menu memory from the
+  previous multi-gigabyte private/working-set spike to sub-1 GB steady-state
+  samples, with Task Manager working-set observations around 410-526 MB and
+  steady CPU samples around 4-4.5% while the menu video was visible.
 
 ## Support Floor
 
@@ -230,6 +234,22 @@ Recent SDL3 runtime fixes:
   after surface conversion, locking, and row setup. The local UCRT64 rebuild no
   longer emits the previous `-Wclobbered` longjmp warnings from
   `saveSurfacePNG_RW()`.
+- SDL3_GPU command-buffer submissions now go through a shared submit helper that
+  records telemetry and periodically waits for the GPU after a small backlog of
+  queued command buffers. This prevents the D3D12/SDL3_GPU private-memory spike
+  seen during Umineko Project main-menu loading, where the process previously
+  climbed above 6 GB while live engine textures and CPU mirrors were small.
+- SDL3_GPU images now allocate CPU pixel mirrors lazily, discard clean mirrors
+  after GPU upload when callers no longer need CPU access, and directly upload
+  video/frame byte rows without retaining a persistent CPU copy. Redundant
+  decoded surfaces are freed after their GPU image or big-image representation
+  exists, and the decoded image cache now has a default 256 MiB budget
+  configurable through `ONS_IMAGE_CACHE_MB`.
+- Hardware video decoding and hardware frame conversion are enabled by default
+  on all platforms unless explicitly disabled with `--hwdecoder off` or
+  `--hwconvert off`. On the local SDL3 Windows menu profile this restored the
+  YUV plane-upload path and lowered CPU compared with the temporary RGB surface
+  conversion default.
 
 ## SDL3 Default Cutover Plan
 
@@ -371,6 +391,12 @@ SDL3 source-tagged runtime telemetry:
   3.4.4 against that JPEG provider, Lua 5.4.8, and libusb 1.0.30 during a local
   UCRT64 release configure/build. The build linked without `warning:` lines and
   the updated executable was copied to `D:\Umineko Project\onscripter-ru.exe`.
+- The 2026-06-03 SDL3 main-menu resource build linked successfully and was
+  copied to `D:\Umineko Project\onscripter-ru.exe`. Main-menu screenshots and
+  CSV samples under `DerivedData\profile-submit-throttle` and
+  `DerivedData\profile-final-default-hw-on` show the visible Umineko Project
+  menu running below the original RAM/CPU targets after command-buffer
+  back-pressure and hardware conversion defaults were applied.
 
 ## Packaging Notes
 

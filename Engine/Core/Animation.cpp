@@ -14,6 +14,47 @@
 #include "Support/FileIO.hpp"
 
 #include <unistd.h>
+#include <cstring>
+#include <unordered_set>
+
+namespace {
+bool perfTelemetryEnabled() {
+	const char *value = onsSDLGetEnv("ONS_SDL3_GPU_TELEMETRY");
+	return value && *value && std::strcmp(value, "0") != 0;
+}
+
+size_t surfaceBytes(const SDL_Surface *surface) {
+	return surface ? static_cast<size_t>(surface->pitch) * surface->h : 0;
+}
+
+struct AnimationMemoryStats {
+	size_t animationCount{0};
+	size_t surfaceCount{0};
+	size_t surfaceBytes{0};
+	size_t gpuImageCount{0};
+	size_t gpuPixelBytes{0};
+	size_t bigImageCount{0};
+};
+
+void addAnimationMemory(AnimationInfo *ai, AnimationMemoryStats &stats, std::unordered_set<AnimationInfo *> &seen) {
+	if (!ai || !seen.insert(ai).second)
+		return;
+
+	++stats.animationCount;
+	if (ai->image_surface) {
+		++stats.surfaceCount;
+		stats.surfaceBytes += surfaceBytes(ai->image_surface);
+	}
+	if (ai->gpu_image) {
+		++stats.gpuImageCount;
+		stats.gpuPixelBytes += ai->gpu_image->pixels.size();
+	}
+	if (ai->big_image)
+		++stats.bigImageCount;
+
+	addAnimationMemory(ai->old_ai, stats, seen);
+}
+} // namespace
 
 int ONScripter::proceedAnimation() {
 	int minimum_duration = -1;
@@ -169,6 +210,76 @@ void ONScripter::advanceSpecificAIclocks(uint64_t ns, int i, int type, bool old_
 		advanceSpecificAIclocks(ns, i, type, true);
 }
 
+void ONScripter::printImageMemoryTelemetry(const char *context) {
+	if (!perfTelemetryEnabled())
+		return;
+
+	AnimationMemoryStats stats;
+	std::unordered_set<AnimationInfo *> seen;
+	auto add = [&](AnimationInfo &ai) {
+		addAnimationMemory(&ai, stats, seen);
+	};
+	auto addPtr = [&](AnimationInfo *ai) {
+		addAnimationMemory(ai, stats, seen);
+	};
+	auto addButtonChain = [&](ButtonLink &root) {
+		for (ButtonLink *button = root.next; button; button = button->next)
+			addPtr(button->anim);
+		addPtr(root.anim);
+	};
+
+	add(bg_info);
+	add(btndef_info);
+	add(sentence_font_info);
+	for (auto &cursor : cursor_info)
+		add(cursor);
+	for (auto &tachi : tachi_info)
+		add(tachi);
+	for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+		add(sprite_info[i]);
+		add(sprite2_info[i]);
+	}
+	for (auto *bar : bar_info)
+		addPtr(bar);
+	for (auto *prnum : prnum_info)
+		addPtr(prnum);
+	add(window_effect.anim);
+	addButtonChain(root_button_link);
+	addButtonChain(exbtn_d_button_link);
+	addButtonChain(text_button_link);
+	for (auto *queued : queueAnimationInfo)
+		addPtr(queued);
+
+	size_t cacheCount = 0;
+	size_t cacheBytes = 0;
+	{
+		Lock lock(&imageCache);
+		cacheCount = imageCache.count();
+		cacheBytes = imageCache.approximateBytes();
+	}
+
+	static size_t nextLogBytes = 256ull * 1024ull * 1024ull;
+	const size_t totalBytes = stats.surfaceBytes + cacheBytes + stats.gpuPixelBytes;
+	if (totalBytes < nextLogBytes)
+		return;
+	while (totalBytes >= nextLogBytes)
+		nextLogBytes += 256ull * 1024ull * 1024ull;
+
+	sendToLog(LogLevel::Info,
+	          "Image memory telemetry: context=%s animations=%llu surfaces=%llu surface_bytes=%llu "
+	          "gpu_images=%llu gpu_cpu_pixel_bytes=%llu big_images=%llu cache_entries=%llu cache_bytes=%llu total_bytes=%llu\n",
+	          context ? context : "unknown",
+	          static_cast<unsigned long long>(stats.animationCount),
+	          static_cast<unsigned long long>(stats.surfaceCount),
+	          static_cast<unsigned long long>(stats.surfaceBytes),
+	          static_cast<unsigned long long>(stats.gpuImageCount),
+	          static_cast<unsigned long long>(stats.gpuPixelBytes),
+	          static_cast<unsigned long long>(stats.bigImageCount),
+	          static_cast<unsigned long long>(cacheCount),
+	          static_cast<unsigned long long>(cacheBytes),
+	          static_cast<unsigned long long>(totalBytes));
+}
+
 void ONScripter::setupAnimationInfo(AnimationInfo *anim, Fontinfo *info) {
 	if (anim->gpu_image && !anim->stale_image) {
 		anim->exists = true;
@@ -280,6 +391,7 @@ void ONScripter::setupAnimationInfo(AnimationInfo *anim, Fontinfo *info) {
 	anim->deferredLoading = false;
 
 	internal_slowdown_counter += SDL_GetTicks() - st;
+	printImageMemoryTelemetry("setupAnimationInfo");
 }
 
 void ONScripter::postSetupAnimationInfo(AnimationInfo *anim) {
@@ -1575,30 +1687,28 @@ void ONScripter::buildGPUImage(AnimationInfo &ai) {
 
 		GPU_GetTarget(ai.gpu_image);
 		gpu.multiplyAlpha(ai.gpu_image);
+		GPU_DiscardImagePixels(ai.gpu_image);
 	}
 }
 
 void ONScripter::freeRedundantSurfaces(AnimationInfo &ai) {
-	// Our test for whether a surface is "redundant" is initially cautious for safety.
-	// The main concern is buttons, which require the surface for proper click handling.
-	// An LSP can be declared as a button a long time after it is initially created, so without a model rework,
-	// we must be careful not to dispose any surface that has any chance of later becoming a button.
-
 	if (!ai.image_surface) {
 		// Can't free if it doesn't exist.
 		return;
 	}
 
-	if (ai.image_surface->w < window.script_width || ai.image_surface->h < window.script_height) {
-		// It's not a huge image and might later become a button.
-		return;
-	}
-	if (ai.num_of_cells > 1) {
-		// Suspicious buttony behavior!
+	if (!ai.gpu_image && !ai.big_image) {
+		// CPU-only images still need their surface.
 		return;
 	}
 
-	// OK, surely now it's safe to free this thing.
+	if (ai.trans_mode == AnimationInfo::TRANS_STRING ||
+	    ai.type == SPRITE_SENTENCE_FONT ||
+	    ai.type == SPRITE_BUTTONS) {
+		// Text surfaces and button templates are still direct CPU consumers.
+		return;
+	}
+
 	SDL_FreeSurface(ai.image_surface);
 	ai.image_surface = nullptr;
 }

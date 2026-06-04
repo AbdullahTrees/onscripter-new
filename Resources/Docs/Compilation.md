@@ -118,6 +118,13 @@ The 2026-06-03 dependency refresh replaced IJG jpeg 9c with libjpeg-turbo
 release rebuild relinked SDL3_image against the new static JPEG provider,
 emitted no `warning:` lines, and was copied to
 `D:\Umineko Project\onscripter-ru.exe`.
+The 2026-06-03 SDL3 main-menu resource pass rebuilt successfully after adding
+SDL3_GPU command-buffer back-pressure, lazy/discardable CPU image mirrors,
+direct video-frame row uploads, decoded image-cache budgeting, redundant
+surface cleanup, and longer idle waits in the SDL event fetcher. Hardware video
+decoding and hardware format conversion now default to enabled unless
+`--hwdecoder off` or `--hwconvert off` is supplied. The final UCRT64 executable
+was copied to `D:\Umineko Project\onscripter-ru.exe` after the build.
 
 SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
 `ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,

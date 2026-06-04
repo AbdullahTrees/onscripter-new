@@ -1607,6 +1607,7 @@ void GPUBigImage::create(SDL_Surface *surface) {
 				gpu.updateImage(chunk, nullptr, surface, &tmp);
 			}
 			gpu.multiplyAlpha(chunk);
+			GPU_DiscardImagePixels(chunk);
 		} else {
 			chunk = gpu.createImage(tmp.w, tmp.h, channels);
 			GPU_GetTarget(chunk);

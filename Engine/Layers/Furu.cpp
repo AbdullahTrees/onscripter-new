@@ -281,6 +281,9 @@ char *FuruLayer::message(const char *message, int &ret_int) {
 					if (anim->image_surface != nullptr) {
 						anim->gpu_image = gpu.copyImageFromSurface(anim->image_surface);
 						anim->setImage(anim->gpu_image);
+						GPU_DiscardImagePixels(anim->gpu_image);
+						SDL_FreeSurface(anim->image_surface);
+						anim->image_surface = nullptr;
 					} else
 						sendToLog(LogLevel::Error, "Failed to load %s\n", buf[i]);
 					elements[i].setSprite(anim);
@@ -318,6 +321,9 @@ char *FuruLayer::message(const char *message, int &ret_int) {
 					if (anim->image_surface != nullptr) {
 						anim->gpu_image = gpu.copyImageFromSurface(anim->image_surface);
 						anim->setImage(anim->gpu_image);
+						GPU_DiscardImagePixels(anim->gpu_image);
+						SDL_FreeSurface(anim->image_surface);
+						anim->image_surface = nullptr;
 					} else
 						sendToLog(LogLevel::Error, "Failed to load %s\n", buf[i]);
 					elements[i].setSprite(anim);

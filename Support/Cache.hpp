@@ -21,6 +21,7 @@
 #include <string>
 #include <memory>
 #include <cassert>
+#include <cstddef>
 
 struct Wrapped_SDL_Surface {
 	SDL_Surface *surface = nullptr;
@@ -29,6 +30,9 @@ struct Wrapped_SDL_Surface {
 	    : surface(_surface), has_alpha(_has_alpha) {
 		//if (surface)
 		//	sendToLog(LogLevel::Info, "CREATE %p - %p with ref %d\n",this,surface,surface->refcount);
+	}
+	size_t memoryBytes() const {
+		return surface ? static_cast<size_t>(surface->pitch) * surface->h : 0;
 	}
 	~Wrapped_SDL_Surface() {
 		if (surface) {
@@ -88,6 +92,15 @@ public:
 	Wrapped_Mix_Chunk &operator=(const Wrapped_Mix_Chunk &other) = delete;
 };
 
+template <typename SETELEM>
+inline size_t cachedElementApproxBytes(const std::shared_ptr<SETELEM> &) {
+	return 0;
+}
+
+inline size_t cachedElementApproxBytes(const std::shared_ptr<Wrapped_SDL_Surface> &elem) {
+	return elem ? elem->memoryBytes() : 0;
+}
+
 template <typename SETELEM, typename KEY = std::string>
 class CachedSet {
 public:
@@ -95,6 +108,9 @@ public:
 	virtual void clear()                                         = 0;
 	virtual void remove(const KEY &keyname)                      = 0;
 	virtual std::shared_ptr<SETELEM> get(KEY keyname)            = 0;
+	virtual size_t count() const                                 = 0;
+	virtual size_t approxBytes() const                           = 0;
+	virtual bool evictOne()                                      = 0;
 	virtual ~CachedSet()                                         = default;
 };
 
@@ -126,6 +142,23 @@ public:
 		elemCache.resize(capacity); // make it capable of holding the original capacity again
 		                            // (lru cache has no clear() method)
 	}
+	size_t count() const {
+		return elemCache.count();
+	}
+	size_t approxBytes() const {
+		size_t bytes = 0;
+		elemCache.for_each_value([&bytes](const KEY &, const std::shared_ptr<SETELEM> &elem) {
+			bytes += cachedElementApproxBytes(elem);
+		});
+		return bytes;
+	}
+	bool evictOne() {
+		auto keys = elemCache.list();
+		if (keys.empty())
+			return false;
+		elemCache.remove(keys.back());
+		return true;
+	}
 	LRUCachedSet(int capacity)
 	    : capacity(capacity), elemCache(capacity) {}
 };
@@ -156,6 +189,21 @@ public:
 	}
 	void clear() {
 		elemCache.clear();
+	}
+	size_t count() const {
+		return elemCache.size();
+	}
+	size_t approxBytes() const {
+		size_t bytes = 0;
+		for (const auto &entry : elemCache)
+			bytes += cachedElementApproxBytes(entry.second);
+		return bytes;
+	}
+	bool evictOne() {
+		if (elemCache.empty())
+			return false;
+		elemCache.erase(elemCache.begin());
+		return true;
 	}
 	UnlimitedCachedSet() = default;
 };
@@ -211,7 +259,7 @@ public:
 		set->add(filename, elem);
 	}
 	void remove(int cacheSetNumber, const std::string &filename) {
-		if (cacheSets.count(cacheSetNumber) != 0) {
+		if (cacheSets.count(cacheSetNumber) == 0) {
 			// That set doesn't exist; cannot remove
 			return;
 		}
@@ -231,12 +279,42 @@ public:
 		}
 		return nullptr;
 	}
+	size_t count() const {
+		size_t total = 0;
+		for (const auto &number_set_pair : cacheSets)
+			total += number_set_pair.second->count();
+		return total;
+	}
+	size_t approximateBytes() const {
+		size_t total = 0;
+		for (const auto &number_set_pair : cacheSets)
+			total += number_set_pair.second->approxBytes();
+		return total;
+	}
+	bool evictOne() {
+		CachedSet<SETELEM> *largest = nullptr;
+		size_t largestBytes = 0;
+		for (auto &number_set_pair : cacheSets) {
+			const size_t bytes = number_set_pair.second->approxBytes();
+			if (bytes > largestBytes) {
+				largestBytes = bytes;
+				largest      = number_set_pair.second;
+			}
+		}
+		return largest && largest->evictOne();
+	}
 };
 
 class ImageCacheController : public CacheController<Wrapped_SDL_Surface> {
 public:
 	void add(int cacheSetNumber, const std::string &filename, const std::shared_ptr<Wrapped_SDL_Surface> &surface);
 	std::shared_ptr<Wrapped_SDL_Surface> get(const std::string &filename) override;
+
+private:
+	size_t decodedSurfaceBudgetBytes{0};
+	bool decodedSurfaceBudgetInitialized{false};
+	size_t cacheBudgetBytes();
+	void enforceBudget();
 };
 
 class SoundCacheController : public CacheController<Wrapped_Mix_Chunk> {

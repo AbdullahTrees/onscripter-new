@@ -1505,6 +1505,7 @@ private:
 	void commitVisualState();
 	void buildGPUImage(AnimationInfo &ai);
 	void freeRedundantSurfaces(AnimationInfo &ai);
+	void printImageMemoryTelemetry(const char *context);
 	void setupAnimationInfo(AnimationInfo *anim, Fontinfo *info = nullptr);
 	void postSetupAnimationInfo(AnimationInfo *anim);
 	void buildAIImage(AnimationInfo *anim);

@@ -309,6 +309,7 @@ void SDLCALL GPU_SetUniformi(int location, int value);
 void SDLCALL GPU_SetUniformf(int location, float value);
 void SDLCALL GPU_SetUniformfv(int location, int num_elements_per_value, int num_values, float *values);
 GPU_bool SDLCALL GPU_MultiplyAlpha(GPU_Image *image, const GPU_Rect *dst_clip);
+void SDLCALL GPU_DiscardImagePixels(GPU_Image *image);
 int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const char *outputPath);
 void SDLCALL GPU_PushTelemetryScope(const char *source);
 void SDLCALL GPU_PopTelemetryScope(void);
