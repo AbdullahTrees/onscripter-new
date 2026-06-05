@@ -900,7 +900,7 @@ fi
 OBJECTS="ONSCRIPTER_OBJS ="
 DEPENDCIES=""
 DIRS=()
-CMOBJECTS="$(pathautofix "${BUILD_PATH}")/onscripter-ru${EXE}"
+CMOBJECTS="$(pathautofix "${BUILD_PATH}")/onscripter-new${EXE}"
 CMOBJECTS+=";$(pathautofix "${BUILD_PATH}")/Resources/Support/Resources.cpp"
 CMOBJECTS+=";$(pathautofix "${BUILD_PATH}")/Resources/Support/Resources$OBJ"
 CMSOURCES=()
@@ -973,7 +973,7 @@ EXESUFFIX=$EXE
 PROJECT         = $PROJECT
 BUILD_PATH      = $BUILD_PATH
 PREFIX          ?= $PREFIX
-TARGET          ?= onscripter-ru
+TARGET          ?= onscripter-new
 
 ONSCRLIB        = \$(BUILD_PATH)/Dependencies
 EXTLIB          = \$(BUILD_PATH)/Dependencies/onscrlib
@@ -1047,7 +1047,7 @@ final: binary
 clean:
 	@-\$(RM) \$(EXTLIB)/.pkgs/onscrlib
 	@-\$(RM) \$(CLEANUP) \$(RCOBJECTS)
-	@-\$(RM) \$(BUILD_PATH)/\$(TARGET)\$(EXESUFFIX) \$(BUILD_PATH)/onscripter-ru\$(EXESUFFIX)
+	@-\$(RM) \$(BUILD_PATH)/\$(TARGET)\$(EXESUFFIX) \$(BUILD_PATH)/onscripter-ru\$(EXESUFFIX) \$(BUILD_PATH)/onscripter-new\$(EXESUFFIX)
 	@rm -rf \$(BUILD_PATH)/Droid-package
 	@find "\$(BUILD_PATH)/Engine" -name '*.o' -exec rm -f {} \;
 	@find "\$(BUILD_PATH)/External" -name '*.o' -exec rm -f {} \;

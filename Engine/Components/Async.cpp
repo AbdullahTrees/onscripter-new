@@ -142,7 +142,7 @@ int AsyncController::asyncLoop(AsyncInstructionQueue &queue) {
 			}
 
 			SDL_AtomicLock(&queue.lock);
-			if (!queue.quitOnEmpty)
+			if (!queue.quitOnEmpty && queue.hasQueue)
 				SDL_SemPost(queue.resultsWaiting);
 			if (threadShutdownRequested || (queue.q.empty() && queue.quitOnEmpty)) {
 				queue.thread = nullptr;

@@ -13,7 +13,7 @@
 #include <cstdlib>
 
 namespace {
-constexpr size_t DefaultDecodedImageCacheBudgetBytes = 256ULL * 1024ULL * 1024ULL;
+constexpr size_t DefaultDecodedImageCacheBudgetBytes = 64ULL * 1024ULL * 1024ULL;
 
 size_t readDecodedImageCacheBudgetBytes() {
 	const char *value = onsSDLGetEnv("ONS_IMAGE_CACHE_MB");

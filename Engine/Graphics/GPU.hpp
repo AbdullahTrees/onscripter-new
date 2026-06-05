@@ -329,6 +329,8 @@ private:
 
 	/* {program: {uniform name: location}} */
 	std::unordered_map<uint32_t, std::unordered_map<std::string, int>> uniformLocations;
+	const char *lastProgramAlias{nullptr};
+	uint32_t lastProgramId{0};
 
 public:
 	int ownInit() override;
@@ -477,7 +479,7 @@ public:
 #endif
 
 	GPURendererInfo renderers[1]{
-	    {"SDL3_GPU",
+	    {"Vulkan",
 	     &GPUController::makeRendererIdSDL3GPU,
 	     &GPUController::initRendererFlagsSDL3GPU,
 	     &GPUController::getImageFormatSDL3GPU,

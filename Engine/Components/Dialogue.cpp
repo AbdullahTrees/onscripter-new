@@ -628,11 +628,13 @@ void DialogueController::layoutLines(TextRenderingState &state) {
 
 	// Set cursor positions
 	for (auto &segment : state.segments) {
-		if (segment.getPieces().empty())
+		DialoguePiece *lastPiece{nullptr};
+		for (auto &run : segment.runs)
+			for (auto &piece : run.pieces) lastPiece = &piece;
+		if (!lastPiece)
 			continue;
-		auto &lastPiece          = *segment.getPieces().back();
-		segment.cursorPosition.x = lastPiece.position.x + lastPiece.position.w - (lastPiece.borderPadding * 2);
-		segment.cursorPosition.y = lastPiece.position.y + lastPiece.baseline;
+		segment.cursorPosition.x = lastPiece->position.x + lastPiece->position.w - (lastPiece->borderPadding * 2);
+		segment.cursorPosition.y = lastPiece->position.y + lastPiece->baseline;
 	}
 }
 
@@ -650,33 +652,34 @@ void DialogueController::getRenderingBounds(TextRenderingState &state, bool visi
 	for (auto &seg : state.segments) {
 		if (visiblePiecesOnly && &state == &dialogueRenderState && i > state.segmentIndex)
 			continue;
-		for (auto piecePtr : seg.getPieces()) {
-			DialoguePiece &piece = *piecePtr;
-			if (visiblePiecesOnly) {
-				if (piece.charRenderBuffer.empty())
-					continue;
-				RenderBufferGlyph front{piece.charRenderBuffer.front()};
-				if (!front.fadeStart.expired())
-					continue;
-			}
+		for (auto &run : seg.runs) {
+			for (auto &piece : run.pieces) {
+				if (visiblePiecesOnly) {
+					if (piece.charRenderBuffer.empty())
+						continue;
+					RenderBufferGlyph front{piece.charRenderBuffer.front()};
+					if (!front.fadeStart.expired())
+						continue;
+				}
 
-			// Update left and top edges of bounding box and stretch the length if necessary
-			if (first || piece.position.x < max.x) {
-				if (!first)
-					max.w += max.x - piece.position.x;
-				max.x = piece.position.x;
+				// Update left and top edges of bounding box and stretch the length if necessary
+				if (first || piece.position.x < max.x) {
+					if (!first)
+						max.w += max.x - piece.position.x;
+					max.x = piece.position.x;
+				}
+				if (first || piece.position.y < max.y) {
+					if (!first)
+						max.h += max.y - piece.position.y;
+					max.y = piece.position.y;
+				}
+				// Update right and bottom edges of bounding box
+				if (piece.position.x + piece.position.w > max.x + max.w)
+					max.w = piece.position.x + piece.position.w - max.x;
+				if (piece.position.y + piece.position.h > max.y + max.h)
+					max.h = piece.position.y + piece.position.h - max.y;
+				first = false;
 			}
-			if (first || piece.position.y < max.y) {
-				if (!first)
-					max.h += max.y - piece.position.y;
-				max.y = piece.position.y;
-			}
-			// Update right and bottom edges of bounding box
-			if (piece.position.x + piece.position.w > max.x + max.w)
-				max.w = piece.position.x + piece.position.w - max.x;
-			if (piece.position.y + piece.position.h > max.y + max.h)
-				max.h = piece.position.y + piece.position.h - max.y;
-			first = false;
 		}
 		i++;
 	}
@@ -946,8 +949,9 @@ void DialogueController::render(TextRenderingState &state) {
 	for (auto &seg : state.segments) {
 		if (&state == &dialogueRenderState && i > state.segmentIndex)
 			return;
-		for (auto piecePtr : seg.getPieces(true)) {
-			renderPiece(state, *piecePtr);
+		for (auto &run : seg.runs) {
+			for (auto &piece : run.pieces) renderPiece(state, piece);
+			for (auto &piece : run.rubyPieces) renderPiece(state, piece);
 		}
 		i++;
 	}
@@ -1023,14 +1027,17 @@ void DialogueController::advanceDialogueRendering(uint64_t ns) {
 
 	for (int segNo = 0; segNo <= dialogueRenderState.segmentIndex; segNo++) {
 		DialogueSegment &seg = dialogueRenderState.segments[segNo];
-		for (auto piecePtr : seg.getPieces(true)) {
-			auto &piece = *piecePtr;
+		auto tickPiece = [&](DialoguePiece &piece) {
 			for (auto &glyph : piece.charRenderBuffer) {
 				if (glyph.fadeStop.expired())
 					continue;
 				glyph.fadeStart.tickNanos(ns);
 				glyph.fadeStop.tickNanos(ns);
 			}
+		};
+		for (auto &run : seg.runs) {
+			for (auto &piece : run.pieces) tickPiece(piece);
+			for (auto &piece : run.rubyPieces) tickPiece(piece);
 		}
 	}
 
@@ -1359,14 +1366,14 @@ void DialogueController::renderAddedChars(TextRenderingState &state, DialoguePie
 		}
 
 		char16_t &codepoint = r.codepoint;
-
-		const GlyphValues *glyph = fontInfo.renderUnicodeGlyph(codepoint);
+		const GlyphValues *layoutGlyph = r.gv;
 
 		bool renderReady = (&state != &dialogueRenderState) || r.fadeStart.expired();
 
 		// For border/shadow, only do the draw if the fontInfo style says we are supposed to
 		auto &style = fontInfo.style();
 		if (renderReady && !(renderBorder && !style.is_border) && !(renderShadow && !style.is_shadow)) {
+			const GlyphValues *glyph = fontInfo.renderUnicodeGlyph(codepoint);
 			int alpha{255};
 
 			if (&state == &dialogueRenderState && !r.fadeStop.expired() && r.fadeDuration) {
@@ -1380,9 +1387,9 @@ void DialogueController::renderAddedChars(TextRenderingState &state, DialoguePie
 			                      p.horizontalResize, renderBorder, alpha);
 		}
 
-		x += r.layoutData.prevCharIndex ? fontInfo.my_font()->kerning(r.layoutData.prevCharIndex, glyph->ftCharIndexCache) : 0;
+		x += r.layoutData.prevCharIndex ? fontInfo.my_font()->kerning(r.layoutData.prevCharIndex, layoutGlyph->ftCharIndexCache) : 0;
 		x += (*fiIterator).style().character_spacing;
-		x += glyph->advance;
+		x += layoutGlyph->advance;
 		//TODO: These 3 lines are code duplication, see addCharToRenderBuffer; extract them into a float Fontinfo::getTotalAdvance(wchar_t codepoint) method.
 		// (maybe there is a better name...)
 	}

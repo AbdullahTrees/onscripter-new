@@ -756,11 +756,13 @@ void ONScripter::cleanSpritesetCache(SpritesetInfo *spriteset, bool before) {
 
 void ONScripter::setupZLevels(int refresh_mode) {
 	spriteZLevels.clear();
-	for (auto ai : sprites(SPRITE_LSP | SPRITE_LSP2, true)) {
-		auto spr = ai->oldNew(refresh_mode);
+	auto insertSprite = [&](AnimationInfo &ai) {
+		auto spr = ai.oldNew(refresh_mode);
 		if (spr->exists)
 			spriteZLevels[spr->has_z_order_override ? spr->z_order_override : spr->id].insert(spr);
-	}
+	};
+	for (int i = 0; i < MAX_SPRITE_NUM; i++) insertSprite(sprite_info[i]);
+	for (int i = 0; i < MAX_SPRITE_NUM; i++) insertSprite(sprite2_info[i]);
 }
 
 // Helper function for refreshSceneTo & refreshHudTo.

@@ -42,6 +42,7 @@ bool MediaProcController::AudioDecoder::initSwrContext(const AudioSpec &audioSpe
 void MediaProcController::AudioDecoder::processFrame(MediaFrame &vf) {
 	uint8_t *output{nullptr};
 	uint32_t outputSize{0};
+	bool retainedAudioFrame{false};
 
 	if (swrContext) {
 		int64_t out_samples = static_cast<int64_t>(av_rescale_rnd(swr_get_delay(swrContext, codecContext->sample_rate) + frame->nb_samples,
@@ -60,13 +61,24 @@ void MediaProcController::AudioDecoder::processFrame(MediaFrame &vf) {
 			channels = media.audioSpec.channels;
 		outputSize = av_samples_get_buffer_size(nullptr, channels,
 		                                        frame->nb_samples, frameFormat, 1);
-		output     = static_cast<uint8_t *>(av_malloc(outputSize));
-		std::memcpy(output, frame->data[0], outputSize);
+		AVFrame *retainedFrame = av_frame_clone(frame);
+		if (retainedFrame) {
+			output             = retainedFrame->data[0];
+			retainedAudioFrame = true;
+			vf.dataDeleter = [retainedFrame](uint8_t *d) mutable {
+				if (d)
+					av_frame_free(&retainedFrame);
+			};
+		} else {
+			output = static_cast<uint8_t *>(av_malloc(outputSize));
+			std::memcpy(output, frame->data[0], outputSize);
+		}
 	}
 	vf.data        = output;
 	vf.dataSize    = outputSize;
-	vf.dataDeleter = [](uint8_t *d) {
-		av_freep(&d);
-	};
+	if (!retainedAudioFrame)
+		vf.dataDeleter = [](uint8_t *d) {
+			av_freep(&d);
+		};
 	vf.frameNumber = ++debugFrameNumber;
 }

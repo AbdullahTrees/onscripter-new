@@ -35,7 +35,6 @@ const char REGISTRY_FILE[]    = "registry.txt";
 const char DLL_FILE[]         = "dll.txt";
 const char DEFAULT_ENV_FONT[] = "MS Gothic"; //haeleth change to use English-language font name
 
-const char DEFAULT_WM_TITLE[] = "";
 #ifdef MACOSX
 const int DEFAULT_WM_ICON_W = 128;
 const int DEFAULT_WM_ICON_H = 128;

@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -52,7 +53,8 @@ float clampVolumeFloat(float volume) {
 }
 
 float volumeToGain(float volume) {
-	return std::max(0.0f, clampVolumeFloat(volume)) / static_cast<float>(MIX_MAX_VOLUME);
+	constexpr float invMaxVolume = 1.0f / static_cast<float>(MIX_MAX_VOLUME);
+	return std::max(0.0f, clampVolumeFloat(volume)) * invMaxVolume;
 }
 
 int volumeFloatToInt(float volume) {
@@ -157,6 +159,9 @@ Mix_MusicType detectMusicType(const char *file) {
 }
 
 SDL_PropertiesID makePlayProperties(int loops, bool streamInput) {
+	if (loops == 0 && !streamInput)
+		return 0;
+
 	SDL_PropertiesID props = SDL_CreateProperties();
 	if (!props)
 		return 0;
@@ -286,11 +291,12 @@ int Mix_Volume(int channel, int volume) {
 int Mix_VolumeFloat(int channel, float volume) {
 	if (channel == -1) {
 		int previous = 0;
+		const bool setVolume = volume >= 0.0f;
+		const float clamped  = setVolume ? clampVolumeFloat(volume) : volume;
 		for (auto &state : channels) {
 			previous += volumeFloatToInt(state.volume);
-			if (volume >= 0.0f) {
-				const float clamped = clampVolumeFloat(volume);
-				state.volume        = clamped;
+			if (setVolume && state.volume != clamped) {
+				state.volume = clamped;
 				if (state.track)
 					setTrackVolume(state.track, state.volume);
 			}
@@ -304,9 +310,11 @@ int Mix_VolumeFloat(int channel, float volume) {
 	const int previous = volumeFloatToInt(state->volume);
 	if (volume >= 0.0f) {
 		const float clamped = clampVolumeFloat(volume);
-		state->volume      = clamped;
-		if (state->track)
-			setTrackVolume(state->track, state->volume);
+		if (state->volume != clamped) {
+			state->volume = clamped;
+			if (state->track)
+				setTrackVolume(state->track, state->volume);
+		}
 	}
 	return previous;
 }
@@ -319,9 +327,11 @@ int Mix_VolumeMusicFloat(float volume) {
 	const int previous = volumeFloatToInt(musicVolume);
 	if (volume >= 0.0f) {
 		const float clamped = clampVolumeFloat(volume);
-		musicVolume         = clamped;
-		if (musicTrack)
-			setTrackVolume(musicTrack, musicVolume);
+		if (musicVolume != clamped) {
+			musicVolume = clamped;
+			if (musicTrack)
+				setTrackVolume(musicTrack, musicVolume);
+		}
 	}
 	return previous;
 }
@@ -334,31 +344,50 @@ Mix_Chunk *Mix_LoadWAV_RW(SDL_RWops *src, int freesrc) {
 	if (!decoder)
 		return nullptr;
 
-	std::vector<Uint8> decoded;
 	std::vector<Uint8> buffer(64 * 1024);
+	Uint8 *decoded         = nullptr;
+	size_t decodedSize     = 0;
+	size_t decodedCapacity = 0;
 	for (;;) {
 		const int bytes = MIX_DecodeAudio(decoder, buffer.data(), static_cast<int>(buffer.size()), &mixerSpec);
 		if (bytes < 0) {
+			SDL_free(decoded);
 			MIX_DestroyAudioDecoder(decoder);
 			return nullptr;
 		}
 		if (bytes == 0)
 			break;
-		decoded.insert(decoded.end(), buffer.begin(), buffer.begin() + bytes);
+		const size_t required = decodedSize + static_cast<size_t>(bytes);
+		if (required > static_cast<size_t>(std::numeric_limits<Uint32>::max())) {
+			SDL_free(decoded);
+			MIX_DestroyAudioDecoder(decoder);
+			return nullptr;
+		}
+		if (required > decodedCapacity) {
+			size_t newCapacity = std::max(required, decodedCapacity ? decodedCapacity * 2 : buffer.size());
+			newCapacity        = std::min(newCapacity, static_cast<size_t>(std::numeric_limits<Uint32>::max()));
+			void *newDecoded   = SDL_realloc(decoded, newCapacity);
+			if (!newDecoded) {
+				SDL_free(decoded);
+				MIX_DestroyAudioDecoder(decoder);
+				return nullptr;
+			}
+			decoded         = static_cast<Uint8 *>(newDecoded);
+			decodedCapacity = newCapacity;
+		}
+		std::memcpy(decoded + decodedSize, buffer.data(), static_cast<size_t>(bytes));
+		decodedSize = required;
 	}
 	MIX_DestroyAudioDecoder(decoder);
 
-	if (decoded.empty())
-		return nullptr;
-
-	Mix_Chunk *chunk = new Mix_Chunk();
-	chunk->alen      = static_cast<Uint32>(decoded.size());
-	chunk->abuf      = static_cast<Uint8 *>(SDL_malloc(chunk->alen));
-	if (!chunk->abuf) {
-		delete chunk;
+	if (decodedSize == 0) {
+		SDL_free(decoded);
 		return nullptr;
 	}
-	std::memcpy(chunk->abuf, decoded.data(), decoded.size());
+
+	Mix_Chunk *chunk = new Mix_Chunk();
+	chunk->alen      = static_cast<Uint32>(decodedSize);
+	chunk->abuf      = decoded;
 	chunk->allocated = 1;
 	chunk->audio     = MIX_LoadRawAudioNoCopy(mixer, chunk->abuf, chunk->alen, &mixerSpec, false);
 	if (!chunk->audio) {

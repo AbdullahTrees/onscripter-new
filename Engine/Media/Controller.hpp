@@ -48,12 +48,14 @@ public:
 		uint8_t *data{nullptr};
 		uint8_t *planes[4]{};
 		size_t planesCnt{0};
+		AVFrame *avFrame{nullptr};
 		int linesize[AV_NUM_DATA_POINTERS]{};
 		uint32_t dataSize{0};
 		bool isLastFrame{false};
 		int64_t frameNumber{0};
 		uint64_t msTimeStamp{0};
 		AVPixelFormat srcFormat{AV_PIX_FMT_NONE};
+		bool ownsPlanes{true};
 		static inline void defaultDeleter(uint8_t arr[]) {
 			delete[] arr;
 		}
@@ -241,6 +243,7 @@ protected:
 		AVPixelFormat imageConvertSourceFormat{AV_PIX_FMT_NONE}; // updated on creation
 		SwsContext *imageConvertContext{nullptr};                // ff sws context (initial scaling)
 		AVFrame *tempFrame{nullptr};
+		bool directPlaneConversion{false};
 
 	protected:
 		bool initSwsContext(int dstW, int dstH, const AVPixelFormat *format = nullptr, bool forHardware = true);
@@ -299,8 +302,10 @@ private:
 	// These limits may not cover possible nullptrs, since they have minimal size
 #if defined(DROID) || defined(IOS)
 	static constexpr size_t VideoPacketBufferSize = 12;
+	static constexpr size_t VideoFrameBufferSize  = 8;
 #else
 	static constexpr size_t VideoPacketBufferSize = 25;
+	static constexpr size_t VideoFrameBufferSize  = 12;
 #endif
 	static constexpr size_t AudioPacketBufferSize = VideoPacketBufferSize * 2;
 

@@ -3364,7 +3364,8 @@ int ONScripter::cellCommand() {
 }
 
 int ONScripter::captionCommand() {
-	script_h.setStr(&wm_title_string, script_h.readStr());
+	script_h.readStr();
+	script_h.setStr(&wm_title_string, DEFAULT_WM_TITLE);
 	window.setTitle(wm_title_string);
 
 	return RET_CONTINUE;

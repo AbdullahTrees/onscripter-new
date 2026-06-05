@@ -117,6 +117,8 @@ RenderTarget *GPUController::rendererInit(RenderWindowFlags SDL_flags) {
 	it = ons.ons_cfg_options.find("prefer-renderer");
 	if (it != ons.ons_cfg_options.end())
 		preferred = it->second;
+	if (preferred == "SDL3_GPU")
+		preferred = "Vulkan";
 
 	size_t rendererPasses = 1 + !preferred.empty();
 
@@ -125,7 +127,8 @@ RenderTarget *GPUController::rendererInit(RenderWindowFlags SDL_flags) {
 
 	for (size_t i = 0; i < rendererPasses; i++) {
 		for (auto &renderer : renderers) {
-			if (blacklisted.find(renderer.name) != std::string::npos) {
+			if (blacklisted.find(renderer.name) != std::string::npos ||
+			    (std::string(renderer.name) == "Vulkan" && blacklisted.find("SDL3_GPU") != std::string::npos)) {
 				sendToLog(LogLevel::Info, "Skipping blacklisted %s renderer\n", renderer.name);
 				continue;
 			}
@@ -371,14 +374,25 @@ void GPUController::setShaderProgram(const char *programAlias) {
 	/* Flush before setting */
 	GPU_FlushBlitBuffer();
 
-	auto p = programs.find(std::string(programAlias));
-	if (p == programs.end()) {
+	uint32_t programId = 0;
+	if (lastProgramAlias == programAlias) {
+		programId = lastProgramId;
+	} else {
+		auto p = programs.find(std::string(programAlias));
+		if (p != programs.end()) {
+			programId        = p->second;
+			lastProgramAlias = programAlias;
+			lastProgramId    = programId;
+		}
+	}
+
+	if (programId == 0) {
 		sendToLog(LogLevel::Error, "Shader program '%s' not found. Using fixed pipeline.\n", programAlias);
 		unsetShaderProgram(); // No shader found.
 		return;
 	}
 
-	currentProgram              = p->second;
+	currentProgram                = programId;
 	RenderShaderBlock shaderBlock = GPU_LoadShaderBlock(currentProgram, "gpu_Vertex", "gpu_TexCoord", "gpu_Color", "gpu_ModelViewProjectionMatrix");
 	GPU_ActivateShaderProgram(currentProgram, &shaderBlock);
 	//sendToLog(LogLevel::Info, "current_program %d %d\n",currentProgram,GPU_GetContextTarget()->context->current_shader_program);

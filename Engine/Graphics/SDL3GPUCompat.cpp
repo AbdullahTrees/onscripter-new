@@ -2149,10 +2149,13 @@ bool ensureImageTextureInitialized(GPU_Image *image) {
 }
 
 Uint32 reusableBufferCapacity(Uint32 size) {
-	Uint32 capacity = 4096;
-	while (capacity < size && capacity <= (UINT32_MAX / 2))
-		capacity *= 2;
-	return std::max(capacity, size);
+	constexpr Uint32 MinimumCapacity = 4096;
+	constexpr Uint32 Alignment       = 256 * 1024;
+	if (size <= MinimumCapacity)
+		return MinimumCapacity;
+	if (size > UINT32_MAX - (Alignment - 1))
+		return size;
+	return alignUp(size, Alignment);
 }
 
 Uint32 textureUploadPitchBytes(const GPU_Image *image, Uint32 rowBytes) {
@@ -2253,11 +2256,15 @@ bool uploadImageRows(GPU_Image *image,
 		return false;
 
 	auto *dst = static_cast<Uint8 *>(mapped);
-	for (int y = 0; y < bounds.h; ++y) {
-		Uint8 *dstRow = dst + static_cast<size_t>(y) * uploadPitch;
-		std::memcpy(dstRow, rows + static_cast<size_t>(y) * sourcePitch, rowBytes);
-		if (uploadPitch > rowBytes)
-			std::memset(dstRow + rowBytes, 0, uploadPitch - rowBytes);
+	if (sourcePitch == rowBytes && uploadPitch == rowBytes) {
+		std::memcpy(dst, rows, static_cast<size_t>(rowBytes) * bounds.h);
+	} else {
+		for (int y = 0; y < bounds.h; ++y) {
+			Uint8 *dstRow = dst + static_cast<size_t>(y) * uploadPitch;
+			std::memcpy(dstRow, rows + static_cast<size_t>(y) * sourcePitch, rowBytes);
+			if (uploadPitch > rowBytes)
+				std::memset(dstRow + rowBytes, 0, uploadPitch - rowBytes);
+		}
 	}
 	SDL_UnmapGPUTransferBuffer(rendererState.device, textureUploadBuffer.transfer);
 
@@ -2414,10 +2421,13 @@ bool downloadImage(GPU_Image *image, const char *telemetrySource = "ensure_pixel
 		return false;
 
 	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, textureDownloadBuffer.transfer, false);
-	if (!mapped)
+	if (!mapped) {
+		releaseReusableTransferBuffer(textureDownloadBuffer);
 		return false;
+	}
 	std::memcpy(image->pixels.data(), mapped, image->pixels.size());
 	SDL_UnmapGPUTransferBuffer(rendererState.device, textureDownloadBuffer.transfer);
+	releaseReusableTransferBuffer(textureDownloadBuffer);
 	noteReadback(downloadSize, telemetrySource);
 	image->pixels_dirty = false;
 	image->pixels_solid = false;
@@ -4626,10 +4636,13 @@ bool downloadImageToSurface(GPU_Image *image, SDL_Surface *surface) {
 		return false;
 
 	void *mapped = SDL_MapGPUTransferBuffer(rendererState.device, textureDownloadBuffer.transfer, false);
-	if (!mapped)
+	if (!mapped) {
+		releaseReusableTransferBuffer(textureDownloadBuffer);
 		return false;
+	}
 	const bool copied = copyImageRowsToSurface(image, surface, static_cast<const Uint8 *>(mapped));
 	SDL_UnmapGPUTransferBuffer(rendererState.device, textureDownloadBuffer.transfer);
+	releaseReusableTransferBuffer(textureDownloadBuffer);
 	if (copied)
 		noteReadback(downloadSize, "copy_surface_from_image");
 	return copied;

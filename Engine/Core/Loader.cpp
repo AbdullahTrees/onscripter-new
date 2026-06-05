@@ -71,7 +71,7 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 
 [[noreturn]] static void optionHelp() {
 	FileIO::prepareConsole(150, 30);
-	printf("Usage: onscripter-ru [option ...]\n");
+	printf("Usage: onscripter-new [option ...]\n");
 	printf("     --cdaudio                    use CD audio if available\n");
 #ifdef WIN32
 	printf("     --waveout-audio              use the windows waveform audio driver (instead of Direct Sound)\n");
@@ -114,7 +114,7 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 	printf("     --audiodriver dev            set the SDL_AUDIODRIVER to dev\n");
 	printf("     --audiobuffer size           set the audio buffer size in kB (default: 2)\n");
 	printf("     --audioformat format         set the audio format (choose from s8, u8, s16, u16, s32, f32)\n");
-	printf("     --renderer-blacklist list    comma-separated list of disabled renderers (choose from SDL3_GPU)\n");
+	printf("     --renderer-blacklist list    comma-separated list of disabled renderers (choose from Vulkan)\n");
 	printf("     --prefer-renderer name       try using this renderer first of all\n");
 	printf("     --force-vsync                forces vsync (default on Windows)\n");
 	printf("     --try-late-swap              tries late swap vsync mode (default on other OS)\n");

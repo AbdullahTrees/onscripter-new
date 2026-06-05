@@ -41,7 +41,10 @@ MediaProcController::MediaFrame::~MediaFrame() {
 	}
 
 	dataDeleter(data);
-	for (auto &p : planes) freearr(&p);
+	if (avFrame)
+		av_frame_free(&avFrame);
+	if (ownsPlanes)
+		for (auto &p : planes) freearr(&p);
 
 	planesCnt = 0;
 	srcFormat = AV_PIX_FMT_NONE;
@@ -171,7 +174,7 @@ bool MediaProcController::loadVideo(const char *filename, unsigned audioStream, 
 		return false;
 	}
 
-	frameQueueSem[VideoEntry] = SDL_CreateSemaphore(VideoPacketBufferSize);
+	frameQueueSem[VideoEntry] = SDL_CreateSemaphore(VideoFrameBufferSize);
 	frameQueueSem[AudioEntry] = SDL_CreateSemaphore(AudioPacketBufferSize);
 
 	frameQueuemutex[VideoEntry] = SDL_CreateMutex();
@@ -204,7 +207,8 @@ bool MediaProcController::loadPresentation(const RenderRect &rect, bool loop) {
 		imagePool         = std::make_unique<TempImagePool>();
 		imagePool->size.x = rect.w;
 		imagePool->size.y = alphaMasked ? rect.h * 2 : rect.h;
-		imagePool->addImages(VideoPacketBufferSize);
+		if (!vdec->directPlaneConversion)
+			imagePool->addImages(VideoFrameBufferSize);
 
 		initVideoTimecodesLock = SDL_CreateSemaphore(0);
 		async.loadPacketArrays();
@@ -445,6 +449,15 @@ void MediaProcController::processSubsData(char *data, size_t length) {
 void MediaProcController::applySubtitles(MediaFrame &frame) {
 	SDL_mutexP(subtitleMutex);
 	if (hasStream(SubsEntry)) {
+		if (frame.avFrame && frame.srcFormat != AV_PIX_FMT_NONE) {
+			if (av_frame_make_writable(frame.avFrame) < 0) {
+				sendToLog(LogLevel::Warn, "Unable to make decoded video frame writable for subtitles\n");
+				SDL_mutexV(subtitleMutex);
+				return;
+			}
+			for (size_t i = 0; i < sizeof(frame.planes) / sizeof(*frame.planes); i++)
+				frame.planes[i] = frame.avFrame->data[i];
+		}
 		static_cast<SubtitleDecoder *>(decoders[SubsEntry].get())->processFrame(frame);
 	}
 	SDL_mutexV(subtitleMutex);
@@ -650,7 +663,7 @@ std::unique_ptr<MediaProcController::MediaFrame> MediaProcController::advanceVid
 		}
 	}
 
-	assert(frame->surface != nullptr);
+	assert(frame && (frame->surface != nullptr || frame->planesCnt > 0));
 
 	return frame;
 }

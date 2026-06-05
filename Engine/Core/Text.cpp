@@ -526,6 +526,9 @@ void ONScripter::resetGlyphCache() {
 }
 
 void ONScripter::renderGlyphValues(const GlyphValues &values, RenderRect *dst_clip, TextRenderingState::TextRenderingDst dst, float x, float y, float r, bool render_border, int alpha) {
+	if (alpha <= 0)
+		return;
+
 	RenderImage *coloured_glyph{nullptr};
 	RenderRect *src_rect{nullptr};
 	if ((!render_border && values.glyph_pos.has()) || (render_border && values.border_pos.has())) {

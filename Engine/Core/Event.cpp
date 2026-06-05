@@ -124,12 +124,12 @@ static std::atomic<bool> eventsArrived{false};
 static SDL_SpinLock fetchedEventQueueLock{0};
 
 void ONScripter::flushEvent() {
-	std::unique_ptr<SDL_Event> event;
+	SDL_Event event{};
 
 	while (!localEventQueue.empty() || updateEventQueue()) {
-		event = std::move(localEventQueue.back());
+		event = localEventQueue.back();
 		localEventQueue.pop_back();
-		flushEventSub(*event);
+		flushEventSub(event);
 	}
 }
 
@@ -137,16 +137,16 @@ void ONScripter::handleSDLEvents() {
 	updateEventQueue();
 
 	// Process some checks before returning from runEventLoop (at least automode/voicewait related)
-	auto event       = std::make_unique<SDL_Event>();
-	event->type      = ONS_UPKEEP_EVENT;
-	event->user.code = -1;
-	localEventQueue.emplace_front(std::move(event));
+	SDL_Event event{};
+	event.type      = ONS_UPKEEP_EVENT;
+	event.user.code = -1;
+	localEventQueue.emplace_front(event);
 
 	// Make sure we return from runEventLoop when we run out of events
-	event            = std::make_unique<SDL_Event>();
-	event->type      = ONS_EVENT_BATCH_END;
-	event->user.code = -1;
-	localEventQueue.emplace_front(std::move(event));
+	event           = SDL_Event{};
+	event.type      = ONS_EVENT_BATCH_END;
+	event.user.code = -1;
+	localEventQueue.emplace_front(event);
 
 	runEventLoop();
 
@@ -160,7 +160,7 @@ bool ONScripter::takeEventsOut(uint32_t type) {
 	auto it = localEventQueue.begin();
 	bool has{false};
 	while (it != localEventQueue.end()) {
-		if ((*it)->type == type) {
+		if (it->type == type) {
 			it  = localEventQueue.erase(it);
 			has = true;
 		} else
@@ -191,9 +191,9 @@ bool ONScripter::updateEventQueue() {
 void ONScripter::fetchEventsToQueue() {
 	uint32_t lastTimeStamp{0};
 
-	auto pushEvent = [this](std::unique_ptr<SDL_Event> &event) {
+	auto pushEvent = [this](const SDL_Event &event) {
 		SDL_AtomicLock(&fetchedEventQueueLock);
-		fetchedEventQueue.emplace_front(std::move(event));
+		fetchedEventQueue.emplace_front(event);
 		eventsArrived.store(true, std::memory_order_release);
 		SDL_AtomicUnlock(&fetchedEventQueueLock);
 	};
@@ -206,48 +206,46 @@ void ONScripter::fetchEventsToQueue() {
 				//			fingerEvent->common.timestamp, lastTimeStamp, SDL_GetTicks());
 				if (force || fingerEvent->common.timestamp + MAX_TOUCH_TAP_TIMESPAN <
 				                 (lastTimeStamp == 0 ? (lastTimeStamp = SDL_GetTicks()) : lastTimeStamp)) {
-					pushEvent(fingerEvent);
+					pushEvent(*fingerEvent);
+					fingerEvent.reset();
 				}
 			}
 		}
 	};
 
-	auto event = std::make_unique<SDL_Event>();
-	std::unique_ptr<SDL_Event> tmp_event;
+	SDL_Event event{};
+	SDL_Event tmp_event{};
 
-	while (SDL_WaitEventTimeout(event.get(), EVENT_QUEUE_IDLE_WAIT_MS)) {
+	while (SDL_WaitEventTimeout(&event, EVENT_QUEUE_IDLE_WAIT_MS)) {
 		// ignore continuous SDL_MOUSEMOTION
-		while (event->type == SDL_MOUSEMOTION) {
-			if (!tmp_event)
-				tmp_event = std::make_unique<SDL_Event>();
-			if (SDL_PeepEvents(tmp_event.get(), 1, SDL_PEEKEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT) == 0)
+		while (event.type == SDL_MOUSEMOTION) {
+			if (SDL_PeepEvents(&tmp_event, 1, SDL_PEEKEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT) == 0)
 				break;
-			if (tmp_event->type != SDL_MOUSEMOTION)
+			if (tmp_event.type != SDL_MOUSEMOTION)
 				break;
-			SDL_PeepEvents(tmp_event.get(), 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT);
-			*event = *tmp_event;
+			SDL_PeepEvents(&tmp_event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT);
+			event = tmp_event;
 		}
 
 		// group finger events
 		bool queueEmpty{false};
-		while (event->type == SDL_FINGERDOWN || event->type == SDL_FINGERUP) {
-			auto &finger = event->type == SDL_FINGERUP ? fingerEvents[1] : fingerEvents[0];
+		while (event.type == SDL_FINGERDOWN || event.type == SDL_FINGERUP) {
+			auto &finger = event.type == SDL_FINGERUP ? fingerEvents[1] : fingerEvents[0];
 			//sendToLog(LogLevel::Error, "Found finger %s event %d from %lld (%f, %f, %f, %f, %f) current %d has %d fingers\n",
 			//			event->type == SDL_FINGERUP ? "up" : "down",
 			//			event->common.timestamp, event->tfinger.touchId, event->tfinger.x, event->tfinger.y,
 			//			event->tfinger.dx, event->tfinger.dy, event->tfinger.pressure,
 			//			finger ? finger->common.timestamp : -1, finger ? (uint32_t)onsTouchFingerId(finger->tfinger) : 0);
-			if (finger && finger->common.timestamp + MAX_TOUCH_TAP_TIMESPAN >= event->common.timestamp) {
+			if (finger && finger->common.timestamp + MAX_TOUCH_TAP_TIMESPAN >= event.common.timestamp) {
 				onsTouchFingerId(finger->tfinger)++;
 			} else {
 				if (finger)
 					pushFingerEvents(true);
-				finger = std::move(event);
-				event.reset(new SDL_Event);
+				finger = std::make_unique<SDL_Event>(event);
 				onsTouchFingerId(finger->tfinger) = 1;
 			}
 
-			if (SDL_PeepEvents(event.get(), 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT) <= 0) {
+			if (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT) <= 0) {
 				queueEmpty = true;
 				break;
 			}
@@ -256,9 +254,8 @@ void ONScripter::fetchEventsToQueue() {
 		if (!queueEmpty) {
 			//sendToLog(LogLevel::Error, "Updating from %d last timestamp with %d current %d\n",
 			//			event->type, event->common.timestamp, SDL_GetTicks());
-			lastTimeStamp = event->common.timestamp;
+			lastTimeStamp = event.common.timestamp;
 			pushEvent(event);
-			event.reset(new SDL_Event);
 		}
 	}
 
@@ -648,9 +645,9 @@ bool ONScripter::touchEvent(SDL_Event &event, EventProcessingState &state) {
 		return false;
 #else
 		auto sendKeyEvent = [this](SDL_Scancode c) {
-			auto k                    = new SDL_Event;
-			onsKeyboardScancode(k->key) = c;
-			k->type                   = SDL_KEYUP;
+			SDL_Event k{};
+			onsKeyboardScancode(k.key) = c;
+			k.type                     = SDL_KEYUP;
 			localEventQueue.emplace_front(k);
 		};
 
@@ -1442,11 +1439,12 @@ ONScripter::EventProcessingState::EventProcessingState(unsigned int _handler) {
 void ONScripter::runEventLoop() {
 	Lock lock(&ons.registeredCRActions);
 
-	std::unique_ptr<SDL_Event> event;
+	SDL_Event eventStorage{};
+	SDL_Event *event = &eventStorage;
 	bool started_in_automode = automode_flag;
 
 	while (true) {
-		event = std::move(localEventQueue.back());
+		*event = localEventQueue.back();
 		localEventQueue.pop_back();
 
 		endOfEventBatch = false;

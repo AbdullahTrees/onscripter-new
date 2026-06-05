@@ -142,12 +142,14 @@ long double MediaProcController::VideoDecoder::getVideoFramerate(bool &isVFR, bo
 
 bool MediaProcController::VideoDecoder::initSwsContext(int dstW, int dstH, const AVPixelFormat *format, bool forHardware) {
 	deinitSwsContext();
+	directPlaneConversion = false;
 
 	if (!format)
 		format = &codecContext->pix_fmt;
 
 	// Initially allow trying hardware converter
-	if (!forHardware && imageConvertSourceFormat == AV_PIX_FMT_NONE && HardwareDecoderIFace::isFormatHWConverted(*format)) {
+	if (media.hardwareConversion && !forHardware && imageConvertSourceFormat == AV_PIX_FMT_NONE && HardwareDecoderIFace::isFormatHWConverted(*format)) {
+		directPlaneConversion = true;
 		return true;
 	}
 
@@ -184,7 +186,7 @@ bool MediaProcController::VideoDecoder::initSwsContext(int dstW, int dstH, const
 void MediaProcController::VideoDecoder::deinitSwsContext() {
 	if (imageConvertContext) {
 		sws_freeContext(imageConvertContext);
-		//imageConvertContext = nullptr;
+		imageConvertContext = nullptr;
 	}
 }
 
@@ -201,43 +203,64 @@ bool MediaProcController::VideoDecoder::initTiming(int64_t /*duration*/) {
 }
 
 void MediaProcController::VideoDecoder::processFrame(MediaFrame &vf) {
-	if (HardwareDecoderIFace::process(frame, tempFrame)) {
-		SDL_Surface *workingSurface = media.imagePool->getImage();
+	AVFrame *decodedFrame = HardwareDecoderIFace::process(frame, tempFrame);
+	if (decodedFrame) {
+		const auto frameFormat = static_cast<AVPixelFormat>(decodedFrame->format);
 
-		uint8_t *data[]{static_cast<uint8_t *>(workingSurface->pixels)};
-		int linesize[]{workingSurface->pitch};
-
-		if (imageConvertSourceFormat != frame->format) {
+		if (imageConvertSourceFormat != frameFormat) {
 			/* Check if we can use shader later on for conversion */
-			if (media.hardwareConversion && HardwareDecoderIFace::isFormatHWConverted(static_cast<AVPixelFormat>(frame->format))) {
-
-				for (size_t i = 0; frame->data[i]; i++) {
-					AVBufferRef *buf = av_frame_get_plane_buffer(frame, static_cast<int>(i));
-					vf.planes[i]     = new uint8_t[buf->size];
-					std::memcpy(vf.planes[i], buf->data, buf->size);
-					vf.planesCnt++;
+			if (media.hardwareConversion && HardwareDecoderIFace::isFormatHWConverted(frameFormat)) {
+				vf.avFrame = av_frame_alloc();
+				if (vf.avFrame && av_frame_ref(vf.avFrame, decodedFrame) >= 0) {
+					vf.ownsPlanes = false;
+					for (size_t i = 0; i < sizeof(vf.planes) / sizeof(*vf.planes) && vf.avFrame->data[i]; i++) {
+						vf.planes[i] = vf.avFrame->data[i];
+						vf.planesCnt++;
+					}
+				} else {
+					if (vf.avFrame)
+						av_frame_free(&vf.avFrame);
+					for (size_t i = 0; i < sizeof(vf.planes) / sizeof(*vf.planes) && decodedFrame->data[i]; i++) {
+						AVBufferRef *buf = av_frame_get_plane_buffer(decodedFrame, static_cast<int>(i));
+						if (!buf)
+							break;
+						vf.planes[i] = new uint8_t[buf->size];
+						std::memcpy(vf.planes[i], buf->data, buf->size);
+						vf.planesCnt++;
+					}
 				}
 
-				vf.srcFormat = static_cast<AVPixelFormat>(frame->format);
-				vf.dataSize  = codecContext->height;
-				std::memcpy(vf.linesize, frame->linesize, AV_NUM_DATA_POINTERS * sizeof(int));
+				if (vf.planesCnt > 0) {
+					vf.srcFormat = frameFormat;
+					vf.dataSize  = decodedFrame->height;
+					std::memcpy(vf.linesize, decodedFrame->linesize, AV_NUM_DATA_POINTERS * sizeof(int));
+				} else {
+					initSwsContext(media.imagePool->size.x, media.imagePool->size.y, &frameFormat);
+					vf.srcFormat = AV_PIX_FMT_NONE;
+				}
 			}
 
 			/* If we can't, fall back to sws */
 			else {
-				initSwsContext(workingSurface->w, workingSurface->h, reinterpret_cast<AVPixelFormat *>(&frame->format));
+				initSwsContext(media.imagePool->size.x, media.imagePool->size.y, &frameFormat);
 				vf.srcFormat = AV_PIX_FMT_NONE;
 			}
 		}
 
-		if (vf.srcFormat == AV_PIX_FMT_NONE)
+		if (vf.srcFormat == AV_PIX_FMT_NONE) {
+			SDL_Surface *workingSurface = media.imagePool->getImage();
+			uint8_t *data[]{static_cast<uint8_t *>(workingSurface->pixels)};
+			int linesize[]{workingSurface->pitch};
+
 			sws_scale(imageConvertContext,
-			          frame->data,
-			          frame->linesize,
-			          0, codecContext->height,
+			          decodedFrame->data,
+			          decodedFrame->linesize,
+			          0, decodedFrame->height,
 			          data, linesize);
 
-		vf.surface     = workingSurface;
+			vf.surface = workingSurface;
+		}
+
 		vf.frameNumber = ++debugFrameNumber;
 		vf.msTimeStamp = std::round(debugFrameNumber * nanosPerFrame / 1000000); //pts*/
 	} else {

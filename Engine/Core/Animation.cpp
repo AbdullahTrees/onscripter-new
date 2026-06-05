@@ -1147,6 +1147,7 @@ void ONScripter::drawBigImage(RenderTarget *target, AnimationInfo *info, int /*r
 	}
 
 	RenderImage *sprite_transformation_image{nullptr};
+	bool needs_sprite_transformation_image{false};
 	RenderRect sourceClip = info->pos;
 
 	if (scale_x == 1 && scale_y == 1) {
@@ -1161,7 +1162,7 @@ void ONScripter::drawBigImage(RenderTarget *target, AnimationInfo *info, int /*r
 		sourceClip.x += cell_off_x;
 		sourceClip.y += cell_off_y;
 	} else if (scale_x >= 1 && scale_y >= 1) {
-		sprite_transformation_image = gpu.getCanvasImage();
+		needs_sprite_transformation_image = true;
 
 		// we have script coordinates in bounding_rect, containing the area a scaled image covers
 		// we have a relatively small temp image (smaller than BigImage) we need to fit our unscaled area in
@@ -1224,6 +1225,9 @@ void ONScripter::drawBigImage(RenderTarget *target, AnimationInfo *info, int /*r
 		return;
 	}
 
+	if (needs_sprite_transformation_image)
+		sprite_transformation_image = gpu.getCanvasImage();
+
 	// Switch to canvas (dst) coords
 	targetClip.x += camera.center_pos.x;
 	targetClip.y += camera.center_pos.y;
@@ -1254,7 +1258,7 @@ void ONScripter::drawBigImage(RenderTarget *target, AnimationInfo *info, int /*r
 		} else {
 			if (allowDirectCopy)
 				GPU_SetBlending(chunk.first, false);
-			if (info->trans <= 255)
+			if (info->trans < 255)
 				GPU_SetRGBA(chunk.first, info->trans, info->trans, info->trans, info->trans);
 			gpu.copyGPUImage(chunk.first, nullptr, &targetClip, target,
 			                 x + camera.center_pos.x + bounding_rect.x - cell_off_x,
@@ -1262,18 +1266,18 @@ void ONScripter::drawBigImage(RenderTarget *target, AnimationInfo *info, int /*r
 			                 1, 1, 0, centre_coordinates);
 			if (allowDirectCopy)
 				GPU_SetBlending(chunk.first, true);
-			if (info->trans <= 255)
+			if (info->trans < 255)
 				GPU_SetRGBA(chunk.first, 255, 255, 255, 255);
 		}
 	}
 
 	if (sprite_transformation_image) {
-		if (info->trans <= 255)
+		if (info->trans < 255)
 			GPU_SetRGBA(sprite_transformation_image, info->trans, info->trans, info->trans, info->trans);
 		gpu.copyGPUImage(sprite_transformation_image, nullptr, &targetClip, target,
 		                 sprite_transformation_image->w / 2.0 * scale_x, sprite_transformation_image->h / 2.0 * scale_y,
 		                 scale_x, scale_y, 0, centre_coordinates);
-		if (info->trans <= 255)
+		if (info->trans < 255)
 			GPU_SetRGBA(sprite_transformation_image, 255, 255, 255, 255);
 	}
 
@@ -1364,24 +1368,23 @@ void ONScripter::drawToGPUTarget(RenderTarget *target, AnimationInfo *info, int 
 		}
 	}
 
-	if (needTransformationImage) {
-		sprite_transformation_image = gpu.getCanvasImage();
-	}
-
 	// going to support sprite_transformation_image on special scrollables i think, should be no extra effort
 	if (info->scrollableInfo.isSpecialScrollable) {
-		if (sprite_transformation_image)
+		if (needTransformationImage)
 			errorAndExit("Cannot transform a SpecialScrollable");
 		drawSpecialScrollable(target, info, refresh_mode, &real_clip);
 		return;
 	}
 	if (info->is_big_image && info->big_image.get()) {
-		if (sprite_transformation_image)
+		if (needTransformationImage)
 			errorAndExit("Cannot transform a BigImage");
 		drawBigImage(target, info, refresh_mode, clip, centre_coordinates);
 		return;
 	}
 	if (info->layer_no >= 0 && info->trans_mode == AnimationInfo::TRANS_LAYER) {
+		if (needTransformationImage)
+			sprite_transformation_image = gpu.getCanvasImage();
+
 		auto handler      = getLayer<Layer>(info->layer_no, false);
 		auto layer_target = target;
 		auto mode         = handler->blendingMode(refresh_mode);
@@ -1400,6 +1403,9 @@ void ONScripter::drawToGPUTarget(RenderTarget *target, AnimationInfo *info, int 
 	} else {
 		if (!info->gpu_image)
 			return;
+
+		if (needTransformationImage)
+			sprite_transformation_image = gpu.getCanvasImage();
 
 		src = info->gpu_image;
 

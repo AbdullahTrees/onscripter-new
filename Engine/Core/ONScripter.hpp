@@ -65,6 +65,8 @@ const int DEFAULT_AUDIO_RATE = 48000;
 const int DEFAULT_AUDIOBUF   = 2048;
 const int DEFAULT_FPS        = 30;
 
+static constexpr const char *DEFAULT_WM_TITLE = "Umineko no Naku Koro ni: ~Rondo of the Witch and Reasoning~";
+
 const int ONS_MIX_CHANNELS = 50;
 
 enum {
@@ -170,7 +172,7 @@ public:
 		png_mask_type = mask_type;
 	}
 
-	std::list<std::unique_ptr<SDL_Event>> localEventQueue, fetchedEventQueue;
+	std::list<SDL_Event> localEventQueue, fetchedEventQueue;
 	bool takeEventsOut(uint32_t type);
 	bool updateEventQueue();
 	void fetchEventsToQueue();

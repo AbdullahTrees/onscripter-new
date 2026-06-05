@@ -1,7 +1,7 @@
 # Dependency Audit and Modernization Plan
 
 Date: 2026-05-31
-Updated: 2026-06-03
+Updated: 2026-06-04
 
 This document is the current dependency and renderer modernization status for
 `onscripter-new`. It is intentionally kept as a clean status record, not a
@@ -25,6 +25,35 @@ complete investigation log.
   previous multi-gigabyte private/working-set spike to sub-1 GB steady-state
   samples, with Task Manager working-set observations around 410-526 MB and
   steady CPU samples around 4-4.5% while the menu video was visible.
+- The 2026-06-04 video decode resource pass removes the per-frame YUV/NV12
+  plane heap copy on the direct shader-conversion path, reduces decoded
+  ready-frame buffering independently from packet buffering, avoids RGB staging
+  surface preallocation when direct YUV conversion is selected, and frees
+  transient video plane/mask GPU images at playback teardown.
+- The follow-up 2026-06-04 CPU audit pass reduces steady-state allocation and
+  lookup overhead in the event queue, temporary image/loader pools,
+  SDL3 texture uploads, shader program activation, idle event-thread wakeups,
+  and the video audio bridge callback.
+- The follow-up 2026-06-04 transition-smoothness correction restores the SDL
+  event fetcher's previous 8 ms idle cadence and restores clear-on-return for
+  temporary GPU images after choppy transitions were observed, while preserving
+  the lower-risk CPU audit changes.
+- The next 2026-06-04 black-transition correction restores the temporary GPU
+  image pool's previous unordered-map scan reuse policy after black transitions
+  remained choppy, avoiding immediate LIFO reuse of full-screen pooled render
+  targets while keeping CPU-side pool free lists.
+- The 2026-06-04 audio backend audit reduces SDL3_mixer adapter allocation and
+  gain-update overhead, removes 1 ms polling from non-event threaded sound
+  loads, and avoids a decoded-frame copy for video audio that already matches
+  the mixer format. No audio compression techniques were added.
+- The 2026-06-04 text/sprite rendering audit removes allocation and lookup
+  overhead in dialogue rendering, sprite z-level setup, transformed sprite
+  canvas allocation, and fully transparent/fully opaque draw-state paths while
+  preserving existing draw order and playback quality.
+- The 2026-06-04 branding pass changes the default executable name to
+  `onscripter-new.exe`, pins the Umineko Rondo window title without appended
+  engine version text, and exposes the SDL3_GPU Vulkan backend as `Vulkan` in
+  renderer selection UI/config while accepting legacy `SDL3_GPU` values.
 
 ## Support Floor
 
@@ -195,6 +224,13 @@ Recent SDL3 runtime fixes:
   needed. `renderSubtitles.frag` uses that mapping to sample the subtitle atlas
   natively while rendering into the current subtitle frame, without weakening
   the render-to-self guard for shaders that actually sample their render target.
+- The text/sprite rendering pass skips fully transparent glyph draw calls,
+  delays renderable glyph cache lookups until a text pass is known to draw,
+  traverses dialogue piece/ruby deques directly during rendering and fade
+  ticking, fills sprite z-levels without first materializing an ordered sprite
+  set, delays temporary canvas checkout for transformed sprites and scaled
+  big images until after early exits/clips, and avoids redundant full-opacity
+  RGBA writes for big-image chunks.
 - Compatible fixed-pipeline `GPU_TriangleBatch` draws and native shader-program
   indexed draws now queue through a native triangle batch instead of submitting
   one SDL_GPU command buffer per call. The batch key includes target, pipeline,
@@ -243,13 +279,65 @@ Recent SDL3 runtime fixes:
   after GPU upload when callers no longer need CPU access, and directly upload
   video/frame byte rows without retaining a persistent CPU copy. Redundant
   decoded surfaces are freed after their GPU image or big-image representation
-  exists, and the decoded image cache now has a default 256 MiB budget
+  exists, and the decoded image cache now has a default 64 MiB budget
   configurable through `ONS_IMAGE_CACHE_MB`.
 - Hardware video decoding and hardware frame conversion are enabled by default
   on all platforms unless explicitly disabled with `--hwdecoder off` or
   `--hwconvert off`. On the local SDL3 Windows menu profile this restored the
   YUV plane-upload path and lowered CPU compared with the temporary RGB surface
   conversion default.
+- Direct YUV/NV12 video frames now keep a retained FFmpeg `AVFrame` reference
+  for queued decoded frames and upload from those planes directly. This removes
+  the previous `new[]`/`memcpy` copy of every decoded plane before the SDL3_GPU
+  upload copy. Subtitle blending makes the retained frame writable only when
+  subtitles are active.
+- The decoded video ready-frame queue now uses a smaller frame-specific limit
+  while compressed packet buffering and startup timecode sampling keep their
+  previous depth. Direct shader-converted videos also skip preallocating RGB
+  staging surfaces; software-converted fallback videos still allocate staging
+  surfaces from the existing pool on demand.
+- Media playback now releases transient YUV plane textures and alpha-mask
+  helper textures when playback finishes, including cases where the final RGB
+  frame is intentionally left visible. The SWS context teardown now clears the
+  freed pointer to avoid stale reuse/double-free risk if a later frame falls
+  back from direct conversion to software scaling.
+- SDL event queues now store `SDL_Event` values instead of
+  `std::unique_ptr<SDL_Event>`, and the event fetcher reuses stack event
+  storage for normal SDL traffic. This removes per-event heap allocation in the
+  Windows/Linux SDL event path while preserving the existing queue ordering and
+  finger-event coalescing behavior.
+- The async loop no longer posts an unused results semaphore for no-result
+  queues such as the SDL event fetcher. The event fetcher idle timeout was
+  briefly raised during the CPU audit, then restored to the previous 8 ms
+  cadence during transition-smoothness follow-up.
+- Temporary CPU surface and PNG loader pools now keep explicit free lists for
+  O(1) checkout of reusable entries instead of linearly scanning their backing
+  maps for an unused object. The temporary GPU image pool was restored to its
+  previous unordered-map scan reuse policy and clear-on-return behavior after
+  black transitions remained choppy with immediate free-list reuse.
+- SDL3 texture uploads now use one contiguous `memcpy` when the source rows and
+  transfer rows are tightly packed. Row-by-row upload with padding remains the
+  fallback for pitches that require it.
+- Repeated high-level shader activation now caches the last program alias
+  pointer, avoiding repeated string construction/hash lookup for common
+  frame-to-frame shader paths such as video conversion and transition effects.
+- The video `AudioBridge` mixer callback now writes at `raw + rawPos` instead
+  of advancing the output pointer by the cumulative position, avoiding
+  unnecessary pointer churn and preserving correct packing when one mixer
+  buffer is filled by multiple decoded chunks.
+- The 2026-06-04 RAM audit lowers the default decoded image cache budget to
+  64 MiB, keeps `ONS_IMAGE_CACHE_MB` as the override, rounds reusable SDL3_GPU
+  staging buffers to 256 KiB alignment instead of the next power of two, and
+  releases the synchronous readback transfer buffer immediately after copying
+  the downloaded pixels.
+- The audio backend audit keeps the SDL3_mixer compatibility API and playback
+  quality unchanged while reducing hot-path overhead: `Mix_LoadWAV_RW()` now
+  appends decoded PCM directly into its final SDL-managed buffer, normal
+  one-shot `MIX_PlayTrack()` calls use default options without allocating an
+  SDL properties object, unchanged channel/music gains no longer call back into
+  SDL3_mixer, non-event threaded sound loads block on the result semaphore
+  instead of polling every millisecond, and FFmpeg video-audio frames that
+  already match the mixer spec are retained by reference instead of copied.
 
 ## SDL3 Default Cutover Plan
 
@@ -397,6 +485,24 @@ SDL3 source-tagged runtime telemetry:
   `DerivedData\profile-final-default-hw-on` show the visible Umineko Project
   menu running below the original RAM/CPU targets after command-buffer
   back-pressure and hardware conversion defaults were applied.
+- The 2026-06-04 video decode resource build linked successfully without
+  warning output and was copied to `D:\Umineko Project\onscripter-ru.exe`.
+  Benchmarks and runtime telemetry were intentionally not run for this pass.
+- The follow-up 2026-06-04 CPU audit build linked successfully without warning
+  output and was copied to `D:\Umineko Project\onscripter-ru.exe`. Benchmarks
+  and runtime telemetry were intentionally not run for this pass.
+- The follow-up 2026-06-04 transition-smoothness build linked successfully and
+  was copied to `D:\Umineko Project\onscripter-ru.exe`. Benchmarks and runtime
+  telemetry were intentionally not run for this pass.
+- The follow-up 2026-06-04 black-transition build linked successfully and was
+  copied to `D:\Umineko Project\onscripter-ru.exe`. Benchmarks and runtime
+  telemetry were intentionally not run for this pass.
+- The 2026-06-04 RAM audit build linked successfully and was copied to
+  `D:\Umineko Project\onscripter-ru.exe`. Benchmarks and runtime telemetry were
+  intentionally not run for this pass.
+- The 2026-06-04 audio backend audit build linked successfully and was copied
+  to `D:\Umineko Project\onscripter-ru.exe`. Benchmarks and runtime telemetry
+  were intentionally not run for this pass.
 
 ## Packaging Notes
 

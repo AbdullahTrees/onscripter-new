@@ -74,6 +74,7 @@ private:
 
 	bool ensurePlanesImgs(AVPixelFormat f, size_t n, float w, float h); // ensure that first n planes from planes_gpu are
 	                                                                    // available with dimensions of rect
+	void freeTransientVideoImages();
 
 	int videoState{VS_OFFLINE};
 

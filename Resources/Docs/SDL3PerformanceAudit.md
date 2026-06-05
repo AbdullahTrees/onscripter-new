@@ -1,7 +1,7 @@
 # SDL3 Performance Audit
 
 Date: 2026-06-02
-Updated: 2026-06-03
+Updated: 2026-06-04
 
 This audit covers the SDL3 default renderer path, with emphasis on
 `Engine/Graphics/SDL3GPUCompat.cpp` because that layer currently adapts the
@@ -274,6 +274,51 @@ fade-in to `%sfx_vol` instead of a fade-down from stale engine volume.
 Status: build-verified on the local Windows UCRT64 SDL3 build and copied to
 `D:\Umineko Project\onscripter-ru.exe`. Runtime listening validation of the
 updated splash behavior is pending.
+
+### Text and Sprite Rendering Hot Paths
+
+The 2026-06-04 text/sprite rendering audit focused on lower per-frame CPU,
+allocation, and transient GPU-target pressure without changing playback quality
+or draw order.
+
+Dialogue rendering now traverses the existing segment/run/piece deques directly
+instead of constructing temporary pointer deques for every render and fade tick.
+Text passes also avoid a renderable glyph cache lookup until the pass is known
+to draw, and `renderGlyphValues()` returns immediately for fully transparent
+glyphs before touching atlas/image state. Visible glyph draws still resolve the
+current renderable glyph at draw time so late button-cell color changes and
+shadow styling remain correct.
+
+Sprite setup now fills `spriteZLevels` directly from LSP/LSP2 arrays instead of
+first materializing an ordered sprite set that is immediately reinserted by
+z-level. Transformed sprite canvas checkout is delayed until after
+special-scrollable, big-image, layer, and missing-image early exits. Scaled
+big images delay temporary canvas checkout until after clipping proves the image
+will be drawn, and fully opaque big-image chunks no longer issue redundant
+`GPU_SetRGBA(..., 255)` set/reset calls.
+
+Status: build-verified on the local Windows UCRT64 SDL3 build and copied to
+`D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime telemetry pass
+was run for this rebuild.
+
+### Branding and Renderer Display Name
+
+The 2026-06-04 branding pass changed the generated default executable target
+from `onscripter-ru` to `onscripter-new`, updated the current generated UCRT64
+makefile accordingly, and updated Windows resource metadata so the original
+filename and product/file descriptions match `onscripter-new.exe`.
+
+The window title is now pinned to
+`Umineko no Naku Koro ni: ~Rondo of the Witch and Reasoning~` at startup and
+when scripts issue `caption`, avoiding the previous appended engine/version
+caption. The single SDL3_GPU renderer remains the Vulkan SDL_GPU backend, but
+its user-facing renderer name is now `Vulkan`; existing `SDL3_GPU`
+`prefer-renderer` and `renderer-blacklist` values are still accepted as legacy
+aliases.
+
+Status: build-verified on the local Windows UCRT64 SDL3 build and copied to
+`D:\Umineko Project\onscripter-new.exe`. No benchmark or runtime telemetry pass
+was run for this rebuild.
 
 ### Renderer Telemetry
 
@@ -892,7 +937,7 @@ Fixes applied in this pass:
 - `GPU_Image` CPU pixel mirrors are allocated lazily, clean mirrors can be
   discarded after upload, and `GPU_UpdateImageBytes()` uploads rows directly
   without keeping a persistent CPU copy of video planes.
-- Decoded image caching now has a default 256 MiB budget configurable with
+- Decoded image caching now has a default 64 MiB budget configurable with
   `ONS_IMAGE_CACHE_MB`, and animation surfaces are freed after equivalent GPU
   images/big images exist unless the CPU surface is still required.
 - The event-fetch thread now waits longer when idle, reducing idle polling.
@@ -917,6 +962,156 @@ Validated menu observations:
   pixel mirrors for live images.
 - The final UCRT64 build after tightening the command-buffer backlog cap linked
   successfully and was copied to `D:\Umineko Project\onscripter-ru.exe`.
+
+### Video Decode Resource Pass
+
+The 2026-06-04 video decode pass targets CPU, RAM, and GPU memory use in the
+direct YUV/NV12 playback path without changing conversion quality or shader
+output:
+
+- Queued direct-conversion video frames now retain an FFmpeg `AVFrame`
+  reference and point `MediaFrame::planes` at that storage. This removes the
+  previous per-frame `new[]` allocations and full-plane `memcpy` before the
+  unavoidable SDL_GPU transfer-buffer upload.
+- Subtitle blending on retained YUV/NV12 frames calls `av_frame_make_writable()`
+  only when subtitles are active, preserving the zero-copy queued-frame path for
+  normal video playback and copying only if FFmpeg still shares the buffer.
+- The decoded ready-frame queue has a smaller frame-specific cap
+  (`12` desktop, `8` Android/iOS) while compressed packet buffering and
+  startup timecode sampling retain their existing depth. This limits decoded
+  frame RAM and decode-ahead CPU work without reducing demux packet buffering.
+- Direct shader-converted videos no longer preallocate RGB staging surfaces.
+  The staging pool still exists and allocates on demand if a stream or option
+  falls back to SWS RGB conversion.
+- Transient YUV plane textures and the alpha-mask helper texture are released
+  as soon as playback finishes, including `LeaveCurrent` cases that keep the
+  final RGB frame visible.
+- `VideoDecoder::deinitSwsContext()` now nulls the freed SWS context pointer,
+  avoiding stale reuse or double-free risk when a later frame or fallback path
+  reinitializes software scaling.
+
+Status: the local UCRT64 build linked successfully without warning output and
+was copied to `D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime
+telemetry pass was run for this change.
+
+### Broad CPU Audit Pass
+
+The follow-up 2026-06-04 CPU audit pass targets steady-state CPU overhead that
+does not require changing visual output, audio quality, or script timing:
+
+- The SDL event queues now store `SDL_Event` values directly. Normal SDL events
+  are fetched into stack storage and copied into the queue, avoiding the
+  previous heap allocation/free pair for each queued event and for every
+  synthetic upkeep/batch-end marker.
+- The async loop now skips unused results-semaphore posts for no-result queues.
+  The SDL event fetcher idle timeout was briefly raised from 8 ms to 16 ms in
+  this pass, then restored to 8 ms during the transition-smoothness follow-up.
+- Temporary CPU image and PNG loader pools now maintain free lists. Checkout no
+  longer scans the full `unordered_map` looking for an unused object, which
+  reduces CPU in software-converted video frames and image loading.
+- The temporary GPU image pool originally gained the same free-list treatment,
+  but that change was later reverted for transition smoothness. GPU render
+  targets again use the previous unordered-map scan reuse policy and
+  clear-on-return behavior.
+- SDL3 texture upload staging now uses a single contiguous copy when both the
+  source pitch and GPU transfer pitch match the row width. The padded row path
+  remains unchanged for uploads that need alignment padding.
+- High-level shader program activation now caches the last alias pointer. This
+  avoids repeated `std::string` construction and unordered-map lookup when the
+  same literal shader alias is used repeatedly across frames, such as the video
+  color-conversion shader and common transition/effect shaders.
+- The video `AudioBridge` callback now writes decoded audio chunks at
+  `raw + rawPos` and leaves the base pointer stable, avoiding incorrect
+  cumulative pointer advancement when multiple decoded chunks fill one mixer
+  buffer.
+
+Status: the local UCRT64 build linked successfully without warning output and
+was copied to `D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime
+telemetry pass was run for this change.
+
+### Transition Smoothness Follow-Up
+
+After the broad CPU audit build, some transitions were observed to be choppy.
+The likely transition-sensitive regressions were the doubled SDL event fetcher
+idle timeout and the changed lifetime ordering for temporary GPU render target
+clears.
+
+The follow-up 2026-06-04 build restores the event fetcher idle timeout from
+16 ms to the previous 8 ms cadence, and restores clear-on-return for temporary
+GPU images while keeping free-list checkout. This keeps the lower-risk event
+allocation, temporary pool, upload, shader alias cache, async semaphore, and
+audio bridge improvements in place, but reverts the two changes most likely to
+affect effect pacing or pooled render-target ordering.
+
+Status: the local UCRT64 build linked successfully and was copied to
+`D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime telemetry pass
+was run for this change.
+
+### Black Transition Follow-Up
+
+Black transitions remained choppy after the initial transition-smoothness
+follow-up. The remaining broad-audit change most specific to this path was the
+temporary GPU image pool's immediate free-list reuse of recently returned
+full-screen render targets.
+
+The follow-up 2026-06-04 build restores the temporary GPU image pool's previous
+unordered-map scan reuse policy and clear-on-return behavior. This avoids
+changing the reuse order for full-screen canvas/script render targets used by
+`bg black` fades while keeping the CPU-side surface and PNG-loader free lists.
+
+Status: the local UCRT64 build linked successfully and was copied to
+`D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime telemetry pass
+was run for this change.
+
+### RAM Audit Pass
+
+The 2026-06-04 RAM audit pass targets retained CPU/GPU memory without changing
+playback quality, shader output, or script-visible image content:
+
+- The decoded image cache default is now 64 MiB instead of 256 MiB. The
+  `ONS_IMAGE_CACHE_MB` override remains available, including `0` for the
+  existing unlimited-cache behavior.
+- Reusable SDL3_GPU staging buffers now grow to a 256 KiB-aligned capacity
+  instead of the next power of two. This reduces retained upload/download,
+  vertex, and index staging over-allocation while preserving reuse.
+- Synchronous texture readbacks now release their reusable download transfer
+  buffer immediately after the mapped pixels have been copied. The upload
+  transfer buffer is still retained for normal frame-to-frame uploads because
+  submitted GPU work may still reference it.
+
+Status: the local UCRT64 build linked successfully and was copied to
+`D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime telemetry pass
+was run for this change.
+
+### Audio Backend Audit Pass
+
+The 2026-06-04 audio backend pass targets CPU and allocation overhead without
+changing sample formats, fade behavior, channel layout, playback quality, or
+adding compression:
+
+- The SDL3_mixer compatibility `Mix_LoadWAV_RW()` path now decodes into the
+  final SDL-managed PCM buffer with geometric `SDL_realloc()` growth. This
+  removes the previous decode-vector plus second full-buffer copy before
+  `MIX_LoadRawAudioNoCopy()`.
+- Normal one-shot channel/music starts now pass `0` options to `MIX_PlayTrack()`
+  and use SDL3_mixer defaults instead of allocating and destroying an SDL
+  properties object for every non-looping play.
+- `Mix_VolumeFloat()` and `Mix_VolumeMusicFloat()` now skip redundant
+  `MIX_SetTrackGain()` calls when the clamped gain has not changed. Playback
+  start still reapplies gain immediately after `MIX_PlayTrack()` to preserve
+  the existing channel-restart fade fix.
+- `playSoundThreaded()` now uses a blocking semaphore wait for calls that do
+  not request event pumping. The 1 ms timeout loop remains only for the
+  `waitevent` path that must keep dispatching engine events during a blocking
+  sound load.
+- Video audio frames that already match the active mixer spec now retain an
+  FFmpeg `AVFrame` reference and hand its PCM data to `AudioBridge` directly.
+  The resampling path is unchanged and still allocates converted output when
+  the source format, sample rate, channel count, or layout differs.
+
+Status: the local UCRT64 build linked successfully and was copied to
+`D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime telemetry pass
+was run for this change.
 
 ## Findings
 
@@ -1021,7 +1216,7 @@ submission and CPU shader execution.
 
 Impact: low to medium for startup, low during steady-state gameplay.
 
-### 6. SDL3_mixer Adapter Has No Obvious Hot-Path Allocation Regression
+### 6. SDL3_mixer Adapter Hot Paths Are Reduced But Need Listening Coverage
 
 The SDL3_mixer compatibility layer creates tracks on channel allocation and
 reuses them during playback. The notable runtime cost is quick-raw channels with
@@ -1040,7 +1235,11 @@ track start, and explicit `dwave` channel reuse clears stale queued
 mix-channel volume properties. A later shared SDL2/SDL3 fix also primes new
 `dwave*` samples to volume 0 when the next script command is a timed
 same-channel `ach_prop`, fixing the project-logo/Witch Hunt wind fade start
-from stale engine SFX volume.
+from stale engine SFX volume. The audio backend audit later removed the
+duplicate decoded-buffer copy in `Mix_LoadWAV_RW()`, skips default playback
+property allocation for non-looping starts, skips unchanged gain writes,
+blocks instead of polling for non-event threaded sound loads, and avoids
+copying already-mixer-format FFmpeg video-audio frames.
 
 Next step: run a fade-heavy listening pass, including the project-logo/Witch
 Hunt wind SFX, and keep monitoring for any unrelated fade stepping or restart

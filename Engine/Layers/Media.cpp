@@ -52,12 +52,13 @@ bool MediaLayer::stopPlayback(FinishMode mode) {
 
 		media.resetState();
 		videoState &= ~VS_PLAYING;
+		freeTransientVideoImages();
 
 		if (mode == FinishMode::Normal) {
-			for (auto &img : {frame_gpu[DefFrame], frame_gpu[NewFrame], mask_gpu})
+			for (auto &img : {frame_gpu[DefFrame], frame_gpu[NewFrame]})
 				if (img)
 					gpu.freeImage(img);
-			frame_gpu[DefFrame] = frame_gpu[NewFrame] = mask_gpu = nullptr;
+			frame_gpu[DefFrame] = frame_gpu[NewFrame] = nullptr;
 		}
 
 		return true;
@@ -176,7 +177,27 @@ bool MediaLayer::ensurePlanesImgs(AVPixelFormat f, size_t n, float w, float h) {
 			planes_gpu[i] = gpu.createImage(widths[i], heights[i], formats[i]);
 		}
 	}
+	for (size_t i = n; i < num; i++) {
+		if (planes_gpu[i]) {
+			gpu.freeImage(planes_gpu[i]);
+			planes_gpu[i] = nullptr;
+		}
+	}
 	return true;
+}
+
+void MediaLayer::freeTransientVideoImages() {
+	if (mask_gpu) {
+		gpu.freeImage(mask_gpu);
+		mask_gpu = nullptr;
+	}
+
+	for (auto &img : planes_gpu) {
+		if (img) {
+			gpu.freeImage(img);
+			img = nullptr;
+		}
+	}
 }
 
 bool MediaLayer::update(bool old) {
@@ -261,7 +282,10 @@ bool MediaLayer::update(bool old) {
 			//sendToLog(LogLevel::Info, "Updated frame number %d\n", thisFrame->frameNumber);
 
 			// Now we are done; give back the surface for later use
-			media.giveImageBack(thisVideoFrame->surface);
+			if (thisVideoFrame->surface) {
+				media.giveImageBack(thisVideoFrame->surface);
+				thisVideoFrame->surface = nullptr;
+			}
 		}
 	}
 	return true;

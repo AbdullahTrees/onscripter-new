@@ -438,6 +438,15 @@ inline int onsWaitSemaphoreTimeoutResult(SDL_sem *sem, int timeoutMS) {
 #endif
 }
 
+inline int onsWaitSemaphore(SDL_sem *sem) {
+#if defined(ONS_USE_SDL3)
+	SDL_WaitSemaphore(sem);
+	return 0;
+#else
+	return SDL_SemWait(sem);
+#endif
+}
+
 inline bool onsWaitSemaphoreTimeout(SDL_sem *sem, int timeoutMS) {
 	return onsWaitSemaphoreTimeoutResult(sem, timeoutMS) == 0;
 }

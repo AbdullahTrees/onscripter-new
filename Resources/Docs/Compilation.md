@@ -125,6 +125,77 @@ surface cleanup, and longer idle waits in the SDL event fetcher. Hardware video
 decoding and hardware format conversion now default to enabled unless
 `--hwdecoder off` or `--hwconvert off` is supplied. The final UCRT64 executable
 was copied to `D:\Umineko Project\onscripter-ru.exe` after the build.
+The 2026-06-04 UCRT64 rebuild after the video decode resource pass linked
+successfully without warning output and was copied to
+`D:\Umineko Project\onscripter-ru.exe`. This pass keeps direct YUV/NV12 video
+frames backed by retained FFmpeg `AVFrame` references instead of copying every
+plane into new heap buffers, lowers the decoded video frame queue depth while
+keeping packet/timing buffering unchanged, skips preallocating RGB staging
+surfaces for direct shader-converted videos, releases transient YUV plane and
+alpha-mask GPU textures when playback stops, and fixes SWS context teardown to
+clear the freed pointer. No benchmark or runtime telemetry pass was run for
+this rebuild.
+The follow-up 2026-06-04 UCRT64 rebuild after the broader CPU audit linked
+successfully without warning output and was copied to
+`D:\Umineko Project\onscripter-ru.exe`. This pass stores queued SDL events by
+value instead of heap-allocating every event, adds free-list checkout to the
+temporary surface/PNG-loader pools, adds a contiguous-copy fast path to SDL3_GPU
+texture uploads, caches the last high-level shader-program alias lookup,
+reduces idle event-thread wakeups/semaphore traffic, and fixes the video audio
+bridge callback write offset. No benchmark or runtime telemetry pass was run
+for this rebuild.
+The follow-up 2026-06-04 UCRT64 transition-smoothness rebuild restored the SDL
+event fetcher idle timeout to 8 ms and restored clear-on-return for temporary
+GPU images after choppy transitions were observed in the broad CPU audit build.
+The lower-risk allocation, upload, shader lookup, async semaphore, and audio
+bridge changes remain in place. The executable linked successfully and was
+copied to `D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime
+telemetry pass was run for this rebuild.
+The next 2026-06-04 UCRT64 black-transition follow-up restored the temporary
+GPU image pool's pre-audit unordered-map scan reuse policy after black
+transitions remained choppy. The GPU pool now matches the previous render-target
+reuse and clear ordering; the CPU surface/PNG-loader free lists remain in
+place. The executable linked successfully and was copied to
+`D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime telemetry pass
+was run for this rebuild.
+The 2026-06-04 UCRT64 RAM audit rebuild lowered the default decoded image cache
+budget from 256 MiB to 64 MiB while keeping `ONS_IMAGE_CACHE_MB` as the runtime
+override, changed reusable SDL3_GPU staging-buffer growth from power-of-two
+rounding to 256 KiB alignment, and releases the synchronous readback transfer
+buffer immediately after the readback copy completes. Playback quality and
+shader output are unchanged. The executable linked successfully and was copied
+to `D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime telemetry
+pass was run for this rebuild.
+The 2026-06-04 UCRT64 audio backend audit rebuild linked successfully after
+non-compression audio optimizations in the SDL3_mixer adapter, threaded sound
+loader wait path, and FFmpeg video-audio decode path. Decoded chunk loading now
+builds the final SDL-owned PCM buffer directly instead of decoding into a
+temporary vector and copying again, default one-shot track playback avoids
+per-play SDL properties allocation, redundant track-gain writes are skipped,
+non-event sound loads use a blocking semaphore wait instead of 1 ms polling,
+and already-mixer-format video audio retains FFmpeg frame buffers instead of
+copying every decoded frame. The executable was copied to
+`D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime telemetry pass
+was run for this rebuild.
+The follow-up 2026-06-04 UCRT64 text/sprite rendering audit rebuild linked
+successfully after removing several per-frame rendering overheads without
+changing playback quality. The pass skips fully transparent glyph draws,
+avoids renderable glyph cache lookups for text passes that will not draw,
+iterates dialogue pieces directly instead of building temporary pointer deques
+during rendering/fade ticks, populates sprite z-levels without an intermediate
+ordered sprite set, delays transformed sprite/big-image canvas allocation until
+after early exits and clipping, and avoids redundant full-opacity RGBA state
+writes for big-image chunks. The executable was copied to
+`D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime telemetry pass
+was run for this rebuild.
+The 2026-06-04 UCRT64 branding rebuild changed the default Windows executable
+target to `onscripter-new.exe`, updated Windows version-resource executable
+metadata to match, fixed the window caption to
+`Umineko no Naku Koro ni: ~Rondo of the Witch and Reasoning~`, and changed the
+user-facing preferred renderer name from `SDL3_GPU` to `Vulkan` while keeping
+`SDL3_GPU` as a legacy command-line/config alias. The executable linked
+successfully and was copied to `D:\Umineko Project\onscripter-new.exe`.
+No benchmark or runtime telemetry pass was run for this rebuild.
 
 SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
 `ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,

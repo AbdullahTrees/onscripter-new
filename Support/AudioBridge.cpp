@@ -35,7 +35,7 @@ void AudioBridge::fillBuffers(int /*channel*/, void * /*stream*/, int /*len*/, v
 
 			size_t leftover = std::min(leftOverCur, leftOverRaw);
 
-			std::memcpy(raw, ab->curBuffer.get() + ab->curBufferPos, leftover);
+			std::memcpy(raw + rawPos, ab->curBuffer.get() + ab->curBufferPos, leftover);
 			ab->curBufferPos += leftover;
 			rawPos += leftover;
 
@@ -44,11 +44,9 @@ void AudioBridge::fillBuffers(int /*channel*/, void * /*stream*/, int /*len*/, v
 			}
 
 		} else { // No frames left
-			std::memset(raw, 0, ab->rawBufferSize - rawPos);
+			std::memset(raw + rawPos, 0, ab->rawBufferSize - rawPos);
 			rawPos = ab->rawBufferSize;
 		}
-
-		raw += rawPos;
 
 	} while (rawPos != ab->rawBufferSize);
 

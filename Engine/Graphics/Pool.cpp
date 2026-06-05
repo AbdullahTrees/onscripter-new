@@ -14,19 +14,32 @@
 
 SDL_Surface *TempImagePool::getImage() {
 	Lock lock(this);
-	// Look for unused temp image
-	auto i = std::find_if(pool.begin(), pool.end(), [](const std::unordered_map<SDL_Surface *, bool>::value_type &e) { return !e.second; });
-	// If we found one, return that, otherwise make a new one
-	SDL_Surface *r = i != pool.end() ? i->first :
-	                                   onsCreateRGBSurface(SDL_SWSURFACE, size.x, size.y, 24,
-	                                                        0x000000ff, 0x0000ff00, 0x00ff0000, 0);
+	SDL_Surface *r = nullptr;
+	while (!freeImages.empty()) {
+		SDL_Surface *candidate = freeImages.back();
+		freeImages.pop_back();
+		auto it = pool.find(candidate);
+		if (it != pool.end() && !it->second) {
+			r = candidate;
+			break;
+		}
+	}
+
+	if (!r) {
+		r = onsCreateRGBSurface(SDL_SWSURFACE, size.x, size.y, 24,
+		                        0x000000ff, 0x0000ff00, 0x00ff0000, 0);
+	}
 	pool[r] = true;
 	return r;
 }
 
 void TempImagePool::giveImage(SDL_Surface *im) {
 	Lock lock(this);
-	pool[im] = false;
+	auto it = pool.find(im);
+	if (it == pool.end() || it->second) {
+		pool[im] = false;
+		freeImages.push_back(im);
+	}
 }
 
 void TempImagePool::addImages(int n) {
@@ -36,6 +49,7 @@ void TempImagePool::addImages(int n) {
 		im       = onsCreateRGBSurface(SDL_SWSURFACE, size.x, size.y, 24,
                                   0x000000ff, 0x0000ff00, 0x00ff0000, 0);
 		pool[im] = false;
+		freeImages.push_back(im);
 	}
 }
 
@@ -51,17 +65,31 @@ TempImagePool::~TempImagePool() {
 
 PNGLoader *TempImageLoaderPool::getLoader() {
 	Lock lock(this);
-	// Look for unused temp loader
-	auto i = std::find_if(pool.begin(), pool.end(), [](const std::unordered_map<PNGLoader *, bool>::value_type &e) { return !e.second; });
-	// If we found one, return that, otherwise make a new one
-	PNGLoader *r = i != pool.end() ? i->first : new PNGLoader();
-	pool[r]      = true;
+	PNGLoader *r = nullptr;
+	while (!freeLoaders.empty()) {
+		PNGLoader *candidate = freeLoaders.back();
+		freeLoaders.pop_back();
+		auto it = pool.find(candidate);
+		if (it != pool.end() && !it->second) {
+			r = candidate;
+			break;
+		}
+	}
+
+	if (!r)
+		r = new PNGLoader();
+
+	pool[r] = true;
 	return r;
 }
 
 void TempImageLoaderPool::giveLoader(PNGLoader *ldr) {
 	Lock lock(this);
-	pool[ldr] = false;
+	auto it = pool.find(ldr);
+	if (it == pool.end() || it->second) {
+		pool[ldr] = false;
+		freeLoaders.push_back(ldr);
+	}
 }
 
 void TempImageLoaderPool::addLoaders(int n) {
@@ -70,13 +98,14 @@ void TempImageLoaderPool::addLoaders(int n) {
 	for (int i = 0; i < n; i++) {
 		ldr       = new PNGLoader();
 		pool[ldr] = false;
+		freeLoaders.push_back(ldr);
 	}
 }
 
 TempImageLoaderPool::~TempImageLoaderPool() {
 	for (auto diver : pool) {
 		if (!diver.second) {
-			delete[] diver.first;
+			delete diver.first;
 		} else {
 			sendToLog(LogLevel::Error, "~TempImageLoaderPool@Diver cannot be eaten\n");
 		}

@@ -183,8 +183,10 @@ int ONScripter::playSoundThreaded(const char *filename, int format, bool loop_fl
 	async.playSound(filename, format, loop_flag, channel);
 
 	preventExit(true);
-	while (!onsWaitSemaphoreTimeout(async.playSoundQueue.resultsWaiting, 1)) {
-		if (waitevent) {
+	if (!waitevent) {
+		onsWaitSemaphore(async.playSoundQueue.resultsWaiting);
+	} else {
+		while (!onsWaitSemaphoreTimeout(async.playSoundQueue.resultsWaiting, 1)) {
 			event_mode = IDLE_EVENT_MODE;
 			Lock lock(&playSoundThreadedLock);
 			waitEvent(0);
