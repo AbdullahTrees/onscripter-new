@@ -168,6 +168,33 @@ void WindowController::applyDimensions(int rw, int rh, int cw, int ch, int dw) {
 	windowed_screen_height = screen_height;
 }
 
+float WindowController::currentDisplayRefreshRate() const {
+	if (!window)
+		return 0.0f;
+
+#if defined(ONS_USE_SDL3)
+	SDL_DisplayID display_id        = SDL_GetDisplayForWindow(window);
+	const SDL_DisplayMode *mode_ptr = display_id ? SDL_GetCurrentDisplayMode(display_id) : nullptr;
+	if (!mode_ptr && display_id)
+		mode_ptr = SDL_GetDesktopDisplayMode(display_id);
+	if (!mode_ptr)
+		return 0.0f;
+	if (mode_ptr->refresh_rate_numerator > 0 && mode_ptr->refresh_rate_denominator > 0)
+		return static_cast<float>(mode_ptr->refresh_rate_numerator) / static_cast<float>(mode_ptr->refresh_rate_denominator);
+	return mode_ptr->refresh_rate;
+#else
+	int display_index = SDL_GetWindowDisplayIndex(window);
+	if (display_index < 0)
+		return 0.0f;
+
+	SDL_DisplayMode mode{};
+	if (SDL_GetCurrentDisplayMode(display_index, &mode) != 0 &&
+	    SDL_GetDesktopDisplayMode(display_index, &mode) != 0)
+		return 0.0f;
+	return static_cast<float>(mode.refresh_rate);
+#endif
+}
+
 void WindowController::getWindowSize(int &w, int &h) {
 	w = screen_width;
 	h = screen_height;

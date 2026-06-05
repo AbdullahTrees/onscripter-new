@@ -84,6 +84,8 @@ static std::unordered_map<HashedString, CommandFunc> func_lut{
     {"aspt", &ONScripter::spritePropertyCommand},
     {"spt2", &ONScripter::spritePropertyCommand},
     {"spt", &ONScripter::spritePropertyCommand},
+    {"spriterangeptwait", &ONScripter::spriteRangePropertyWaitCommand},
+    {"spriterangept", &ONScripter::spriteRangePropertyCommand},
     {"spriteset_pos", &ONScripter::spritesetPosCommand},
     {"spriteset_mask", &ONScripter::spritesetMaskCommand},
     {"spriteset_enable", &ONScripter::spritesetEnableCommand},
@@ -475,6 +477,7 @@ static std::unordered_map<HashedString, CommandFunc> func_lut{
     {"bgmvol", &ONScripter::mp3volCommand},
     {"bgmstop", &ONScripter::mp3stopCommand},
     {"bgmonce", &ONScripter::mp3Command},
+    {"bgmfast", &ONScripter::mp3Command},
     {"bgmfadeout", &ONScripter::mp3fadeoutCommand},
     {"bgmfadein", &ONScripter::mp3fadeinCommand},
     {"bgmdownmode", &ONScripter::bgmdownmodeCommand},
@@ -624,8 +627,10 @@ void ONScripter::initSDL() {
 	screen_target = gpu.rendererInit(SDL_WINDOW_ALLOW_HIGHDPI);
 
 	auto forcedFPS = ons_cfg_options.find("force-fps");
-	if (forcedFPS != ons_cfg_options.end())
+	if (forcedFPS != ons_cfg_options.end()) {
 		game_fps = std::stoi(forcedFPS->second);
+		force_fps_override = true;
+	}
 
 	camera.pos.x = 0;
 	camera.pos.y = 0;
@@ -1103,6 +1108,22 @@ int ONScripter::ownInit() {
 	dlgCtrl.init();
 	wndCtrl.init();
 	dynamicProperties.init();
+	spriteRangeXProperty = dynamicProperties.registerProperty(
+	    "spriterangex",
+	    {[](void *ptr) -> double {
+		     return static_cast<ONScripter *>(ptr)->spriteRangeMotion.xOffset;
+	     },
+	     [](void *ptr, double value) -> void {
+		     static_cast<ONScripter *>(ptr)->setSpriteRangeMotionX(value);
+	     }});
+	spriteRangeYProperty = dynamicProperties.registerProperty(
+	    "spriterangey",
+	    {[](void *ptr) -> double {
+		     return static_cast<ONScripter *>(ptr)->spriteRangeMotion.yOffset;
+	     },
+	     [](void *ptr, double value) -> void {
+		     static_cast<ONScripter *>(ptr)->setSpriteRangeMotionY(value);
+	     }});
 
 	pngImageLoaderPool.addLoaders(2);
 

@@ -345,7 +345,7 @@ int ONScripter::playSound(const char *filename, int format, bool loop_flag, int 
 		uint8_t *m_buf   = buffer + id3v2_size;
 		const long m_len = length - id3v2_size;
 
-		Mix_Music *music_info_local = Mix_LoadMUS_RW(SDL_RWFromMem(m_buf, static_cast<int>(m_len)), 0);
+		Mix_Music *music_info_local = Mix_LoadMUS_RW(SDL_RWFromMem(m_buf, static_cast<int>(m_len)), 1);
 
 		if (music_info_local) {
 			if (match_bgm_audio_flag) {
@@ -420,9 +420,12 @@ int ONScripter::playSound(const char *filename, int format, bool loop_flag, int 
 					// !!!! ^^^^^^ old problematic comment spotted ^^^^^ !!!!
 					// -----------------------------------------------------------------------------------
 
-					music_info_local = Mix_LoadMUS_RW(SDL_RWFromMem(buffer + id3v2_size, static_cast<int>(length - id3v2_size)), 0);
+					music_info_local = Mix_LoadMUS_RW(SDL_RWFromMem(buffer + id3v2_size, static_cast<int>(length - id3v2_size)), 1);
 				}
 			}
+
+			if (format & SOUND_KEEP_CURRENT_MUSIC)
+				stopCurrentMusicForReplacement();
 
 			setMusicVolume(music_volume, volume_on_flag);
 			Mix_HookMusicFinished(musicFinishCallback);
@@ -461,6 +464,9 @@ int ONScripter::playSound(const char *filename, int format, bool loop_flag, int 
 			freearr(&buffer);
 			return SOUND_CHUNK; //doesn't matter what to return
 		} else {
+			if ((format & SOUND_KEEP_CURRENT_MUSIC) && channel == MIX_BGM_CHANNEL)
+				stopCurrentMusicForReplacement();
+
 			// may deadlock here onexit
 			Lock lock(&playSoundThreadedLock);
 			if (playWave(std::make_shared<Wrapped_Mix_Chunk>(chunk), format, loop_flag, channel) == 0) {
@@ -493,6 +499,9 @@ int ONScripter::playSound(const char *filename, int format, bool loop_flag, int 
 				}
 				std::fclose(fp);
 			}
+			if (format & SOUND_KEEP_CURRENT_MUSIC)
+				stopCurrentMusicForReplacement();
+
 			Lock lock(&playSoundThreadedLock);
 			ext_music_play_once_flag = !loop_flag;
 			if (playSequencedMusic(loop_flag) == 0) {
@@ -640,6 +649,41 @@ int ONScripter::setVolumeMute(bool do_mute) {
 	return 0;
 }
 
+void ONScripter::stopCurrentMusicForReplacement() {
+	if (wave_sample[MIX_BGM_CHANNEL]) {
+		Mix_Pause(MIX_BGM_CHANNEL);
+		wave_sample[MIX_BGM_CHANNEL] = nullptr;
+	}
+
+	if (music_info) {
+		ext_music_play_once_flag = true;
+		Mix_HookMusicFinished(nullptr);
+		Mix_HaltMusic();
+		Mix_HookMusicFinished(musicFinishCallback);
+		Lock lock(&playSoundThreadedLock);
+		Mix_FreeMusic(music_info);
+		music_info = nullptr;
+		if (music_buffer) {
+			delete[] music_buffer;
+			music_buffer = nullptr;
+			music_buffer_length = 0;
+		}
+	}
+
+	if (seqmusic_info) {
+		ext_music_play_once_flag = true;
+		Mix_HookMusicFinished(nullptr);
+		Mix_HaltMusic();
+		Mix_HookMusicFinished(musicFinishCallback);
+		Mix_FreeMusic(seqmusic_info);
+		seqmusic_info = nullptr;
+		script_h.setStr(&seqmusic_file_name, nullptr);
+		seqmusic_play_loop_flag = false;
+	}
+
+	current_cd_track = -1;
+}
+
 void ONScripter::stopBGM(bool continue_flag) {
 	if (wave_sample[MIX_BGM_CHANNEL]) {
 		Mix_Pause(MIX_BGM_CHANNEL);
@@ -679,6 +723,7 @@ void ONScripter::stopBGM(bool continue_flag) {
 			if (music_buffer) {
 				delete[] music_buffer;
 				music_buffer = nullptr;
+				music_buffer_length = 0;
 			}
 		}
 

@@ -535,7 +535,7 @@ Mix_Music *Mix_LoadMUS(const char *file) {
 	if (!ensureAudioReady())
 		return nullptr;
 
-	MIX_Audio *audio = MIX_LoadAudio(mixer, file, true);
+	MIX_Audio *audio = MIX_LoadAudio(mixer, file, false);
 	if (!audio)
 		return nullptr;
 
@@ -550,7 +550,7 @@ Mix_Music *Mix_LoadMUS_RW(SDL_RWops *src, int freesrc) {
 		return nullptr;
 
 	const Mix_MusicType type = detectMusicType(src);
-	MIX_Audio *audio        = MIX_LoadAudio_IO(mixer, src, true, freesrc != 0);
+	MIX_Audio *audio        = MIX_LoadAudio_IO(mixer, src, false, freesrc != 0);
 	if (!audio)
 		return nullptr;
 

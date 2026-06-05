@@ -23,6 +23,10 @@
 const uint32_t MAX_TOUCH_TAP_TIMESPAN{80};
 const uint32_t MAX_TOUCH_SWIPE_TIMESPAN{300};
 const int EVENT_QUEUE_IDLE_WAIT_MS{8};
+const float MIN_AUTO_FPS{30.0f};
+const float MAX_AUTO_FPS{360.0f};
+const uint64_t NANOS_PER_MILLISECOND{1000000ULL};
+const uint64_t STALE_FRAME_BASELINE_NS{250ULL * NANOS_PER_MILLISECOND};
 const float TOUCH_ACTION_THRESHOLD_X = 0.1;
 const float TOUCH_ACTION_THRESHOLD_Y = 0.15;
 
@@ -131,6 +135,12 @@ void ONScripter::flushEvent() {
 		localEventQueue.pop_back();
 		flushEventSub(event);
 	}
+}
+
+static uint64_t highResolutionTicksNanos() {
+	static const uint64_t frequency = SDL_GetPerformanceFrequency();
+	return static_cast<uint64_t>((static_cast<long double>(SDL_GetPerformanceCounter()) * 1000000000.0L) /
+	                             static_cast<long double>(frequency));
 }
 
 void ONScripter::handleSDLEvents() {
@@ -262,6 +272,19 @@ void ONScripter::fetchEventsToQueue() {
 	pushFingerEvents();
 }
 
+float ONScripter::effectiveRefreshRate() const {
+	if (force_fps_override && game_fps > 0)
+		return static_cast<float>(game_fps);
+
+	float detected_fps = window.currentDisplayRefreshRate();
+	if (detected_fps >= MIN_AUTO_FPS && detected_fps <= MAX_AUTO_FPS)
+		return detected_fps;
+
+	if (game_fps > 0)
+		return static_cast<float>(game_fps);
+	return DEFAULT_FPS;
+}
+
 void ONScripter::waitEvent(int count, bool nopPreferred) {
 	//sendToLog(LogLevel::Info, "----waitEventSub(%i)\n", count);
 	static unsigned int lastExitTime   = 0;
@@ -283,24 +306,44 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		errorAndExit("You are completely mad to use SDL_Events like that");
 	}
 
-	static FPSTimeGenerator *actual_fps  = nullptr;
-	static FPSTimeGenerator *fps_default = new FPSTimeGenerator(DEFAULT_FPS);
-	if (game_fps && !actual_fps) {
-		actual_fps = new FPSTimeGenerator(game_fps);
+	static float active_fps_rate       = 0.0f;
+	static unsigned int last_fps_probe = 0;
+	static FPSTimeGenerator *fps_timer = nullptr;
+	static uint64_t accumulatedOvershootNanos = 0;
+	static uint64_t lastFlipTimeNanos         = 0;
+
+	if (!fps_timer || thisCallTime - last_fps_probe >= 1000) {
+		float detected_fps = effectiveRefreshRate();
+		float fps_diff = detected_fps - active_fps_rate;
+		if (fps_diff < 0.0f)
+			fps_diff = -fps_diff;
+		if (!fps_timer || fps_diff > 0.01f) {
+			delete fps_timer;
+			fps_timer       = new FPSTimeGenerator(detected_fps);
+			active_fps_rate = detected_fps;
+			accumulatedOvershootNanos = 0;
+			lastFlipTimeNanos         = 0;
+		}
+		last_fps_probe = thisCallTime;
 	}
-	auto fps = game_fps ? actual_fps : fps_default;
+	auto fps = fps_timer;
 
 	unsigned int ticks = thisCallTime; // SDL_GetTicks()
+	uint64_t thisCallTimeNanos = highResolutionTicksNanos();
+	bool resetFramePacing      = lastFlipTimeNanos == 0 || thisCallTimeNanos - lastFlipTimeNanos > STALE_FRAME_BASELINE_NS;
 
 	do {
-		static unsigned int accumulatedOvershoot = 0;
-		uint64_t framesOvershoot                 = 0;
-		uint64_t nanosPerFrame                   = fps->nanosPerFrame();
-		unsigned int timeThisFrame{fps->nextTime()};
-		while (accumulatedOvershoot > timeThisFrame) {
+		uint64_t framesOvershoot = 0;
+		uint64_t nanosPerFrame   = fps->nanosPerFrame();
+		uint64_t timeThisFrame{nanosPerFrame};
+		if (resetFramePacing) {
+			accumulatedOvershootNanos = 0;
+			lastFlipTimeNanos         = thisCallTimeNanos;
+			resetFramePacing          = false;
+		}
+		while (accumulatedOvershootNanos > timeThisFrame) {
 			// must skip this frame :(
-			accumulatedOvershoot -= timeThisFrame;
-			timeThisFrame = fps->nextTime();
+			accumulatedOvershootNanos -= timeThisFrame;
 			framesOvershoot++;
 		}
 
@@ -323,8 +366,6 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 			}
 		}
 
-		static unsigned int lastFlipTime = 0;
-
 		if (allow_rendering && !(skip_mode & SKIP_SUPERSKIP) && !deferredLoadingEnabled) {
 			if (cursor_gpu) {
 				int x, y;
@@ -341,8 +382,10 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 
 		while (true) {
 			ticksNow = SDL_GetTicks();
-			if (ticksNow - lastFlipTime >= timeThisFrame) {
-				accumulatedOvershoot += (ticksNow - lastFlipTime) - timeThisFrame;
+			uint64_t ticksNowNanos = highResolutionTicksNanos();
+			uint64_t frameElapsed  = ticksNowNanos - lastFlipTimeNanos;
+			if (frameElapsed >= timeThisFrame) {
+				accumulatedOvershootNanos += frameElapsed - timeThisFrame;
 				break;
 			}
 			// We don't want to be precise in SSKIP mode
@@ -351,7 +394,7 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 			// we still have time, do some downtime processing
 			bool processed{mainThreadDowntimeProcessing(false)};
 			// if we're way ahead of schedule (defined here as more than 5ms), let's have a little nap so we don't destroy everyone's CPU
-			if (!processed && ((ticksNow - lastFlipTime) + 5 <= timeThisFrame)) {
+			if (!processed && frameElapsed + (5ULL * NANOS_PER_MILLISECOND) <= timeThisFrame) {
 				SDL_Delay(1);
 			}
 		}
@@ -378,7 +421,8 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		if (show_fps_counter && !(skip_mode & SKIP_SUPERSKIP)) {
 			static std::deque<uint32_t> ticksList;
 			// display fps counter in title bar averaged over 30 frames
-			ticksList.push_front(ticksNow - lastFlipTime);
+			uint32_t elapsedMillis = static_cast<uint32_t>((highResolutionTicksNanos() - lastFlipTimeNanos) / NANOS_PER_MILLISECOND);
+			ticksList.push_front(elapsedMillis);
 			if (ticksList.size() == 31)
 				ticksList.pop_back();
 			// calculate average
@@ -394,7 +438,7 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		}
 
 		//sendToLog(LogLevel::Info,"  flipped -- aimed for %i ms, took %i ms\n", constant_refresh_interval, ticksNow - lastFlipTime);
-		lastFlipTime = ticksNow;
+		lastFlipTimeNanos = highResolutionTicksNanos();
 
 		//printClock("(next iteration)");
 

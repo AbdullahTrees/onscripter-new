@@ -1,7 +1,7 @@
 # SDL3 Performance Audit
 
 Date: 2026-06-02
-Updated: 2026-06-04
+Updated: 2026-06-05
 
 This audit covers the SDL3 default renderer path, with emphasis on
 `Engine/Graphics/SDL3GPUCompat.cpp` because that layer currently adapts the
@@ -319,6 +319,186 @@ aliases.
 Status: build-verified on the local Windows UCRT64 SDL3 build and copied to
 `D:\Umineko Project\onscripter-new.exe`. No benchmark or runtime telemetry pass
 was run for this rebuild.
+
+### Menu Responsiveness and Refresh Pacing
+
+The 2026-06-04 menu responsiveness pass targets Config entry latency, Config
+navigation overhead, Music Box BGM switching latency, and GUI animation pacing.
+
+Config again constructs all pages at their normal offscreen positions before
+navigation, avoiding first-visit delays and page-transition artifacts. To keep
+entry responsive, the startup menu cache now asynchronously prewarms the 46
+voice-toggle character icon surfaces used by Config page two, so `lsp` can
+reuse decoded surfaces when Config constructs the offscreen pages. The Config
+menu also has a `Restart` button immediately to the left of `Back`, with the
+same horizontal spacing used between `Next` and `Exit`, so restart-required
+settings no longer leave users with only a passive message.
+
+Music Box normal BGM selections now use a `bgmfast` command. It loads the new
+music while the current track remains active, then releases the old music only
+after the replacement has loaded successfully. SDL3_mixer music loads also use
+streaming `MIX_Audio` instead of predecoding the entire track during selection,
+which targets the underlying delay instead of only masking the stop/load gap.
+
+Default GUI/event frame pacing now queries the active window display refresh
+rate through SDL and recreates the frame-time generator when the reported rate
+changes. The bundled script's `setfps 60` no longer pins the GUI to 60 Hz when a
+valid display refresh rate is available; `force-fps` remains the explicit
+config override. Invalid or extreme display rates fall back to the script FPS
+when present, then the legacy 30 FPS default.
+
+The follow-up animation-pacing pass moves the core `waitEvent()` frame baseline
+from millisecond SDL ticks to SDL's high-resolution performance counter, resets
+stale accumulated overshoot after long non-render gaps or refresh-rate changes,
+and keeps dynamic-property interpolation in nanoseconds instead of quantizing
+through `Clock::time()`. This targets menu movements such as the Tips panel,
+where stale frame debt or millisecond pacing could collapse visible updates
+below the monitor refresh cadence. The packed text cursor assets still use
+10-cell sprite strips, so the renderer now cross-fades the current and next
+cursor cells every rendered frame while leaving ordinary sprite-sheet
+animations discrete.
+
+Status: the local UCRT64 build linked successfully without warning output and
+was copied to `D:\Umineko Project\onscripter-new.exe`. The active English
+script was repacked to `D:\Umineko Project\en.file` and decode round-trip
+verified before copy. A 12 second startup smoke test kept the process alive
+until it was intentionally terminated. No benchmark, menu timing capture, or
+longer runtime telemetry pass was run for this change.
+
+Follow-up status: the animation-pacing rebuild linked successfully and was
+copied to `D:\Umineko Project\onscripter-new.exe`. A 12 second startup smoke
+test kept the process alive until it was intentionally terminated. No benchmark,
+menu timing capture, or longer runtime telemetry pass was run for this
+follow-up.
+
+The 2026-06-05 animation follow-up keeps the cursor on the refresh-paced path
+but changes its smoothing from two-cell cross-fading to drawing a single full
+cursor cell with a smoothly computed alpha phase. This avoids normal alpha
+blending overbrightening the white interior when two partially transparent
+cursor cells overlap. The title Tips submenu animation was also moved out of
+the script's old `msp` plus `waittimer 50` stepping pattern and into dynamic
+`spt` `ypos`/`alpha` properties over the same 350 ms motion window, so the
+engine can update the Tips button movement every display-paced frame.
+
+Second follow-up status: the local UCRT64 build linked successfully. The active
+English script was repacked and decode round-trip verified, then the updated
+`onscripter-new.exe` and `en.file` were copied to `D:\Umineko Project`. A
+12 second startup smoke test kept the process alive until it was intentionally
+terminated. No benchmark, menu timing capture, or longer runtime telemetry pass
+was run for this follow-up.
+
+The second 2026-06-05 animation follow-up corrects the cursor smoothing against
+the actual packed cursor sheets: cell 0 is the bright/full cell and later cells
+fade downward, so the renderer now draws cell 0 with an alpha phase matching
+that original direction. This keeps the monitor-paced cursor fade without
+making the sprite faint. The remaining title-menu button open animations for
+Tea Party, Ura Tea/????, and Characters now use dynamic `spt` `ypos`/`alpha`
+properties instead of the old `msp` plus `waittimer` stepping blocks, matching
+the prior Tips fix.
+
+Third follow-up status: the local UCRT64 build linked successfully. The active
+English script was repacked and decode round-trip verified, then the updated
+`onscripter-new.exe` and `en.file` were copied to `D:\Umineko Project`. A
+12 second startup smoke test kept the process alive until it was intentionally
+terminated. No benchmark, menu timing capture, or longer runtime telemetry pass
+was run for this follow-up.
+
+The fourth 2026-06-05 animation follow-up moves Config page scrolling off the
+old per-sprite submission shape. The new `spriterangept` command stores a
+temporary range offset as a dynamic custom property, redraws the HUD once per
+display-paced frame, and commits the final offset to the affected sprite
+positions after `spriterangeptwait`. The Config script now animates the
+`190`-`384` page-control range with one grouped property while the existing
+`config_main_lsp2` background/container animation remains on `aspt2`.
+
+Fourth follow-up status: the local UCRT64 build linked successfully. The active
+English script was repacked and decode round-trip verified, then the updated
+`onscripter-new.exe` and `en.file` were copied to `D:\Umineko Project`. A
+12 second startup smoke test kept the process alive until it was intentionally
+terminated. No benchmark, menu timing capture, or longer runtime telemetry pass
+was run for this follow-up.
+
+The 2026-06-05 Config reset UI text/layout pass changes only the packed script:
+the Config reset button now reads `Reset Progress`, the destructive-reset
+prompt and choices use the requested copy, and the confirmation layout centers
+the bounded prompt plus a padded centered choice row. The active English script
+was repacked and decode round-trip verified. `make -j8` reported the binary
+target was already current; the current `onscripter-new.exe` and updated
+`en.file` were copied to `D:\Umineko Project`. No benchmark, menu timing
+capture, or longer runtime telemetry pass was run for this script-only update.
+The immediate follow-up changes only the reset confirmation choice aliases so
+`Yes, I'm sure` and `No!` use the same white-normal/red-hover scheme as the
+Config `Reset Progress` button. The active English script was repacked and
+decode round-trip verified again. `make -j8` reported the binary target was
+already current; the current `onscripter-new.exe` and updated `en.file` were
+copied to `D:\Umineko Project`. No benchmark, menu timing capture, or longer
+runtime telemetry pass was run for this script-only color update.
+
+The follow-up Config polish pass also changes only the packed script: visible
+Config setting titles are title-cased, Effect/Voice slider rows use the same
+title-to-slider vertical spacing as BGM, and the textbox window selector now
+shows a scaled live preview from the existing `msgwnd` assets. The active
+English script was repacked and decode round-trip verified again. `make -j8`
+reported the binary target was already current; the current
+`onscripter-new.exe` and updated `en.file` were copied to `D:\Umineko Project`.
+No benchmark, menu timing capture, or longer runtime telemetry pass was run
+for this script-only UI update.
+
+The immediate Config scroll-regression correction keeps the preview but moves
+its sprites into the existing `190`-`384` Config page-control range. The extra
+`spriterangept` calls for the preview-only range were removed because the
+grouped range command tracks one active range per property, so the second call
+could interrupt the main Config page movement. The active English script was
+repacked and decode round-trip verified again. `make -j8` reported the binary
+target was already current; the current `onscripter-new.exe` and fixed
+`en.file` were copied to `D:\Umineko Project`. No benchmark, menu timing
+capture, or longer runtime telemetry pass was run for this script-only
+correction.
+
+The follow-up textbox selector layout update remains script-only: the TypeN/
+TypeB/TypeL/TypeT labels and sample preview sentence were removed, the live
+textbox-window preview moved into the selector row, and left/right arrows now
+cycle the selected window style using the same row-control pattern as Song
+Subtitles. The active English script was repacked and decode round-trip
+verified again. `make -j8` reported the binary target was already current; the
+current `onscripter-new.exe` and updated `en.file` were copied to
+`D:\Umineko Project`. No benchmark, menu timing capture, or longer runtime
+telemetry pass was run for this script-only layout update.
+
+The textbox preview spacing/assets follow-up spreads the selector arrows beyond
+the preview width, scales and lowers the preview for padding from Automode
+Speed, and uses preview-only cropped PNGs derived from the existing textbox
+window assets so detached left-side decoration pieces are not shown in Config.
+The active English script was repacked and decode round-trip verified again.
+`make -j8` reported the binary target was already current; the current
+`onscripter-new.exe` and updated `en.file` were copied to
+`D:\Umineko Project`. No benchmark, menu timing capture, or longer runtime
+telemetry pass was run for this UI asset/layout update.
+
+The final textbox preview arrow alignment pass changes only packed-script
+coordinates: both arrow sprites are vertically centered against the preview
+row, and the right arrow is moved inward so its gap from the preview matches
+the left arrow. The active English script was repacked and decode round-trip
+verified again. `make -j8` reported the binary target was already current; the
+current `onscripter-new.exe` and updated `en.file` were copied to
+`D:\Umineko Project`. No benchmark, menu timing capture, or longer runtime
+telemetry pass was run for this coordinate-only update.
+
+The empty textbox preview label follow-up changes only packed-script text: the
+no-window textbox style now displays centered `No Window` text in its preview
+area instead of appearing blank. The active English script was repacked and
+decode round-trip verified again. `make -j8` reported the binary target was
+already current; the current `onscripter-new.exe` and updated `en.file` were
+copied to `D:\Umineko Project`. No benchmark, menu timing capture, or longer
+runtime telemetry pass was run for this script-only label update.
+
+The immediate `No Window` alignment follow-up changes only the packed-script
+label y coordinate so the no-window text uses the same vertical row coordinate
+as the selector arrows. The active English script was repacked and decode
+round-trip verified again. `make -j8` reported the binary target was already
+current; the current `onscripter-new.exe` and updated `en.file` were copied to
+`D:\Umineko Project`. No benchmark, menu timing capture, or longer runtime
+telemetry pass was run for this coordinate-only update.
 
 ### Renderer Telemetry
 

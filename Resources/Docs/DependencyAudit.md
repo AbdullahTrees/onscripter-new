@@ -1,7 +1,7 @@
 # Dependency Audit and Modernization Plan
 
 Date: 2026-05-31
-Updated: 2026-06-04
+Updated: 2026-06-05
 
 This document is the current dependency and renderer modernization status for
 `onscripter-new`. It is intentionally kept as a clean status record, not a
@@ -54,6 +54,52 @@ complete investigation log.
   `onscripter-new.exe`, pins the Umineko Rondo window title without appended
   engine version text, and exposes the SDL3_GPU Vulkan backend as `Vulkan` in
   renderer selection UI/config while accepting legacy `SDL3_GPU` values.
+- The 2026-06-04 menu responsiveness pass adds no new third-party dependencies.
+  It uses existing script UI primitives, the existing packed-script tools,
+  SDL display-mode refresh-rate queries, async image cache support, and the
+  existing SDL3_mixer-backed music path.
+- The follow-up 2026-06-04 animation-pacing pass adds no new third-party
+  dependencies. It uses SDL's existing high-resolution performance counter,
+  the existing clock/dynamic-property infrastructure, and a constrained
+  renderer path for the packed text cursor sprite sheets.
+- The 2026-06-05 animation follow-up adds no new third-party dependencies. It
+  keeps the cursor smoothing in the renderer and changes the title Tips submenu
+  script animation to existing dynamic sprite-property commands.
+- The second 2026-06-05 animation follow-up adds no new third-party
+  dependencies. It corrects cursor smoothing against the existing packed cursor
+  sheet and moves the remaining title-menu button open animations to existing
+  dynamic sprite-property commands.
+- The third 2026-06-05 animation follow-up adds no new third-party
+  dependencies. It adds a narrow engine-side grouped sprite-range dynamic
+  property command and uses the existing packed-script tooling for the Config
+  page scroll update.
+- The 2026-06-05 Config reset UI text/layout pass adds no new third-party
+  dependencies. It changes only existing packed-script aliases and reset-dialog
+  positioning logic.
+- The follow-up reset-choice color pass adds no new third-party dependencies.
+  It changes only the existing packed-script choice aliases to match the Config
+  button white/red hover scheme.
+- The follow-up Config polish pass adds no new third-party dependencies. It
+  changes only packed-script setting labels, slider sprite positions, and a
+  textbox preview built from the existing `msgwnd` window assets.
+- The immediate Config scroll-regression correction adds no new third-party
+  dependencies. It changes only the textbox preview sprite IDs and removes the
+  extra packed-script range-animation calls so Config page scrolling again uses
+  one existing `spriterangept` range.
+- The textbox selector layout follow-up adds no new third-party dependencies.
+  It changes only packed-script Config row layout and button wiring so the
+  existing textbox-window assets are previewed through left/right arrows.
+- The textbox preview spacing/assets follow-up adds no new third-party
+  dependencies. It changes packed-script Config preview coordinates and adds
+  preview-only cropped PNGs derived from the existing textbox-window assets in
+  the active game directory.
+- The final textbox preview arrow alignment pass adds no new third-party
+  dependencies. It changes only packed-script Config arrow coordinates.
+- The empty textbox preview label follow-up adds no new third-party
+  dependencies. It changes only packed-script Config preview text for the
+  no-window textbox style.
+- The `No Window` alignment follow-up adds no new third-party dependencies. It
+  changes only the packed-script y coordinate for that preview label.
 
 ## Support Floor
 
@@ -503,6 +549,67 @@ SDL3 source-tagged runtime telemetry:
 - The 2026-06-04 audio backend audit build linked successfully and was copied
   to `D:\Umineko Project\onscripter-ru.exe`. Benchmarks and runtime telemetry
   were intentionally not run for this pass.
+- The 2026-06-04 menu responsiveness build linked successfully and was copied
+  to `D:\Umineko Project\onscripter-new.exe`. The repacked active English
+  script was copied to `D:\Umineko Project\en.file` after an exact decode
+  round-trip check. Benchmarks and runtime telemetry were intentionally not run
+  for this pass.
+- The follow-up 2026-06-04 animation-pacing build linked successfully and was
+  copied to `D:\Umineko Project\onscripter-new.exe`. Benchmarks and runtime
+  telemetry were intentionally not run for this pass.
+- The 2026-06-05 animation follow-up build linked successfully. The active
+  English script was repacked and decode round-trip verified, then the updated
+  executable and `en.file` were copied to `D:\Umineko Project`. Benchmarks and
+  runtime telemetry were intentionally not run for this pass.
+- The second 2026-06-05 animation follow-up build linked successfully. The
+  active English script was repacked and decode round-trip verified, then the
+  updated executable and `en.file` were copied to `D:\Umineko Project`.
+  Benchmarks and runtime telemetry were intentionally not run for this pass.
+- The 2026-06-05 Config reset UI script update repacked the active English
+  script and passed an exact decode round-trip check. `make -j8` reported the
+  binary target was already current; the current `onscripter-new.exe` and
+  updated `en.file` were copied to `D:\Umineko Project`. Benchmarks and runtime
+  telemetry were intentionally not run for this script-only pass.
+- The follow-up reset-choice color script update repacked the active English
+  script and passed an exact decode round-trip check. `make -j8` again reported
+  the binary target was already current; the current `onscripter-new.exe` and
+  updated `en.file` were copied to `D:\Umineko Project`. Benchmarks and runtime
+  telemetry were intentionally not run for this script-only pass.
+- The follow-up Config polish script update repacked the active English script
+  and passed an exact decode round-trip check. `make -j8` again reported the
+  binary target was already current; the current `onscripter-new.exe` and
+  updated `en.file` were copied to `D:\Umineko Project`. Benchmarks and runtime
+  telemetry were intentionally not run for this script-only pass.
+- The immediate Config scroll-regression correction repacked the active English
+  script and passed an exact decode round-trip check. `make -j8` again reported
+  the binary target was already current; the current `onscripter-new.exe` and
+  fixed `en.file` were copied to `D:\Umineko Project`. Benchmarks and runtime
+  telemetry were intentionally not run for this script-only pass.
+- The textbox selector layout follow-up repacked the active English script and
+  passed an exact decode round-trip check. `make -j8` again reported the binary
+  target was already current; the current `onscripter-new.exe` and updated
+  `en.file` were copied to `D:\Umineko Project`. Benchmarks and runtime
+  telemetry were intentionally not run for this script-only pass.
+- The textbox preview spacing/assets follow-up repacked the active English
+  script and passed an exact decode round-trip check. `make -j8` again reported
+  the binary target was already current; the current `onscripter-new.exe` and
+  updated `en.file` were copied to `D:\Umineko Project`. Benchmarks and runtime
+  telemetry were intentionally not run for this UI asset/layout pass.
+- The final textbox preview arrow alignment pass repacked the active English
+  script and passed an exact decode round-trip check. `make -j8` again reported
+  the binary target was already current; the current `onscripter-new.exe` and
+  updated `en.file` were copied to `D:\Umineko Project`. Benchmarks and runtime
+  telemetry were intentionally not run for this coordinate-only pass.
+- The empty textbox preview label follow-up repacked the active English script
+  and passed an exact decode round-trip check. `make -j8` again reported the
+  binary target was already current; the current `onscripter-new.exe` and
+  updated `en.file` were copied to `D:\Umineko Project`. Benchmarks and runtime
+  telemetry were intentionally not run for this script-only pass.
+- The `No Window` alignment follow-up repacked the active English script and
+  passed an exact decode round-trip check. `make -j8` again reported the binary
+  target was already current; the current `onscripter-new.exe` and updated
+  `en.file` were copied to `D:\Umineko Project`. Benchmarks and runtime
+  telemetry were intentionally not run for this coordinate-only pass.
 
 ## Packaging Notes
 

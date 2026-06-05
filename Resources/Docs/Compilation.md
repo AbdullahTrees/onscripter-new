@@ -15,6 +15,10 @@ Build stacks use a shared dependency compilation system called **onscrlib** (see
 - Xcode (macOS and iOS support)
 - configure & make (everything else)
 
+Project maintenance docs live in `D:\onscripter-new\Resources\Docs`. Before
+code changes, check this file plus `DependencyAudit.md` and
+`SDL3PerformanceAudit.md`.
+
 A generic way to compile the project for the host is as follows:
 
 ```
@@ -38,6 +42,36 @@ make -j8
 ```
 
 On current MSYS2/UCRT64 GCC 16 toolchains, `--std=gnu++14` is recommended for Windows release builds. It avoids strict `-std=c++14` parsing failures in current libstdc++ headers around `__float128` literal suffix declarations.
+
+Current local Windows/UCRT64 build commands from PowerShell:
+
+```
+C:\msys64\usr\bin\bash.exe -lc 'export MSYSTEM=UCRT64; export PATH=/ucrt64/bin:/usr/bin:$PATH; cd /d/onscripter-new && ./configure --release-build --strip-binary --std=gnu++14'
+C:\msys64\usr\bin\bash.exe -lc 'export MSYSTEM=UCRT64; export PATH=/ucrt64/bin:/usr/bin:$PATH; cd /d/onscripter-new && make -j8'
+```
+
+For an already configured local tree, only the second command is needed. The
+current Windows executable is emitted at:
+
+```
+D:\onscripter-new\DerivedData\MinGW-x86_64\onscripter-new.exe
+```
+
+When the English decoded script changes, rebuild and verify the packed script
+from UCRT64:
+
+```
+C:\msys64\usr\bin\bash.exe -lc 'export MSYSTEM=UCRT64; export PATH=/ucrt64/bin:/usr/bin:$PATH; cd /d/onscripter-new && Tools/nscmake/nscmake.exe -o DerivedData/decoded-script/en.file.new DerivedData/decoded-script/en.txt'
+C:\msys64\usr\bin\bash.exe -lc 'export MSYSTEM=UCRT64; export PATH=/ucrt64/bin:/usr/bin:$PATH; cd /d/onscripter-new && Tools/nscdec/nscdec.exe DerivedData/decoded-script/en.file.new DerivedData/decoded-script/en.roundtrip.txt && cmp -s DerivedData/decoded-script/en.txt DerivedData/decoded-script/en.roundtrip.txt'
+```
+
+After any successful executable rebuild, copy the executable to the active game
+directory. If the packed English script changed, copy it too:
+
+```
+Copy-Item -LiteralPath D:\onscripter-new\DerivedData\MinGW-x86_64\onscripter-new.exe -Destination "D:\Umineko Project\onscripter-new.exe" -Force
+Copy-Item -LiteralPath D:\onscripter-new\DerivedData\decoded-script\en.file.new -Destination "D:\Umineko Project\en.file" -Force
+```
 
 If `sdl3-shadercross.pc` is available in the dependency prefix, SDL3 builds also
 define `ONS_USE_SDL3_SHADERCROSS` and link SDL_shadercross. That optional path
@@ -196,6 +230,130 @@ user-facing preferred renderer name from `SDL3_GPU` to `Vulkan` while keeping
 `SDL3_GPU` as a legacy command-line/config alias. The executable linked
 successfully and was copied to `D:\Umineko Project\onscripter-new.exe`.
 No benchmark or runtime telemetry pass was run for this rebuild.
+The 2026-06-04 UCRT64 menu responsiveness rebuild linked successfully after
+adding a Config restart button, async prewarming for Config voice-toggle
+character icons, fast Music Box BGM handoff with streaming SDL3_mixer music
+loads, and monitor-refresh-driven GUI/event pacing unless `force-fps` is set.
+The updated `onscripter-new.exe` was copied to
+`D:\Umineko Project\onscripter-new.exe`; the active packed English script was
+repacked to `D:\Umineko Project\en.file` after a decode round-trip check, with
+the original saved as `D:\Umineko Project\en.file.codex-backup`. A 12 second
+startup smoke test kept the process alive until it was intentionally
+terminated; no benchmark or longer runtime telemetry pass was run for this
+rebuild.
+The follow-up 2026-06-04 UCRT64 animation-pacing rebuild linked successfully
+after moving GUI/event frame waits from millisecond SDL ticks to the high
+resolution SDL performance counter, resetting stale frame debt after long
+non-render gaps, preserving dynamic-property interpolation in nanoseconds, and
+cross-fading the packed text cursor cells every rendered frame. The updated
+`onscripter-new.exe` was copied to `D:\Umineko Project\onscripter-new.exe`.
+A 12 second startup smoke test kept the process alive until it was intentionally
+terminated; no benchmark or longer runtime telemetry pass was run for this
+rebuild.
+The 2026-06-05 UCRT64 animation follow-up rebuild linked successfully after
+changing packed text cursor smoothing to draw a single full cursor cell with a
+refresh-paced alpha phase, avoiding the overbright white-area strobe caused by
+cross-fading two semi-transparent cells over the scene. The title Tips submenu
+script animation was also changed from repeated immediate `msp`/`waittimer`
+steps to refresh-paced `spt` `ypos`/`alpha` properties. The active packed
+English script was rebuilt and decode round-trip verified before copy. The
+updated `onscripter-new.exe` and `en.file` were copied to `D:\Umineko Project`.
+A 12 second startup smoke test kept the process alive until it was intentionally
+terminated; no benchmark or longer runtime telemetry pass was run for this
+rebuild.
+The second 2026-06-05 UCRT64 animation follow-up rebuild linked successfully
+after correcting the smoothed cursor to use the bright first cursor cell with
+the original fade direction, restoring normal cursor visibility, and converting
+the remaining title-menu button open animations for Tea Party, Ura Tea/????,
+and Characters from stepped `msp`/`waittimer` sequences to refresh-paced `spt`
+properties. The active packed English script was rebuilt and decode round-trip
+verified before copy. The updated `onscripter-new.exe` and `en.file` were
+copied to `D:\Umineko Project`. A 12 second startup smoke test kept the process
+alive until it was intentionally terminated; no benchmark or longer runtime
+telemetry pass was run for this rebuild.
+
+The third 2026-06-05 UCRT64 animation follow-up rebuild linked successfully
+after adding `spriterangept`/`spriterangeptwait` for grouped sprite-range
+position animation and converting the Config page scroll from hundreds of
+individual sprite property updates to one refresh-paced grouped range motion.
+The active packed English script was rebuilt and decode round-trip verified
+before copy. The updated `onscripter-new.exe` and `en.file` were copied to
+`D:\Umineko Project`. A 12 second startup smoke test kept the process alive
+until it was intentionally terminated; no benchmark or longer runtime telemetry
+pass was run for this rebuild.
+
+The follow-up 2026-06-05 Config reset UI script update renamed the Config
+button to `Reset Progress`, changed the confirmation prompt and choices, and
+centered the reset confirmation layout with a bounded prompt width and padded
+choice row. The active packed English script was rebuilt and decode round-trip
+verified. `make -j8` reported the binary target was already current; the
+current `onscripter-new.exe` and updated `en.file` were copied to
+`D:\Umineko Project`. No benchmark, smoke test, or longer runtime telemetry
+pass was run for this script-only update.
+The immediate follow-up adjusted the reset confirmation choices to match the
+Config button color scheme, using white normally and red on hover. The active
+packed English script was rebuilt and decode round-trip verified again;
+`make -j8` reported the binary target was already current, and the current
+`onscripter-new.exe` plus updated `en.file` were copied to
+`D:\Umineko Project`. No benchmark, smoke test, or longer runtime telemetry
+pass was run for this script-only color update.
+
+The follow-up 2026-06-05 Config polish script update title-cased the visible
+Config setting titles, normalized Effect/Voice audio slider vertical placement
+to match the BGM row spacing, and added a live textbox-window preview using
+the existing `msgwnd` assets. The active packed English script was rebuilt and
+decode round-trip verified. `make -j8` reported the binary target was already
+current; the current `onscripter-new.exe` and updated `en.file` were copied to
+`D:\Umineko Project`. No benchmark, smoke test, or longer runtime telemetry
+pass was run for this script-only UI update.
+The immediate scroll-regression correction moves the textbox preview sprites
+inside the existing Config `190`-`384` animated sprite range and removes the
+extra `spriterangept` calls that interrupted page scrolling. The active packed
+English script was rebuilt and decode round-trip verified again. `make -j8`
+reported the binary target was already current; the current
+`onscripter-new.exe` and fixed `en.file` were copied to `D:\Umineko Project`.
+No benchmark, smoke test, or longer runtime telemetry pass was run for this
+script-only correction.
+The follow-up textbox selector layout update removes the TypeN/TypeB/TypeL/
+TypeT labels and sample preview text, places the live textbox-window preview in
+the selector row, and cycles the selected preview with left/right arrows like
+the Song Subtitles option. The active packed English script was rebuilt and
+decode round-trip verified again. `make -j8` reported the binary target was
+already current; the current `onscripter-new.exe` and updated `en.file` were
+copied to `D:\Umineko Project`. No benchmark, smoke test, or longer runtime
+telemetry pass was run for this script-only layout update.
+The follow-up textbox preview spacing/assets update spreads the selector
+arrows outside the preview body, reduces and lowers the row preview for padding
+from the Automode Speed slider, and adds preview-only cropped textbox-window
+PNGs under `D:\Umineko Project\graphics\system\wnd` so the detached left-side
+decorations from the source assets do not appear in Config. The active packed
+English script was rebuilt and decode round-trip verified again. `make -j8`
+reported the binary target was already current; the current
+`onscripter-new.exe` and updated `en.file` were copied to `D:\Umineko Project`.
+No benchmark, smoke test, or longer runtime telemetry pass was run for this UI
+asset/layout update.
+The final textbox preview arrow alignment pass keeps the same cropped preview
+assets and adjusts only the packed-script arrow coordinates so both arrows are
+vertically centered on the preview and the right-side gap matches the left-side
+gap. The active packed English script was rebuilt and decode round-trip
+verified again. `make -j8` reported the binary target was already current; the
+current `onscripter-new.exe` and updated `en.file` were copied to
+`D:\Umineko Project`. No benchmark, smoke test, or longer runtime telemetry
+pass was run for this coordinate-only update.
+The follow-up empty textbox preview label update adds centered `No Window` text
+for the textbox style that intentionally has no window image. The active packed
+English script was rebuilt and decode round-trip verified again. `make -j8`
+reported the binary target was already current; the current
+`onscripter-new.exe` and updated `en.file` were copied to `D:\Umineko Project`.
+No benchmark, smoke test, or longer runtime telemetry pass was run for this
+script-only label update.
+The immediate `No Window` alignment follow-up adjusts only the packed-script
+label y coordinate so the text shares the selector arrows' vertical row. The
+active packed English script was rebuilt and decode round-trip verified again.
+`make -j8` reported the binary target was already current; the current
+`onscripter-new.exe` and updated `en.file` were copied to
+`D:\Umineko Project`. No benchmark, smoke test, or longer runtime telemetry
+pass was run for this coordinate-only update.
 
 SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
 `ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,

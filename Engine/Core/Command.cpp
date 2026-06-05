@@ -1564,23 +1564,26 @@ int ONScripter::mp3fadeinCommand() {
 
 int ONScripter::mp3Command() {
 	bool loop_flag = false;
+	bool fast_switch = script_h.isName("bgmfast");
 	if (script_h.isName("mp3save")) {
 		mp3save_flag = true;
 	} else if (script_h.isName("bgmonce")) {
 		mp3save_flag = false;
 	} else if (script_h.isName("mp3loop") ||
-	           script_h.isName("bgm")) {
+	           script_h.isName("bgm") ||
+	           fast_switch) {
 		mp3save_flag = true;
 		loop_flag    = true;
 	} else {
 		mp3save_flag = false;
 	}
 
-	mp3stopCommand();
-
 	music_play_loop_flag = loop_flag;
 
 	const char *buf = script_h.readFilePath();
+	if (!fast_switch || buf[0] == '\0')
+		mp3stopCommand();
+
 	if (buf[0] != '\0') {
 		int tmp = music_volume;
 		script_h.setStr(&music_file_name, buf);
@@ -1593,9 +1596,13 @@ int ONScripter::mp3Command() {
 			music_volume /= 2;
 		}
 
+		int sound_format = SOUND_MUSIC | SOUND_SEQMUSIC | SOUND_CHUNK;
+		if (fast_switch)
+			sound_format |= SOUND_KEEP_CURRENT_MUSIC;
+
 		playSoundThreaded(music_file_name,
-		                  SOUND_MUSIC | SOUND_SEQMUSIC | SOUND_CHUNK,
-		                  music_play_loop_flag, MIX_BGM_CHANNEL);
+		                  sound_format,
+		                  music_play_loop_flag, MIX_BGM_CHANNEL, fast_switch);
 
 		music_volume = tmp;
 	}

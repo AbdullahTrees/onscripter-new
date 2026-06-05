@@ -226,6 +226,8 @@ public:
 	int spritesetAlphaCommand();
 	int spritePropertyWaitCommand();
 	int spritePropertyCommand();
+	int spriteRangePropertyWaitCommand();
+	int spriteRangePropertyCommand();
 	int snapLogCommand();
 	int smartquotesCommand();
 	int skipUnreadCommand();
@@ -1377,7 +1379,8 @@ private:
 		SOUND_CHUNK    = 2, // WAV, Ogg Vorbis
 		SOUND_MUSIC    = 4, // WAV, MP3, Ogg Vorbis (streaming)
 		SOUND_SEQMUSIC = 8, //MIDI/XM/MOD
-		SOUND_OTHER    = 16
+		SOUND_OTHER    = 16,
+		SOUND_KEEP_CURRENT_MUSIC = 32
 	};
 	bool cdaudio_on_flag{false}; // false if mute
 public:                          // MediaLayer wants access to these
@@ -1446,6 +1449,7 @@ private:
 	int playingMusic();
 	int setCurMusicVolume(double volume);
 	int setVolumeMute(bool do_mute);
+	void stopCurrentMusicForReplacement();
 
 	enum { WAVE_PLAY        = 0,
 		   WAVE_PRELOAD     = 1,
@@ -1475,7 +1479,9 @@ public:
 	int evaluateBuiltInCommand(const char *cmd);
 	void flush(int refresh_mode, RenderRect *scene_rect = nullptr, RenderRect *hud_rect = nullptr, bool clear_dirty_flag = true, bool direct_flag = false, bool wait_for_cr = false);
 	void flushDirect(RenderRect &scene_rect, RenderRect &hud_rect, int refresh_mode);
+	float effectiveRefreshRate() const;
 	int game_fps{0};
+	bool force_fps_override{false};
 	bool should_flip{true};
 
 private:
@@ -1500,6 +1506,24 @@ private:
 	int estimateNextDuration(AnimationInfo *anim, RenderRect &rect, int minimum, bool old_ai = false);
 	void advanceAIclocks(uint64_t ns);
 	void advanceSpecificAIclocks(uint64_t ns, int i, int type, bool old_ai = false);
+
+	struct SpriteRangeMotion {
+		int start{0};
+		int end{0};
+		bool active{false};
+		bool includeLsp{true};
+		bool includeLsp2{true};
+		float xOffset{0};
+		float yOffset{0};
+	};
+	SpriteRangeMotion spriteRangeMotion;
+	int spriteRangeXProperty{-1};
+	int spriteRangeYProperty{-1};
+	void setSpriteRangeMotionX(double value);
+	void setSpriteRangeMotionY(double value);
+	void commitSpriteRangeMotion();
+	void applySpriteRangeMotion(AnimationInfo &ai, float dx, float dy, bool lsp2);
+	void offsetSpriteRangeDrawPosition(const AnimationInfo *info, float &x, float &y) const;
 
 	//AnimationInfos that have old_ai to be freed in commitVisualState
 	std::vector<AnimationInfo *> queueAnimationInfo;

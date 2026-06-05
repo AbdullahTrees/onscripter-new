@@ -28,6 +28,8 @@
 #include <malloc/malloc.h>
 #endif
 
+#include <algorithm>
+
 int ONScripter::zOrderOverridePreserveCommand() {
 	preserve = !preserve;
 	return RET_CONTINUE;
@@ -294,7 +296,7 @@ int ONScripter::verifyFilesCommand() {
 			verifyFiles();
 		}
 
-		auto delay = 1000 / (ons.game_fps ? ons.game_fps : DEFAULT_FPS);
+		auto delay = static_cast<int>(1000.0f / ons.effectiveRefreshRate());
 		do {
 			waitEvent(delay);
 		} while (working.test_and_set(std::memory_order_acquire));
@@ -614,6 +616,118 @@ int ONScripter::spritePropertyCommand() {
 		equation = script_h.readInt();
 
 	dynamicProperties.addSpriteProperty(sprite, sprite_num, is_lsp2, is_abs, property, value, duration, equation);
+
+	return RET_CONTINUE;
+}
+
+void ONScripter::setSpriteRangeMotionX(double value) {
+	spriteRangeMotion.xOffset = static_cast<float>(value);
+	fillCanvas(true, true);
+}
+
+void ONScripter::setSpriteRangeMotionY(double value) {
+	spriteRangeMotion.yOffset = static_cast<float>(value);
+	fillCanvas(true, true);
+}
+
+void ONScripter::applySpriteRangeMotion(AnimationInfo &ai, float dx, float dy, bool lsp2) {
+	if (!ai.exists)
+		return;
+
+	if (effect_current)
+		backupState(&ai);
+
+	ai.orig_pos.x += dx;
+	ai.orig_pos.y += dy;
+	UpdateAnimPosXY(&ai);
+	if (lsp2)
+		ai.calcAffineMatrix(window.script_width, window.script_height);
+}
+
+void ONScripter::commitSpriteRangeMotion() {
+	if (!spriteRangeMotion.active)
+		return;
+
+	float dx = spriteRangeMotion.xOffset;
+	float dy = spriteRangeMotion.yOffset;
+	if (dx != 0 || dy != 0) {
+		for (int i = spriteRangeMotion.start; i <= spriteRangeMotion.end; i++) {
+			if (spriteRangeMotion.includeLsp)
+				applySpriteRangeMotion(sprite_info[i], dx, dy, false);
+			if (spriteRangeMotion.includeLsp2)
+				applySpriteRangeMotion(sprite2_info[i], dx, dy, true);
+		}
+	}
+
+	spriteRangeMotion.active  = false;
+	spriteRangeMotion.xOffset = 0;
+	spriteRangeMotion.yOffset = 0;
+	fillCanvas(true, true);
+	flush(REFRESH_NORMAL_MODE, nullptr, nullptr, false, false, false);
+}
+
+static int readSpriteRangeProperty(ScriptHandler &script_h) {
+	if (script_h.compareString("xpos")) {
+		script_h.readName();
+		return 0;
+	}
+	if (script_h.compareString("ypos")) {
+		script_h.readName();
+		return 1;
+	}
+	return -1;
+}
+
+// spriterangept property,first,last,value?,duration?,equation?
+int ONScripter::spriteRangePropertyCommand() {
+	int property = readSpriteRangeProperty(script_h);
+	if (property < 0) {
+		errorAndExit("spriterangept only supports xpos and ypos");
+		return RET_CONTINUE;
+	}
+
+	int first = validSprite(script_h.readInt());
+	int last  = validSprite(script_h.readInt());
+	if (first > last)
+		std::swap(first, last);
+
+	int value    = 0;
+	int duration = 0;
+	int equation = MOTION_EQUATION_LINEAR;
+	if (script_h.hasMoreArgs())
+		value = script_h.readInt();
+	if (script_h.hasMoreArgs())
+		duration = script_h.readInt();
+	if (script_h.hasMoreArgs())
+		equation = script_h.readInt();
+
+	spriteRangeMotion.start       = first;
+	spriteRangeMotion.end         = last;
+	spriteRangeMotion.active      = true;
+	spriteRangeMotion.includeLsp  = true;
+	spriteRangeMotion.includeLsp2 = true;
+	if (property == 0)
+		spriteRangeMotion.yOffset = 0;
+	else
+		spriteRangeMotion.xOffset = 0;
+
+	int propertyId = property == 0 ? spriteRangeXProperty : spriteRangeYProperty;
+	dynamicProperties.addCustomProperty(this, true, propertyId, value, duration, equation, true);
+
+	return RET_CONTINUE;
+}
+
+// spriterangeptwait property
+int ONScripter::spriteRangePropertyWaitCommand() {
+	int property = readSpriteRangeProperty(script_h);
+	if (property < 0) {
+		errorAndExit("spriterangeptwait only supports xpos and ypos");
+		return RET_CONTINUE;
+	}
+
+	int propertyId = property == 0 ? spriteRangeXProperty : spriteRangeYProperty;
+	dynamicProperties.waitOnCustomProperty(this, propertyId);
+	commitSpriteRangeMotion();
 
 	return RET_CONTINUE;
 }

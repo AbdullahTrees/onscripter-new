@@ -54,6 +54,67 @@ void addAnimationMemory(AnimationInfo *ai, AnimationMemoryStats &stats, std::uno
 
 	addAnimationMemory(ai->old_ai, stats, seen);
 }
+
+bool isSmoothTextCursorSprite(const AnimationInfo *ai) {
+	if (!ai || ai->type != SPRITE_LSP || ai->num_of_cells <= 1 || !ai->duration_list || !ai->file_name)
+		return false;
+
+	return std::strstr(ai->file_name, "graphics\\system\\wnd\\cursor") ||
+	       std::strstr(ai->file_name, "graphics/system/wnd/cursor");
+}
+
+int nextAnimationCell(const AnimationInfo *ai) {
+	int next = ai->current_cell + ai->direction;
+	if (next < 0)
+		return 1;
+	if (next < ai->num_of_cells)
+		return next;
+	if (ai->loop_mode == 0)
+		return 0;
+	if (ai->loop_mode == 1)
+		return ai->num_of_cells - 1;
+	return ai->num_of_cells - 2;
+}
+
+int smoothTextCursorAlpha(AnimationInfo *ai) {
+	uint64_t durationNanos = ai->getDurationNanos(ai->current_cell);
+	if (durationNanos == 0)
+		return 255;
+
+	uint64_t remainingNanos = ai->clock.remainingNanos();
+	if (remainingNanos > durationNanos)
+		remainingNanos = durationNanos;
+
+	double t = static_cast<double>(durationNanos - remainingNanos) / static_cast<double>(durationNanos);
+	int nextCell = nextAnimationCell(ai);
+	double phase = static_cast<double>(ai->current_cell) + (static_cast<double>(nextCell - ai->current_cell) * t);
+	double maxPhase = static_cast<double>(ai->num_of_cells - 1);
+	if (phase < 0.0)
+		phase = 0.0;
+	else if (phase > maxPhase)
+		phase = maxPhase;
+
+	return static_cast<int>((1.0 - (phase / maxPhase)) * 255.0);
+}
+
+RenderRect cellClipRect(const AnimationInfo *ai, int cell) {
+	RenderRect clip_rect{0, 0, ai->pos.w, ai->pos.h};
+	if (ai->num_of_cells > 1 && cell != 0) {
+		if (!ai->vertical_cells)
+			clip_rect.x += ai->pos.w * cell;
+		else
+			clip_rect.y += ai->pos.h * cell;
+	}
+	return clip_rect;
+}
+
+void setSpriteRGBA(RenderImage *src, const AnimationInfo *ai, int alpha) {
+	GPU_SetRGBA(src,
+	            ai->trans * ai->darkenHue.r * alpha / (255 * 255),
+	            ai->trans * ai->darkenHue.g * alpha / (255 * 255),
+	            ai->trans * ai->darkenHue.b * alpha / (255 * 255),
+	            ai->trans * alpha / 255);
+}
 } // namespace
 
 int ONScripter::proceedAnimation() {
@@ -153,6 +214,8 @@ int ONScripter::estimateNextDuration(AnimationInfo *anim, RenderRect & /*rect*/,
 				minimum = anim->getDuration(anim->current_cell);
 		}
 	} else {
+		if (isSmoothTextCursorSprite(anim))
+			dirtySpriteRect(anim, old_ai);
 		if ((minimum == -1) || (minimum) > static_cast<int>(anim->clock.remaining()))
 			minimum = anim->clock.remaining();
 	}
@@ -1287,6 +1350,22 @@ void ONScripter::drawBigImage(RenderTarget *target, AnimationInfo *info, int /*r
 		gpu.giveCanvasImage(sprite_transformation_image);
 }
 
+void ONScripter::offsetSpriteRangeDrawPosition(const AnimationInfo *info, float &x, float &y) const {
+	if (!spriteRangeMotion.active || !info)
+		return;
+	if (info->id < spriteRangeMotion.start || info->id > spriteRangeMotion.end)
+		return;
+	if (info->type == SPRITE_LSP && !spriteRangeMotion.includeLsp)
+		return;
+	if (info->type == SPRITE_LSP2 && !spriteRangeMotion.includeLsp2)
+		return;
+	if (info->type != SPRITE_LSP && info->type != SPRITE_LSP2)
+		return;
+
+	x += spriteRangeMotion.xOffset;
+	y += spriteRangeMotion.yOffset;
+}
+
 void ONScripter::drawToGPUTarget(RenderTarget *target, AnimationInfo *info, int refresh_mode, RenderRect *clip, bool centre_coordinates) {
 	if (!target) {
 		sendToLog(LogLevel::Error, "drawToGPUTarget has no proper target\n");
@@ -1321,6 +1400,7 @@ void ONScripter::drawToGPUTarget(RenderTarget *target, AnimationInfo *info, int 
 	// Adjust by sprite-specific camera
 	coord_x += info->camera.pos.x;
 	coord_y += info->camera.pos.y;
+	offsetSpriteRangeDrawPosition(info, coord_x, coord_y);
 
 	/* A paint at 0,0 paints to
 	 ----------------------
@@ -1409,13 +1489,7 @@ void ONScripter::drawToGPUTarget(RenderTarget *target, AnimationInfo *info, int 
 
 		src = info->gpu_image;
 
-		RenderRect clip_rect{0, 0, info->pos.w, info->pos.h};
-		if (info->num_of_cells > 1 && info->current_cell != 0) {
-			if (!info->vertical_cells)
-				clip_rect.x += info->pos.w * info->current_cell;
-			else
-				clip_rect.y += info->pos.h * info->current_cell;
-		}
+		RenderRect clip_rect = cellClipRect(info, info->current_cell);
 		if (info->scrollable.h > 0) {
 			clip_rect.h = clip_rect.h > info->scrollable.h ? info->scrollable.h : clip_rect.h;
 			clip_rect.y = info->scrollable.y;
@@ -1500,9 +1574,20 @@ void ONScripter::drawToGPUTarget(RenderTarget *target, AnimationInfo *info, int 
 
 			if (allowDirectCopy)
 				GPU_SetBlending(src, false);
-			gpu.copyGPUImage(src, &clip_rect, dst_clip, dst, coord_x, coord_y, scale_x, scale_y,
-			                 //ONScripter uses right-to-left angling system and sdl-gpu prefers left-to-right. I prefer sdl-gpu, but we are to follow the standards.
-			                 -info->rot, centre_coordinates);
+			bool interpolatedCursor = false;
+			if (!sprite_transformation_image && isSmoothTextCursorSprite(info) && !info->scrollable.h && !info->scrollable.w) {
+				RenderRect cursor_clip_rect = cellClipRect(info, 0);
+				setSpriteRGBA(src, info, smoothTextCursorAlpha(info));
+				gpu.copyGPUImage(src, &cursor_clip_rect, dst_clip, dst, coord_x, coord_y, scale_x, scale_y,
+				                 -info->rot, centre_coordinates);
+				interpolatedCursor = true;
+			}
+			if (!interpolatedCursor)
+				gpu.copyGPUImage(src, &clip_rect, dst_clip, dst, coord_x, coord_y, scale_x, scale_y,
+				                 //ONScripter uses right-to-left angling system and sdl-gpu prefers left-to-right. I prefer sdl-gpu, but we are to follow the standards.
+				                 -info->rot, centre_coordinates);
+			else if (!opacityTransform)
+				GPU_SetRGBA(src, 255, 255, 255, 255);
 			if (allowDirectCopy)
 				GPU_SetBlending(src, true);
 		}

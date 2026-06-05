@@ -272,7 +272,7 @@ bool SubtitleLayer::startDecoding() {
 	decoded_timestamp = 0;
 	display_timestamp = 0;
 	mediaClock.reset();
-	nanosPerFrame = 1000000000 / (ons.game_fps ? ons.game_fps : DEFAULT_FPS);
+	nanosPerFrame = static_cast<uint64_t>(1000000000.0 / ons.effectiveRefreshRate());
 	frameQueue.emplace_back(); // zero frame
 
 	async.loadSubtitleFrames(this);

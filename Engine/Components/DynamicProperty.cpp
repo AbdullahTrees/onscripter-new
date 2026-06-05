@@ -13,6 +13,14 @@
 
 DynamicPropertyController dynamicProperties;
 
+namespace {
+constexpr uint64_t NS_PER_MS = 1000000ULL;
+
+uint64_t durationToNanos(unsigned int duration) {
+	return static_cast<uint64_t>(duration) * NS_PER_MS;
+}
+} // namespace
+
 /* ---------------- Dynamic properties for effects ---------------- */
 
 void DynamicPropertyController::reset() {
@@ -30,7 +38,7 @@ void DynamicPropertyController::advanceNanos(uint64_t ns) {
 		if (map.second.empty())
 			continue;
 		DynamicCustomProperty &cp = map.second.front(); // Only advance the item at the front of the queue
-		if (cp.clock.time() == 0)
+		if (cp.clock.timeNanos() == 0)
 			cp.begin();
 		if (cp.duration != 0)
 			cp.clock.tickNanos(ns);
@@ -39,7 +47,7 @@ void DynamicPropertyController::advanceNanos(uint64_t ns) {
 		if (map.second.empty())
 			continue;
 		DynamicSpriteProperty &sp = map.second.front(); // Only advance the item at the front of the queue
-		if (sp.clock.time() == 0)
+		if (sp.clock.timeNanos() == 0)
 			sp.begin();
 		if (sp.duration != 0)
 			sp.clock.tickNanos(ns);
@@ -48,7 +56,7 @@ void DynamicPropertyController::advanceNanos(uint64_t ns) {
 		if (map.second.empty())
 			continue;
 		DynamicGlobalProperty &gp = map.second.front(); // Only advance the item at the front of the queue
-		if (gp.clock.time() == 0)
+		if (gp.clock.timeNanos() == 0)
 			gp.begin();
 		if (gp.duration != 0)
 			gp.clock.tickNanos(ns);
@@ -57,7 +65,7 @@ void DynamicPropertyController::advanceNanos(uint64_t ns) {
 		if (map.second.empty())
 			continue;
 		DynamicSpritesetProperty &ssp = map.second.front(); // Only advance the item at the front of the queue
-		if (ssp.clock.time() == 0)
+		if (ssp.clock.timeNanos() == 0)
 			ssp.begin();
 		if (ssp.duration != 0)
 			ssp.clock.tickNanos(ns);
@@ -77,7 +85,7 @@ void DynamicPropertyController::apply() {
 			DynamicCustomProperty &cp = map.second.front(); // Only apply the item at the front of the queue
 			cp.apply();
 			applied_something = true;
-			if (!cp.endless && cp.clock.time() >= cp.duration) {
+			if (!cp.endless && cp.clock.timeNanos() >= durationToNanos(cp.duration)) {
 				map.second.pop_front(); // pop it and apply the next one (properly initializes its start value)
 			} else
 				break; // we applied once and couldn't finish and pop, so we're done with this property until the next advance
@@ -88,7 +96,7 @@ void DynamicPropertyController::apply() {
 			DynamicSpriteProperty &sp = map.second.front(); // Only apply the item at the front of the queue
 			sp.apply();
 			applied_something = true;
-			if (!sp.endless && sp.clock.time() >= sp.duration) {
+			if (!sp.endless && sp.clock.timeNanos() >= durationToNanos(sp.duration)) {
 				map.second.pop_front(); // pop it and apply the next one (properly initializes its start value)
 			} else
 				break; // we applied once and couldn't finish and pop, so we're done with this property until the next advance
@@ -99,7 +107,7 @@ void DynamicPropertyController::apply() {
 			DynamicGlobalProperty &gp = map.second.front(); // Only apply the item at the front of the queue
 			gp.apply();
 			applied_something = true;
-			if (!gp.endless && gp.clock.time() >= gp.duration) {
+			if (!gp.endless && gp.clock.timeNanos() >= durationToNanos(gp.duration)) {
 				map.second.pop_front(); // pop it and apply the next one (properly initializes its start value)
 			} else
 				break; // we applied once and couldn't finish and pop, so we're done with this property until the next advance
@@ -110,7 +118,7 @@ void DynamicPropertyController::apply() {
 			DynamicSpritesetProperty &ssp = map.second.front(); // Only apply the item at the front of the queue
 			ssp.apply();
 			applied_something = true;
-			if (!ssp.endless && ssp.clock.time() >= ssp.duration) {
+			if (!ssp.endless && ssp.clock.timeNanos() >= durationToNanos(ssp.duration)) {
 				map.second.pop_front(); // pop it and apply the next one (properly initializes its start value)
 			} else
 				break; // we applied once and couldn't finish and pop, so we're done with this property until the next advance
@@ -582,7 +590,7 @@ void DynamicPropertyController::DynamicSpritesetProperty::setValue(double value)
 }
 
 void DynamicPropertyController::DynamicProperty::apply() {
-	if (clock.time() == 0) {
+	if (clock.timeNanos() == 0) {
 		begin();
 	}
 	//sendToLog(LogLevel::Info, "apply property for %i/%i of the way through %i -> %i\n", counter, duration, start_value, end_value);
@@ -601,19 +609,21 @@ void DynamicPropertyController::DynamicProperty::begin() {
 	if(motion_equation == MOTION_EQUATION_COSINE_WAVE) {
 		endless = true;
 	}
-	clock.tick(1); // Tiny hack; prevent begin from being executed more than once by immediately advancing 1ms. Creates a very slight timing error.
-	               // (Could also have fixed this by making sure that, when a property P1 finishes and is popped, to advance the next property P2 by the remaining time before applying P2 --
-	               // but this is more complicated since P2 may have 0ms left to advance, in a corner case)
-	               // (Could also introduce a "hasBegun" flag.)
+	clock.tickNanos(1); // Tiny hack; prevent begin from being executed more than once without shifting high-refresh animations by a full millisecond.
+	                    // (Could also have fixed this by making sure that, when a property P1 finishes and is popped, to advance the next property P2 by the remaining time before applying P2 --
+	                    // but this is more complicated since P2 may have 0ms left to advance, in a corner case)
+	                    // (Could also introduce a "hasBegun" flag.)
 }
 
 double DynamicPropertyController::DynamicProperty::getInterpolatedValue() {
 	//sendToLog(LogLevel::Info, "getInterpolatedValue for %i/%i of the way through %i -> %i\n", counter, duration, start_value, end_value);
-	if (!endless && clock.time() >= duration)
+	uint64_t elapsedNanos = clock.timeNanos();
+	uint64_t durationNanos = durationToNanos(duration);
+	if (!endless && elapsedNanos >= durationNanos)
 		return end_value;
-	if (clock.time() == 0)
+	if (elapsedNanos == 0)
 		return start_value;
-	double t = static_cast<double>(clock.time()) / static_cast<double>(duration);
+	double t = static_cast<double>(elapsedNanos) / static_cast<double>(durationNanos);
 	double new_t;
 	switch (motion_equation) {
 		case MOTION_EQUATION_SMOOTH:
@@ -639,8 +649,11 @@ double DynamicPropertyController::DynamicProperty::getInterpolatedValue() {
 }
 
 int DynamicPropertyController::DynamicProperty::getRemainingDuration() {
-	int remaining = duration - clock.time();
-	return remaining > 0 ? remaining : 0;
+	uint64_t durationNanos = durationToNanos(duration);
+	uint64_t elapsedNanos  = clock.timeNanos();
+	if (elapsedNanos >= durationNanos)
+		return 0;
+	return static_cast<int>((durationNanos - elapsedNanos + NS_PER_MS - 1) / NS_PER_MS);
 }
 
 double DynamicPropertyController::DynamicProperty::getRemainingValue() {
