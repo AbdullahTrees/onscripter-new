@@ -43,7 +43,6 @@
 #include <set>
 #include <iostream>
 #include <vector>
-#include <list>
 #include <memory>
 #include <utility>
 #include <atomic>
@@ -172,7 +171,7 @@ public:
 		png_mask_type = mask_type;
 	}
 
-	std::list<SDL_Event> localEventQueue, fetchedEventQueue;
+	std::deque<SDL_Event> localEventQueue, fetchedEventQueue;
 	bool takeEventsOut(uint32_t type);
 	bool updateEventQueue();
 	void fetchEventsToQueue();
@@ -604,7 +603,8 @@ public:
 	/* ---------------------------------------- */
 	/* Event related variables */
 	std::vector<std::shared_ptr<ConstantRefreshAction>> registeredCRActions;
-	std::unique_ptr<SDL_Event> fingerEvents[2];
+	SDL_Event fingerEvents[2]{};
+	bool fingerEventActive[2]{false, false};
 
 protected:
 	int ownInit() override;

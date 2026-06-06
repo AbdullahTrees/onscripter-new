@@ -104,10 +104,10 @@ inline size_t cachedElementApproxBytes(const std::shared_ptr<Wrapped_SDL_Surface
 template <typename SETELEM, typename KEY = std::string>
 class CachedSet {
 public:
-	virtual void add(KEY keyname, std::shared_ptr<SETELEM> elem) = 0;
+	virtual void add(const KEY &keyname, const std::shared_ptr<SETELEM> &elem) = 0;
 	virtual void clear()                                         = 0;
 	virtual void remove(const KEY &keyname)                      = 0;
-	virtual std::shared_ptr<SETELEM> get(KEY keyname)            = 0;
+	virtual std::shared_ptr<SETELEM> get(const KEY &keyname)     = 0;
 	virtual size_t count() const                                 = 0;
 	virtual size_t approxBytes() const                           = 0;
 	virtual bool evictOne()                                      = 0;
@@ -121,10 +121,10 @@ protected:
 	LRUCache<KEY, std::shared_ptr<SETELEM>, std::unordered_map> elemCache;
 
 public:
-	void add(KEY keyname, std::shared_ptr<SETELEM> elem) {
+	void add(const KEY &keyname, const std::shared_ptr<SETELEM> &elem) {
 		elemCache.set(keyname, elem);
 	}
-	std::shared_ptr<SETELEM> get(KEY keyname) {
+	std::shared_ptr<SETELEM> get(const KEY &keyname) {
 		try {
 			auto wrapped = elemCache.get(keyname);
 			//sendToLog(LogLevel::Info, "(LRU) Found image cache entry %s\n", filename.c_str());
@@ -153,11 +153,7 @@ public:
 		return bytes;
 	}
 	bool evictOne() {
-		auto keys = elemCache.list();
-		if (keys.empty())
-			return false;
-		elemCache.remove(keys.back());
-		return true;
+		return elemCache.evict_one();
 	}
 	LRUCachedSet(int capacity)
 	    : capacity(capacity), elemCache(capacity) {}
@@ -169,10 +165,10 @@ protected:
 	std::unordered_map<std::string, std::shared_ptr<SETELEM>> elemCache;
 
 public:
-	void add(KEY keyname, std::shared_ptr<SETELEM> elem) {
+	void add(const KEY &keyname, const std::shared_ptr<SETELEM> &elem) {
 		elemCache.emplace(keyname, elem);
 	}
-	std::shared_ptr<SETELEM> get(KEY keyname) {
+	std::shared_ptr<SETELEM> get(const KEY &keyname) {
 		auto iterator = elemCache.find(keyname);
 		if (iterator != elemCache.end()) {
 			//sendToLog(LogLevel::Info, (Unlimited) Found image cache entry %s\n", filename.c_str());
@@ -214,10 +210,13 @@ class CacheController {
 
 protected:
 	void deleteExistingSet(int cacheSetNumber) {
-		CachedSet<SETELEM> *set = cacheSets.at(cacheSetNumber);
+		auto entry = cacheSets.find(cacheSetNumber);
+		if (entry == cacheSets.end())
+			return;
+		CachedSet<SETELEM> *set = entry->second;
 		set->clear();
 		delete set;
-		cacheSets.erase(cacheSetNumber);
+		cacheSets.erase(entry);
 	}
 	std::unordered_map<int, CachedSet<SETELEM> *> cacheSets;
 
@@ -234,13 +233,13 @@ public:
 		}
 	}
 	void makeLRU(int cacheSetNumber, int capacity) {
-		if (cacheSets.count(cacheSetNumber) > 0)
+		if (cacheSets.find(cacheSetNumber) != cacheSets.end())
 			deleteExistingSet(cacheSetNumber);
 		auto set = new LRUCachedSet<SETELEM>(capacity);
 		cacheSets.emplace(cacheSetNumber, set);
 	}
 	void makeUnlimited(int cacheSetNumber) {
-		if (cacheSets.count(cacheSetNumber) > 0)
+		if (cacheSets.find(cacheSetNumber) != cacheSets.end())
 			deleteExistingSet(cacheSetNumber);
 		auto set = new UnlimitedCachedSet<SETELEM>();
 		cacheSets.emplace(cacheSetNumber, set);
@@ -248,22 +247,24 @@ public:
 	void add(int cacheSetNumber, const std::string &filename, std::shared_ptr<SETELEM> elem) {
 		assert(elem);
 		CachedSet<SETELEM> *set = nullptr;
-		if (cacheSets.count(cacheSetNumber) == 0) {
+		auto entry = cacheSets.find(cacheSetNumber);
+		if (entry == cacheSets.end()) {
 			// that set didn't exist, add it as default (unlimited)
 			set = new UnlimitedCachedSet<SETELEM>();
 			cacheSets.emplace(cacheSetNumber, set);
 		} else {
-			set = cacheSets.at(cacheSetNumber);
+			set = entry->second;
 		}
 
 		set->add(filename, elem);
 	}
 	void remove(int cacheSetNumber, const std::string &filename) {
-		if (cacheSets.count(cacheSetNumber) == 0) {
+		auto entry = cacheSets.find(cacheSetNumber);
+		if (entry == cacheSets.end()) {
 			// That set doesn't exist; cannot remove
 			return;
 		}
-		cacheSets.at(cacheSetNumber)->remove(filename);
+		entry->second->remove(filename);
 	}
 	void removeAll(std::string filename) {
 		for (auto &number_set_pair : cacheSets) {

@@ -207,10 +207,12 @@ void VirtualMutexes::setMutex(void *ptr) {
 		throw std::runtime_error("Resource is dead");
 	}
 
-	if (mutexes.count(ptr) > 0) {
-		m = mutexes[ptr];
+	auto it = mutexes.find(ptr);
+	if (it != mutexes.end()) {
+		m = it->second;
 	} else {
-		m = (mutexes[ptr] = SDL_CreateMutex());
+		m = SDL_CreateMutex();
+		mutexes.emplace(ptr, m);
 	}
 	SDL_AtomicUnlock(&access_mutex);
 	SDL_mutexP(m);
@@ -219,8 +221,9 @@ void VirtualMutexes::setMutex(void *ptr) {
 void VirtualMutexes::unsetMutex(void *ptr) {
 	SDL_mutex *m = nullptr;
 	SDL_AtomicLock(&access_mutex);
-	if (mutexes.count(ptr) > 0) {
-		m = mutexes[ptr];
+	auto it = mutexes.find(ptr);
+	if (it != mutexes.end()) {
+		m = it->second;
 	} else {
 		SDL_AtomicUnlock(&access_mutex);
 		throw std::runtime_error("Amen, uncreated mutex was released into heavens");
@@ -233,12 +236,21 @@ void VirtualMutexes::debugJoin(int debug1, int debug2) {
 	SDL_sem *s1 = nullptr;
 	SDL_sem *s2 = nullptr;
 	SDL_AtomicLock(&access_mutex);
-	if (semaphores.count(debug1) > 0) {
-		s1 = semaphores[debug1];
-		s2 = semaphores[debug2];
+	auto it = semaphores.find(debug1);
+	if (it != semaphores.end()) {
+		s1 = it->second;
+		auto it2 = semaphores.find(debug2);
+		if (it2 != semaphores.end()) {
+			s2 = it2->second;
+		} else {
+			s2 = SDL_CreateSemaphore(0);
+			semaphores.emplace(debug2, s2);
+		}
 	} else {
-		s1 = (semaphores[debug1] = SDL_CreateSemaphore(0));
-		s2 = (semaphores[debug2] = SDL_CreateSemaphore(0));
+		s1 = SDL_CreateSemaphore(0);
+		s2 = SDL_CreateSemaphore(0);
+		semaphores.emplace(debug1, s1);
+		semaphores.emplace(debug2, s2);
 	}
 	SDL_AtomicUnlock(&access_mutex);
 	SDL_SemPost(s2);                     //<- important part

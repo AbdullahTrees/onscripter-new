@@ -14,11 +14,36 @@
 
 #include "Engine/Graphics/RendererBackend.hpp"
 
-#include <vector>
+#include <array>
+#include <cstddef>
 
 struct BlitData {
 	RenderRect src;
 	RenderRect dst;
+};
+
+struct BlitRegionList {
+	static constexpr size_t Capacity = 24;
+
+	std::array<BlitData, Capacity> items{};
+	size_t count{0};
+
+	void push_back(const BlitData &data) {
+		if (count < items.size())
+			items[count++] = data;
+	}
+	BlitData *begin() {
+		return items.data();
+	}
+	BlitData *end() {
+		return items.data() + count;
+	}
+	const BlitData *begin() const {
+		return items.data();
+	}
+	const BlitData *end() const {
+		return items.data() + count;
+	}
 };
 
 struct Sides {
@@ -56,7 +81,7 @@ public:
 
 	Sides mainRegionPadding{0, 0, 0, 0}, nameBoxPadding{0, 0, 0, 0};
 
-	std::vector<BlitData> getRegions();
+	BlitRegionList getRegions();
 
 	RenderRect getPrintableNameBoxRegion();
 	RenderRect getExtendedWindow();
@@ -69,10 +94,10 @@ private:
 
 	RenderRect originalWindowSize{0, 0, 0, 0}; // sentence_font_info.pos, essentially
 
-	std::vector<BlitData> getBottomRegion(const RenderRect &window);
-	std::vector<BlitData> getTopRegion(const RenderRect &window);
-	std::vector<BlitData> getNameRegion(const RenderRect &window);
-	std::vector<BlitData> getNoNameRegion(const RenderRect &window);
+	void appendBottomRegion(BlitRegionList &blits, const RenderRect &window);
+	void appendTopRegion(BlitRegionList &blits, const RenderRect &window);
+	void appendNameRegion(BlitRegionList &blits, const RenderRect &window);
+	void appendNoNameRegion(BlitRegionList &blits, const RenderRect &window);
 	RenderRect getNameBoxRegion(const RenderRect &window);
 	RenderRect getPrintableNameBoxRegion(const RenderRect &window);
 	RenderRect getExtendedWindow(RenderRect window);

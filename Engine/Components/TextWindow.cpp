@@ -13,8 +13,6 @@
 
 #include "Engine/Graphics/RendererBackend.hpp"
 
-#include <vector>
-
 TextWindowController wndCtrl;
 
 static BlitData extendDown(BlitData b, float y) {
@@ -25,8 +23,7 @@ static BlitData extendDown(BlitData b, float y) {
 	return b;
 }
 
-static std::vector<BlitData> threeSplit(const BlitData &b, float x) {
-	std::vector<BlitData> blits;
+static void appendThreeSplit(BlitRegionList &blits, const BlitData &b, float x) {
 	BlitData l, m, r;
 	l.src = {b.src.x, b.src.y, x, b.src.h};
 	m.src = {b.src.x + x, b.src.y, 1, b.src.h};
@@ -34,21 +31,21 @@ static std::vector<BlitData> threeSplit(const BlitData &b, float x) {
 	l.dst = {b.dst.x, b.dst.y, l.src.w, b.src.h};
 	m.dst = {b.dst.x + x, b.dst.y, b.dst.w - b.src.w, b.src.h};
 	r.dst = {b.dst.x + b.dst.w - r.src.w, b.dst.y, r.src.w, b.src.h};
-	blits.assign({l, m, r});
-	return blits;
+	blits.push_back(l);
+	blits.push_back(m);
+	blits.push_back(r);
 }
 
-static std::vector<BlitData> sixSplit(const BlitData &b, float x) {
-	auto blits = threeSplit(b, x);
-
+static void appendSixSplit(BlitRegionList &blits, const BlitData &b, float x) {
+	const size_t first = blits.count;
+	appendThreeSplit(blits, b, x);
 	auto extend = b.dst.h - b.src.h;
 	if (extend <= 0)
-		return blits;
+		return;
 
-	blits.push_back(extendDown(blits[0], extend));
-	blits.push_back(extendDown(blits[1], extend));
-	blits.push_back(extendDown(blits[2], extend));
-	return blits;
+	blits.push_back(extendDown(blits.items[first], extend));
+	blits.push_back(extendDown(blits.items[first + 1], extend));
+	blits.push_back(extendDown(blits.items[first + 2], extend));
 }
 
 int TextWindowController::ownInit() {
@@ -59,21 +56,22 @@ int TextWindowController::ownDeinit() {
 	return 0;
 }
 
-std::vector<BlitData> TextWindowController::getBottomRegion(const RenderRect &window) {
-	std::vector<BlitData> blits;
+void TextWindowController::appendBottomRegion(BlitRegionList &blits, const RenderRect &window) {
 	auto &main = mainRegionDimensions;
 	BlitData bottom;
 	bottom.src = main;
 	bottom.dst = {window.x - mainRegionPadding.left, getTopOfBottom(window), window.w + mainRegionPadding.left + mainRegionPadding.right, main.h};
-	blits      = threeSplit(bottom, mainRegionExtensionCol);
-	return blits;
+	appendThreeSplit(blits, bottom, mainRegionExtensionCol);
 }
 
-std::vector<BlitData> TextWindowController::getTopRegion(const RenderRect &window) {
-	return dlgCtrl.dialogueName.empty() ? getNoNameRegion(window) : getNameRegion(window);
+void TextWindowController::appendTopRegion(BlitRegionList &blits, const RenderRect &window) {
+	if (dlgCtrl.dialogueName.empty())
+		appendNoNameRegion(blits, window);
+	else
+		appendNameRegion(blits, window);
 }
 
-std::vector<BlitData> TextWindowController::getNoNameRegion(const RenderRect &window) {
+void TextWindowController::appendNoNameRegion(BlitRegionList &blits, const RenderRect &window) {
 	BlitData top;
 	top.src = noNameRegionDimensions;
 	top.dst = {
@@ -81,7 +79,7 @@ std::vector<BlitData> TextWindowController::getNoNameRegion(const RenderRect &wi
 	    window.y - mainRegionPadding.top - top.src.h,
 	    window.w + mainRegionPadding.left + mainRegionPadding.right,
 	    getTopOfBottom(window) - (window.y - mainRegionPadding.top - top.src.h)};
-	return sixSplit(top, noNameRegionExtensionCol);
+	appendSixSplit(blits, top, noNameRegionExtensionCol);
 }
 
 // Get dst size for box including namebox padding
@@ -119,7 +117,7 @@ RenderRect TextWindowController::getPrintableNameBoxRegion() {
 	return getPrintableNameBoxRegion(window);
 }
 
-std::vector<BlitData> TextWindowController::getNameRegion(const RenderRect &window) {
+void TextWindowController::appendNameRegion(BlitRegionList &blits, const RenderRect &window) {
 	auto &reg = nameRegionDimensions;
 
 	// These three are correct no matter what the padding; they represent the source areas in the texture map
@@ -154,22 +152,17 @@ std::vector<BlitData> TextWindowController::getNameRegion(const RenderRect &wind
 	rightBD.src = right;
 	rightBD.dst = RenderRect{leftBD.dst.x + namebox.w, topOfNameRegionWithoutBox, window.w + mainRegionPadding.left + mainRegionPadding.right - namebox.w, nameRegionWithoutBoxHeight};
 
-	auto blits  = sixSplit(nameBoxBD, nameBoxExtensionCol);
-	auto blits2 = sixSplit(leftBD, nameBoxExtensionCol);
-	auto blits3 = sixSplit(rightBD, nameRegionExtensionCol - nameBoxDividerCol); // - dividerCol because this param is relative to the src rect
-
-	blits.insert(blits.end(), blits2.begin(), blits2.end());
-	blits.insert(blits.end(), blits3.begin(), blits3.end());
-
-	return blits;
+	appendSixSplit(blits, nameBoxBD, nameBoxExtensionCol);
+	appendSixSplit(blits, leftBD, nameBoxExtensionCol);
+	appendSixSplit(blits, rightBD, nameRegionExtensionCol - nameBoxDividerCol); // - dividerCol because this param is relative to the src rect
 }
 
-std::vector<BlitData> TextWindowController::getRegions() {
-	auto window       = getExtendedWindow();
-	auto topRegion    = getTopRegion(window);
-	auto bottomRegion = getBottomRegion(window);
-	topRegion.insert(topRegion.end(), bottomRegion.begin(), bottomRegion.end());
-	return topRegion;
+BlitRegionList TextWindowController::getRegions() {
+	BlitRegionList blits;
+	auto window = getExtendedWindow();
+	appendTopRegion(blits, window);
+	appendBottomRegion(blits, window);
+	return blits;
 }
 
 RenderRect TextWindowController::getExtendedWindow() {

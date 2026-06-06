@@ -126,6 +126,14 @@ public:
 		
 		capacity = cap;
 	}
+
+	bool evict_one() {
+		if (cache.empty()) {
+			return false;
+		}
+		evict();
+		return true;
+	}
 	
 	
 	/**

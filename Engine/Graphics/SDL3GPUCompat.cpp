@@ -177,6 +177,37 @@ struct SDL3GPUReusableUploadedBuffer {
 	SDL_GPUBufferUsageFlags usage{0};
 };
 
+struct SDL3GPUSamplerSet {
+	std::array<SDL_GPUTexture *, 8> textures{};
+	std::array<SDL_GPUSampler *, 8> samplers{};
+	size_t count{0};
+
+	void clear() {
+		textures.fill(nullptr);
+		samplers.fill(nullptr);
+		count = 0;
+	}
+
+	bool push(SDL_GPUTexture *texture, SDL_GPUSampler *sampler) {
+		if (count >= textures.size())
+			return false;
+		textures[count] = texture;
+		samplers[count] = sampler;
+		++count;
+		return true;
+	}
+};
+
+bool samplerSetsEqual(const SDL3GPUSamplerSet &a, const SDL3GPUSamplerSet &b) {
+	if (a.count != b.count)
+		return false;
+	for (size_t i = 0; i < a.count; ++i) {
+		if (a.textures[i] != b.textures[i] || a.samplers[i] != b.samplers[i])
+			return false;
+	}
+	return true;
+}
+
 struct SDL3GPUNativeBlitBatch {
 	GPU_Target *target{nullptr};
 	GPU_Image *targetImage{nullptr};
@@ -204,8 +235,7 @@ struct SDL3GPUNativeTriangleBatch {
 	bool nativeShaderProgram{false};
 	SDL3GPUShaderKind shaderKind{SDL3GPUShaderKind::Unknown};
 	bool pushColorScale{false};
-	std::vector<SDL_GPUTexture *> samplerTextures;
-	std::vector<SDL_GPUSampler *> samplers;
+	SDL3GPUSamplerSet samplerSet;
 	std::vector<SDL3GPUNativeUniformRegister> fragmentUniformRegisters;
 	std::vector<SDL3GPUVertex> vertices;
 	std::vector<Uint16> indices;
@@ -284,8 +314,7 @@ bool queueNativeTriangleDraw(GPU_Image *image,
                              SDL_GPUGraphicsPipeline *pipeline,
                              const SDL_GPUViewport &viewport,
                              const SDL_Rect &scissor,
-                             const std::vector<SDL_GPUTexture *> &samplerTextures,
-                             const std::vector<SDL_GPUSampler *> &samplers,
+                             const SDL3GPUSamplerSet &samplerSet,
                              bool nativeShaderProgram,
                              SDL3GPUShaderKind shaderKind,
                              bool pushColorScale,
@@ -3842,10 +3871,7 @@ bool renderNativeProgramIndexedTriangles(const SDL3GPUProgramObject &program,
 
 	const Uint32 samplerCount = std::min<Uint32>(program.nativeFragmentResources.numSamplers,
 	                                             static_cast<Uint32>(program.images.size()));
-	std::vector<SDL_GPUTexture *> samplerTextures;
-	std::vector<SDL_GPUSampler *> samplers;
-	samplerTextures.reserve(samplerCount);
-	samplers.reserve(samplerCount);
+	SDL3GPUSamplerSet samplerSet;
 	for (Uint32 i = 0; i < samplerCount; ++i) {
 		const int mappedImageUnit = program.nativeSamplerImageUnits[i] >= 0 ?
 		                                program.nativeSamplerImageUnits[i] :
@@ -3870,8 +3896,8 @@ bool renderNativeProgramIndexedTriangles(const SDL3GPUProgramObject &program,
 		SDL_GPUSampler *sampler = getSampler(boundImage->filter_mode);
 		if (!sampler)
 			return false;
-		samplerTextures.push_back(boundImage->texture);
-		samplers.push_back(sampler);
+		if (!samplerSet.push(boundImage->texture, sampler))
+			return false;
 	}
 
 	const float viewportW = target->viewport.w > 0.0f ? target->viewport.w : static_cast<float>(target->w);
@@ -3885,7 +3911,7 @@ bool renderNativeProgramIndexedTriangles(const SDL3GPUProgramObject &program,
 	viewport.max_depth = 1.0f;
 
 	const SDL_Rect scissor = targetScissor(target);
-	return queueNativeTriangleDraw(image, target, pipeline, viewport, scissor, samplerTextures, samplers,
+	return queueNativeTriangleDraw(image, target, pipeline, viewport, scissor, samplerSet,
 	                               true, program.kind, false, program.nativeUniformRegisters,
 	                               vertices, numVertices, indices, numIndices);
 }
@@ -3938,10 +3964,11 @@ bool renderNativeIndexedTriangles(GPU_Image *image, GPU_Target *target, const SD
 	viewport.max_depth = 1.0f;
 
 	const SDL_Rect scissor = targetScissor(target);
-	std::vector<SDL_GPUTexture *> samplerTextures{image->texture};
-	std::vector<SDL_GPUSampler *> samplers{sampler};
+	SDL3GPUSamplerSet samplerSet;
+	if (!samplerSet.push(image->texture, sampler))
+		return false;
 	const std::vector<SDL3GPUNativeUniformRegister> noFragmentUniforms;
-	return queueNativeTriangleDraw(image, target, pipeline, viewport, scissor, samplerTextures, samplers,
+	return queueNativeTriangleDraw(image, target, pipeline, viewport, scissor, samplerSet,
 	                               false, SDL3GPUShaderKind::Unknown, true, noFragmentUniforms,
 	                               vertices, numVertices, indices, numIndices);
 }
@@ -3993,8 +4020,7 @@ void resetNativeTriangleBatch() {
 	nativeTriangleBatch.nativeShaderProgram = false;
 	nativeTriangleBatch.shaderKind      = SDL3GPUShaderKind::Unknown;
 	nativeTriangleBatch.pushColorScale  = false;
-	nativeTriangleBatch.samplerTextures.clear();
-	nativeTriangleBatch.samplers.clear();
+	nativeTriangleBatch.samplerSet.clear();
 	nativeTriangleBatch.fragmentUniformRegisters.clear();
 	nativeTriangleBatch.vertices.clear();
 	nativeTriangleBatch.indices.clear();
@@ -4051,16 +4077,13 @@ bool flushNativeTriangleBatch() {
 	indexBinding.buffer = indexUploadBuffer.buffer;
 	SDL_BindGPUIndexBuffer(renderPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
-	std::vector<SDL_GPUTextureSamplerBinding> samplerBindings;
-	samplerBindings.reserve(nativeTriangleBatch.samplerTextures.size());
-	for (size_t i = 0; i < nativeTriangleBatch.samplerTextures.size(); ++i) {
-		SDL_GPUTextureSamplerBinding binding{};
-		binding.texture = nativeTriangleBatch.samplerTextures[i];
-		binding.sampler = nativeTriangleBatch.samplers[i];
-		samplerBindings.push_back(binding);
+	std::array<SDL_GPUTextureSamplerBinding, 8> samplerBindings{};
+	for (size_t i = 0; i < nativeTriangleBatch.samplerSet.count; ++i) {
+		samplerBindings[i].texture = nativeTriangleBatch.samplerSet.textures[i];
+		samplerBindings[i].sampler = nativeTriangleBatch.samplerSet.samplers[i];
 	}
-	if (!samplerBindings.empty())
-		SDL_BindGPUFragmentSamplers(renderPass, 0, samplerBindings.data(), static_cast<Uint32>(samplerBindings.size()));
+	if (nativeTriangleBatch.samplerSet.count > 0)
+		SDL_BindGPUFragmentSamplers(renderPass, 0, samplerBindings.data(), static_cast<Uint32>(nativeTriangleBatch.samplerSet.count));
 
 	struct VertexUniforms {
 		float mvp[4][4];
@@ -4106,8 +4129,7 @@ bool nativeTriangleBatchMatches(GPU_Image *image,
                                 SDL_GPUGraphicsPipeline *pipeline,
                                 const SDL_GPUViewport &viewport,
                                 const SDL_Rect &scissor,
-                                const std::vector<SDL_GPUTexture *> &samplerTextures,
-                                const std::vector<SDL_GPUSampler *> &samplers,
+                                const SDL3GPUSamplerSet &samplerSet,
                                 bool nativeShaderProgram,
                                 SDL3GPUShaderKind shaderKind,
                                 bool pushColorScale,
@@ -4125,8 +4147,7 @@ bool nativeTriangleBatchMatches(GPU_Image *image,
 	       nativeTriangleBatch.nativeShaderProgram == nativeShaderProgram &&
 	       nativeTriangleBatch.shaderKind == shaderKind &&
 	       nativeTriangleBatch.pushColorScale == pushColorScale &&
-	       nativeTriangleBatch.samplerTextures == samplerTextures &&
-	       nativeTriangleBatch.samplers == samplers &&
+	       samplerSetsEqual(nativeTriangleBatch.samplerSet, samplerSet) &&
 	       nativeUniformRegistersEqual(nativeTriangleBatch.fragmentUniformRegisters, fragmentUniformRegisters);
 }
 
@@ -4135,8 +4156,7 @@ bool queueNativeTriangleDraw(GPU_Image *image,
                              SDL_GPUGraphicsPipeline *pipeline,
                              const SDL_GPUViewport &viewport,
                              const SDL_Rect &scissor,
-                             const std::vector<SDL_GPUTexture *> &samplerTextures,
-                             const std::vector<SDL_GPUSampler *> &samplers,
+                             const SDL3GPUSamplerSet &samplerSet,
                              bool nativeShaderProgram,
                              SDL3GPUShaderKind shaderKind,
                              bool pushColorScale,
@@ -4146,7 +4166,7 @@ bool queueNativeTriangleDraw(GPU_Image *image,
                              const Uint16 *indices,
                              Uint32 numIndices) {
 	if (!image || !target || !target->image || !pipeline || !vertices || !indices ||
-	    numVertices == 0 || numIndices == 0 || samplerTextures.size() != samplers.size())
+	    numVertices == 0 || numIndices == 0 || samplerSet.count > samplerSet.textures.size())
 		return false;
 	if (viewport.w <= 0.0f || viewport.h <= 0.0f)
 		return false;
@@ -4165,7 +4185,7 @@ bool queueNativeTriangleDraw(GPU_Image *image,
 	}
 
 	if (nativeTriangleBatchActive() &&
-	    (!nativeTriangleBatchMatches(image, target, pipeline, viewport, scissor, samplerTextures, samplers,
+	    (!nativeTriangleBatchMatches(image, target, pipeline, viewport, scissor, samplerSet,
 	                                 nativeShaderProgram, shaderKind, pushColorScale, fragmentUniformRegisters) ||
 	     nativeTriangleBatch.vertices.size() + numVertices > maxVertices)) {
 		if (!flushNativeTriangleBatch())
@@ -4184,8 +4204,7 @@ bool queueNativeTriangleDraw(GPU_Image *image,
 		nativeTriangleBatch.nativeShaderProgram = nativeShaderProgram;
 		nativeTriangleBatch.shaderKind      = shaderKind;
 		nativeTriangleBatch.pushColorScale  = pushColorScale;
-		nativeTriangleBatch.samplerTextures = samplerTextures;
-		nativeTriangleBatch.samplers        = samplers;
+		nativeTriangleBatch.samplerSet      = samplerSet;
 		nativeTriangleBatch.fragmentUniformRegisters = fragmentUniformRegisters;
 		nativeTriangleBatch.vertices.reserve(4096);
 		nativeTriangleBatch.indices.reserve(6144);
@@ -5281,7 +5300,8 @@ void SDLCALL GPU_TriangleBatch(GPU_Image *image, GPU_Target *target, unsigned sh
 		return;
 	}
 
-	std::vector<SDL3GPUVertex> vertices(num_vertices);
+	thread_local std::vector<SDL3GPUVertex> triangleBatchVertices;
+	triangleBatchVertices.resize(num_vertices);
 	const SDL_Color color = image->color;
 	const float r = color.r / 255.0f;
 	const float g = color.g / 255.0f;
@@ -5289,18 +5309,18 @@ void SDLCALL GPU_TriangleBatch(GPU_Image *image, GPU_Target *target, unsigned sh
 	const float a = color.a / 255.0f;
 	for (unsigned short i = 0; i < num_vertices; ++i) {
 		const float *src = values + i * stride;
-		vertices[i].x = src[0];
-		vertices[i].y = src[1];
-		vertices[i].r = r;
-		vertices[i].g = g;
-		vertices[i].b = b;
-		vertices[i].a = a;
+		triangleBatchVertices[i].x = src[0];
+		triangleBatchVertices[i].y = src[1];
+		triangleBatchVertices[i].r = r;
+		triangleBatchVertices[i].g = g;
+		triangleBatchVertices[i].b = b;
+		triangleBatchVertices[i].a = a;
 		const int uvOffset = xyz ? 3 : 2;
-		vertices[i].s = src[uvOffset];
-		vertices[i].t = src[uvOffset + 1];
+		triangleBatchVertices[i].s = src[uvOffset];
+		triangleBatchVertices[i].t = src[uvOffset + 1];
 	}
 
-	if (!renderNativeIndexedTriangles(image, target, vertices.data(), num_vertices, indices, num_indices))
+	if (!renderNativeIndexedTriangles(image, target, triangleBatchVertices.data(), num_vertices, indices, num_indices))
 		setUnsupported("GPU_TriangleBatch native draw");
 }
 

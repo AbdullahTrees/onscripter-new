@@ -1,7 +1,7 @@
 # Dependency Audit and Modernization Plan
 
 Date: 2026-05-31
-Updated: 2026-06-05
+Updated: 2026-06-06
 
 This document is the current dependency and renderer modernization status for
 `onscripter-new`. It is intentionally kept as a clean status record, not a
@@ -100,6 +100,42 @@ complete investigation log.
   no-window textbox style.
 - The `No Window` alignment follow-up adds no new third-party dependencies. It
   changes only the packed-script y coordinate for that preview label.
+- The 2026-06-06 pause-menu UI pass adds no new third-party dependencies. It
+  changes only packed-script pause-menu layout/text plus active game-directory
+  pause-menu PNG artwork for the renamed `Hide` button and relocated
+  episode/chapter labels.
+- The immediate pause-menu hover/artwork follow-up adds no new third-party
+  dependencies. It changes only packed-script button-cell reset logic in the
+  pause-menu loop and active game-directory pause-menu PNG artwork.
+- The second pause-menu follow-up adds no new third-party dependencies. It
+  changes only packed-script pause-menu session-info text sizing, then restores
+  the active game-directory `Clear` button PNG from its saved original-artwork
+  backup.
+- The emergency pause-menu input correction adds no new third-party
+  dependencies. It restores the packed-script async button-wait loop after a
+  failed script-side no-result rebuild attempt blocked button input.
+- The pause-menu hover root-cause follow-up adds no new third-party
+  dependencies. It changes only packed-script session-info sprite allocation
+  and update logic so the live pause-menu polling loop no longer clears normal
+  sprites with `_csp` while button hover tracking is active.
+- The session-label follow-up adds no new third-party dependencies. It changes
+  only packed-script pause-menu text for the no-active-track display value.
+- The Tips/Characters detail follow-up adds no new third-party dependencies. It
+  changes only packed-script menu positioning and string-button selected-state
+  logic for the Tips and Characters menus.
+- The 2026-06-06 whole-codebase performance audit adds no new third-party
+  dependencies. It uses the existing SDL3_GPU and FFmpeg APIs, including fixed
+  native sampler bindings for triangle batches and `av_frame_clone()` for
+  retained hardware-converted video frames, while keeping game timing and
+  visual/audio output quality unchanged.
+- The Config controls layout and polish follow-ups add no new third-party
+  dependencies. They change only packed-script Config button positioning, the
+  restart action label, and the modal controls/keybind reference styling and
+  alignment, including the separated centered popup header and removed Backlog
+  section. The latest correction also keeps the popup body text in the existing
+  foreground sprite range so the dim overlay does not occlude it, pins the
+  fixed-width listing box to the canvas center, and scopes the width tag around
+  the full popup body so every listing line uses that same centered wrap area.
 
 ## Support Floor
 
@@ -610,6 +646,88 @@ SDL3 source-tagged runtime telemetry:
   target was already current; the current `onscripter-new.exe` and updated
   `en.file` were copied to `D:\Umineko Project`. Benchmarks and runtime
   telemetry were intentionally not run for this coordinate-only pass.
+- The 2026-06-06 pause-menu UI pass repacked the active English script and
+  passed an exact decode round-trip check. The UCRT64 release executable
+  relinked successfully with no warning lines in the captured output, then the
+  updated `onscripter-new.exe`, `en.file`, and active pause-menu artwork were
+  copied to `D:\Umineko Project`. Benchmarks, runtime telemetry, and executable
+  boot testing were intentionally not run for this UI/layout pass.
+- The immediate pause-menu hover/artwork follow-up repacked the active English
+  script and passed an exact decode round-trip check. `make -j8` reported the
+  binary target was already current; the current `onscripter-new.exe`, updated
+  `en.file`, and corrected active pause-menu artwork were copied to
+  `D:\Umineko Project`. Benchmarks, runtime telemetry, and executable boot
+  testing were intentionally not run for this UI/artwork correction.
+- The second pause-menu follow-up repacked the active English script and passed
+  an exact decode round-trip check. `make -j8` reported the binary target was
+  already current; the current `onscripter-new.exe`, updated `en.file`, and
+  restored original `Clear` button artwork were copied to
+  `D:\Umineko Project`. Benchmarks, runtime telemetry, and executable boot
+  testing were intentionally not run for this UI/script correction.
+- The emergency pause-menu input correction repacked the active English script
+  and passed an exact decode round-trip check. The UCRT64 release executable
+  rebuilt successfully, then the updated `onscripter-new.exe` and `en.file`
+  were copied to `D:\Umineko Project`. Benchmarks, runtime telemetry, and
+  executable boot testing were intentionally not run for this input/hover
+  correction.
+- The pause-menu hover root-cause follow-up repacked the active English script
+  and passed an exact decode round-trip check. The failed engine hover repaint
+  experiments were reverted, the UCRT64 release executable rebuilt
+  successfully, then the updated `onscripter-new.exe` and `en.file` were copied
+  to `D:\Umineko Project`. Benchmarks, runtime telemetry, and executable boot
+  testing were intentionally not run for this script/hover correction.
+- The session-label follow-up repacked the active English script and passed an
+  exact decode round-trip check. `make -j8` reported the binary target was
+  already current; the current `onscripter-new.exe` and updated `en.file` were
+  copied to `D:\Umineko Project`. Benchmarks, runtime telemetry, and executable
+  boot testing were intentionally not run for this text-only correction.
+- The Tips/Characters detail follow-up repacked the active English script and
+  passed an exact decode round-trip check. `make -j8` reported the binary target
+  was already current; the current `onscripter-new.exe` and updated `en.file`
+  were copied to `D:\Umineko Project`. Benchmarks, runtime telemetry, and
+  executable boot testing were intentionally not run for this packed-script UI
+  correction.
+- The 2026-06-06 whole-codebase performance audit completed three UCRT64
+  `make -j8` rebuilds successfully after engine changes, then copied the
+  rebuilt `onscripter-new.exe` to `D:\Umineko Project`. Benchmarks, runtime
+  telemetry, and executable boot testing were intentionally not run for this
+  source-level allocation/lookup pass.
+- The Config controls layout follow-up repacked the active English script and
+  passed an exact decode round-trip check. `make -j8` reported the binary target
+  was already current; the current `onscripter-new.exe` and updated `en.file`
+  were copied to `D:\Umineko Project`. Benchmarks, runtime telemetry, and
+  executable boot testing were intentionally not run for this packed-script UI
+  update.
+- The Config controls polish follow-up repacked the active English script and
+  passed another exact decode round-trip check after renaming the visible action
+  to `Restart Game`, color-coding Controls popup keybind text, and centering the
+  popup listing. `make -j8` again reported the binary target was already current;
+  the current `onscripter-new.exe` and updated `en.file` were copied to
+  `D:\Umineko Project`. Benchmarks, runtime telemetry, and executable boot
+  testing were intentionally not run for this packed-script UI update.
+- The immediate Controls popup correction repacked the active English script and
+  passed another exact decode round-trip check after splitting the `Controls`
+  header into a separate centered text sprite and removing the dedicated Backlog
+  section from the listing. `make -j8` again reported the binary target was
+  already current; the current `onscripter-new.exe` and updated `en.file` were
+  copied to `D:\Umineko Project`. Benchmarks, runtime telemetry, and executable
+  boot testing were intentionally not run for this packed-script UI update.
+- The Controls popup layer correction repacked the active English script and
+  passed another exact decode round-trip check after moving the listing body
+  from sprite `6` to foreground sprite `3`, leaving the dim overlay on sprite
+  `5` and the centered header on sprite `2`. `make -j8` again reported the
+  binary target was already current; the current `onscripter-new.exe` and
+  updated `en.file` were copied to `D:\Umineko Project`. Benchmarks, runtime
+  telemetry, and executable boot testing were intentionally not run for this
+  packed-script UI update.
+- The Controls popup body-centering correction repacked the active English
+  script and passed another exact decode round-trip check after pinning the
+  fixed-width `1700px` listing box at `x=110` and wrapping the full popup body
+  in the `{w:1700:...}` scope, ensuring every listing line uses the same
+  centered wrap area. `make -j8` again reported the binary target was already
+  current; the current `onscripter-new.exe` and updated `en.file` were copied
+  to `D:\Umineko Project`. Benchmarks, runtime telemetry, and executable boot
+  testing were intentionally not run for this packed-script UI update.
 
 ## Packaging Notes
 

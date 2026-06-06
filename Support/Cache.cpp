@@ -75,7 +75,7 @@ void SoundCacheController::add(int cacheSetNumber, const std::string &filename, 
 	if (!chunk->chunk)
 		return; //Don't add nullptrs to cache
 
-	CacheController<Wrapped_Mix_Chunk>::add(cacheSetNumber, std::move(filename), chunk);
+	CacheController<Wrapped_Mix_Chunk>::add(cacheSetNumber, filename, chunk);
 }
 
 std::shared_ptr<Wrapped_Mix_Chunk> SoundCacheController::get(const std::string &filename) {

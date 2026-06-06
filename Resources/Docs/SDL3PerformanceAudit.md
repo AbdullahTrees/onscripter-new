@@ -1,7 +1,7 @@
 # SDL3 Performance Audit
 
 Date: 2026-06-02
-Updated: 2026-06-05
+Updated: 2026-06-06
 
 This audit covers the SDL3 default renderer path, with emphasis on
 `Engine/Graphics/SDL3GPUCompat.cpp` because that layer currently adapts the
@@ -330,9 +330,9 @@ navigation, avoiding first-visit delays and page-transition artifacts. To keep
 entry responsive, the startup menu cache now asynchronously prewarms the 46
 voice-toggle character icon surfaces used by Config page two, so `lsp` can
 reuse decoded surfaces when Config constructs the offscreen pages. The Config
-menu also has a `Restart` button immediately to the left of `Back`, with the
-same horizontal spacing used between `Next` and `Exit`, so restart-required
-settings no longer leave users with only a passive message.
+menu also has a `Restart Game` action for restart-required settings. The latest
+bottom-row layout pairs `Reset Progress` and `Restart Game` on the left, and
+uses the former right-side restart slot for a `Controls` button.
 
 Music Box normal BGM selections now use a `bgmfast` command. It loads the new
 music while the current track remains active, then releases the old music only
@@ -499,6 +499,94 @@ round-trip verified again. `make -j8` reported the binary target was already
 current; the current `onscripter-new.exe` and updated `en.file` were copied to
 `D:\Umineko Project`. No benchmark, menu timing capture, or longer runtime
 telemetry pass was run for this coordinate-only update.
+
+The 2026-06-06 pause-menu UI pass changes only the in-game pause-menu script
+layout/text and active game-directory PNG artwork. The `Clear` button artwork
+now reads `Hide`, session labels are title-cased and right-aligned in the
+lower-right corner as separately measured text sprites, and the episode/chapter
+artwork has been relocated above the left-side `Load` button. The active
+English script was repacked and decode round-trip verified, the UCRT64 release
+executable relinked with no warning lines in the captured output, and the
+updated executable/script/artwork were copied to `D:\Umineko Project`. No
+benchmark, menu timing capture, runtime telemetry, or executable boot test was
+run for this UI/layout update.
+
+The immediate pause-menu hover/artwork follow-up keeps the same layout but
+resets all pause-menu button sprites to their normal cells before the
+right-click loop re-registers them, preventing a stale hover cell from
+surviving when `Hide` returns to the menu. The active `Hide` button strip was
+rebuilt from the original artwork backup with normal-state text color matched
+to the other buttons and one shared cleaned background across normal and hover
+cells. The active English script was repacked and decode round-trip verified;
+`make -j8` reported the binary target was already current, and the current
+executable plus updated script/artwork were copied to `D:\Umineko Project`. No
+benchmark, menu timing capture, runtime telemetry, or executable boot test was
+run for this UI/artwork correction.
+
+The second pause-menu follow-up restores the original active `Clear` button
+strip from its saved backup, keeps the lower-right session-info placement while
+reducing that text to a smaller dedicated preset. The active English script was
+repacked and decode round-trip verified; `make -j8` reported the binary target
+was already current, and the current executable plus updated script/restored
+artwork were copied to `D:\Umineko Project`. No benchmark, menu timing capture,
+runtime telemetry, or executable boot test was run for this UI/script
+correction.
+
+The emergency pause-menu input correction restores the original async
+right-click-menu button-wait loop after a script-side no-result rebuild attempt
+blocked hover and click input. The active English script was repacked and
+decode round-trip verified, the UCRT64 release executable rebuilt
+successfully, and the updated executable/script were copied to
+`D:\Umineko Project`. No benchmark, menu timing capture, runtime telemetry, or
+executable boot test was run for this input correction.
+
+The pause-menu hover root-cause follow-up leaves the restored async menu loop
+unchanged and removes the live `_csp` calls from `*rmenu_draw_time`. The
+right-aligned session-info split had been clearing and recreating four normal
+sprites on every async polling pass; `cspCommand()` also clears normal-sprite
+button hover bookkeeping, so the engine lost the previous hovered button link
+before mouse-leave could reset its cell. The session lines now use explicit
+sprite aliases and are updated in place with `lsp`/`amsp`. The failed engine
+hover repaint experiments were reverted, the active English script was
+repacked and decode round-trip verified, the UCRT64 release executable rebuilt
+successfully, and the updated executable/script were copied to
+`D:\Umineko Project`. No benchmark, menu timing capture, runtime telemetry, or
+executable boot test was run for this script/hover correction.
+
+The session-label follow-up changes only packed-script pause-menu text: when
+no BGM track is active, the `Current Track` session line now renders `None`
+instead of an empty value. The active English script was repacked and decode
+round-trip verified; `make -j8` reported the binary target was already current,
+and the current executable plus updated script were copied to
+`D:\Umineko Project`. No benchmark, menu timing capture, runtime telemetry, or
+executable boot test was run for this text-only correction.
+
+The Tips/Characters detail follow-up changes only packed-script menu UI:
+Tips/Grimoire tab anchors are corrected against their visible pixel bounds, and
+Characters Execute/Resurrect string buttons are redrawn under the right
+information panel with persistent red selected-state labels derived from the
+selected character condition. The active English script was repacked and decode
+round-trip verified; `make -j8` reported the binary target was already current,
+and the current executable plus updated script were copied to
+`D:\Umineko Project`. No benchmark, menu timing capture, runtime telemetry, or
+executable boot test was run for this UI correction.
+
+The Config controls layout and polish follow-ups change only packed-script
+Config UI: `Restart Game` now sits to the right of `Reset Progress`, and a new
+`Controls` button occupies the former right-side restart slot. The button opens
+a modal keyboard/mouse/gamepad keybind reference, with keybind groups
+color-coded in gold and descriptions left white. The latest correction splits
+the `Controls` header into its own centered text sprite, keeps the listing
+centered, removes the dedicated Backlog section, and keeps the listing body on
+foreground sprite `3` so sprite `5`'s dim overlay does not occlude it. Because
+the listing uses a fixed `1700px` text box, its body sprite is now pinned at
+`x=110`, and the width tag wraps the full popup body so each line uses that
+same centered wrap area. It returns to the existing Config loop
+without changing page state. The active English script was repacked and decode
+round-trip verified after each pass; `make -j8` reported the binary target was
+already current, and the current executable plus updated script were copied to
+`D:\Umineko Project`. No benchmark, menu timing capture, runtime telemetry, or
+executable boot test was run for these UI corrections.
 
 ### Renderer Telemetry
 
@@ -1292,6 +1380,42 @@ adding compression:
 Status: the local UCRT64 build linked successfully and was copied to
 `D:\Umineko Project\onscripter-ru.exe`. No benchmark or runtime telemetry pass
 was run for this change.
+
+### Whole-Codebase Allocation and Lookup Pass
+
+The 2026-06-06 audit targeted low-risk CPU overhead across the engine without
+changing frame pacing, draw order, filtering, shader math, decoded audio
+samples, or video frame contents:
+
+- SAR/NSA archive tables now build a normalized filename index at archive-load
+  time, replacing repeated linear scans and per-candidate string allocation.
+  Vector reads from archive members now read directly into the caller buffer
+  instead of allocating an intermediate buffer and copying it again.
+- Text-window blit regions use fixed storage sized for the known split-window
+  maximum, and dialogue traversal returns reserved pointer vectors instead of
+  temporary deques. Layout code avoids repeated `getPieces()` calls when the
+  same pointer list is reused.
+- SDL event queues use `std::deque` value storage, and touch coalescing keeps
+  the two pending finger events inline instead of allocating `SDL_Event`
+  objects on the heap.
+- Dynamic-property name tables are fixed arrays, property scans use unchecked
+  fixed-table indexing, `StringTree` insertion does one map lookup, and cache
+  controller/LRU paths avoid repeated map lookups or full key-list copies for
+  single evictions.
+- Native SDL3_GPU triangle batches now carry sampler bindings in fixed arrays
+  and bind from stack storage during flush. `GPU_TriangleBatch()` reuses
+  thread-local vertex scratch storage before queueing into the native batch,
+  avoiding a heap allocation on repeated compatible triangle submissions.
+- GPU shader/resource and temporary image-pool lookups now use single `find()`
+  paths instead of `count()` plus `at()` or `operator[]` lookup pairs.
+- Direct hardware-converted FFmpeg video frames are retained with
+  `av_frame_clone()`, using the updated FFmpeg API to create the referenced
+  frame directly.
+
+Status: three local UCRT64 `make -j8` rebuilds after the engine changes linked
+successfully, and the rebuilt `onscripter-new.exe` was copied to
+`D:\Umineko Project`. No benchmark, runtime telemetry, or executable boot test
+was run for this source-level performance pass.
 
 ## Findings
 

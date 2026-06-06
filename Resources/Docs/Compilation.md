@@ -355,6 +355,110 @@ active packed English script was rebuilt and decode round-trip verified again.
 `D:\Umineko Project`. No benchmark, smoke test, or longer runtime telemetry
 pass was run for this coordinate-only update.
 
+The 2026-06-06 pause-menu UI pass renames the in-game pause-menu `Clear`
+button artwork to `Hide`, title-cases the session information labels, moves
+the episode/chapter artwork into the upper-left menu column above `Load`, and
+draws the session information as individually measured right-aligned lines in
+the lower-right corner. The active packed English script was rebuilt and decode
+round-trip verified. The UCRT64 release executable relinked successfully with
+no warning lines in the captured output, and the updated `onscripter-new.exe`,
+`en.file`, and active pause-menu artwork were copied to `D:\Umineko Project`.
+Per project instruction, the executable was not booted.
+
+The immediate pause-menu follow-up resets all pause-menu button sprites to
+their normal cells before re-registering them in the right-click loop, so a
+previous hover cell cannot persist when `Hide` returns to the menu. The active
+`Hide` button strip was also rebuilt from the original `Clear` artwork backup
+with matching normal gray text and a shared cleaned background for normal and
+hover cells. The active packed English script was rebuilt and decode
+round-trip verified. `make -j8` reported the binary target was already
+current; the current `onscripter-new.exe`, updated `en.file`, and corrected
+pause-menu artwork were copied to `D:\Umineko Project`. Per project
+instruction, the executable was not booted.
+
+The second pause-menu follow-up restores the original active `Clear` button
+artwork from the saved backup, keeps the existing lower-right session
+information layout but reduces it to a smaller dedicated text preset. The
+active packed English script was rebuilt and decode round-trip verified. A
+script-side async-loop rebuild attempt was rejected in the next correction
+because it prevented pause-menu button input from reaching the existing async
+monitor. `make -j8` reported the binary target was already current; the
+current `onscripter-new.exe`, updated `en.file`, and restored `Clear` artwork
+were copied to `D:\Umineko Project`. Per project instruction, the executable
+was not booted.
+
+The emergency pause-menu input correction restores the original right-click
+menu async button-wait loop after a script-side no-result rebuild attempt
+prevented pause-menu button input from reaching the existing async monitor. The
+active packed English script was rebuilt and decode round-trip verified, the
+UCRT64 release executable rebuilt successfully, and the updated
+`onscripter-new.exe` plus `en.file` were copied to `D:\Umineko Project`. Per
+project instruction, the executable was not booted.
+
+The pause-menu hover root-cause follow-up removes the live `_csp` calls from
+`*rmenu_draw_time`. Splitting the session information into four right-aligned
+sprites had introduced `_csp` calls inside the async button polling loop, and
+`cspCommand()` clears normal-sprite button hover bookkeeping even when it is
+clearing a non-button text sprite. The session lines now have explicit sprite
+aliases and are updated in place with `lsp`/`amsp`, so hover state is not
+discarded while the pause menu is waiting for input. The failed engine hover
+experiments were reverted, the active packed English script was rebuilt and
+decode round-trip verified, `make -j8` rebuilt the executable, and the updated
+`onscripter-new.exe` plus `en.file` were copied to `D:\Umineko Project`. Per
+project instruction, the executable was not booted.
+
+The session-label follow-up changes the pause-menu `Current Track` line to
+display `None` when no BGM track is active instead of leaving the value blank.
+The active packed English script was rebuilt and decode round-trip verified.
+`make -j8` reported the binary target was already current; the current
+`onscripter-new.exe` and updated `en.file` were copied to
+`D:\Umineko Project`. Per project instruction, the executable was not booted.
+
+The Tips/Characters detail follow-up recenters the Tips/Grimoire tab artwork
+against the visible pixel bounds, moves the Characters Execute/Resurrect action
+buttons under the right information panel, and gives those actions persistent
+red selected-state labels based on the selected character condition. The active
+packed English script was rebuilt and decode round-trip verified. `make -j8`
+reported the binary target was already current; the current
+`onscripter-new.exe` and updated `en.file` were copied to
+`D:\Umineko Project`. Per project instruction, the executable was not booted.
+
+The 2026-06-06 whole-codebase performance audit rebuild removes several
+allocation and repeated-lookup costs without changing script timing, draw
+order, filtering, decoded samples, or video frame contents. The pass indexes
+SAR/NSA archive filenames at load time and reads archived vector buffers
+directly, replaces short-lived text-window/dialogue pointer containers with
+fixed or reserved storage, stores coalesced touch events inline, uses deque
+event queues, avoids repeated cache/StringTree/dynamic-property/GPU pool
+lookups, uses fixed SDL3_GPU sampler binding storage for native triangle
+batches, reuses `GPU_TriangleBatch` scratch vertices, and retains direct
+hardware-converted video frames with `av_frame_clone()`. Three UCRT64 `make -j8`
+rebuilds after the engine changes linked successfully. The rebuilt
+`onscripter-new.exe` was copied to `D:\Umineko Project`. Per project
+instruction, the executable was not booted.
+
+The follow-up 2026-06-06 Config controls script update moves the Config
+`Restart` button to the right of `Reset Progress`, places a new `Controls`
+button in the previous right-side `Restart` slot, and adds a modal keybind
+reference from that button. The active packed English script was rebuilt and
+decode round-trip verified. `make -j8` reported the binary target was already
+current; the current `onscripter-new.exe` and updated `en.file` were copied to
+`D:\Umineko Project`. Per project instruction, the executable was not booted.
+
+A same-day Config controls polish pass renamed the action label to
+`Restart Game`, color-coded the keybind groups in the Controls popup with gold
+accent text while keeping descriptions white, and centered the popup listing.
+The next corrections split the `Controls` header into its own centered text
+sprite, removed the dedicated Backlog section from the listing, and moved the
+listing body back into the popup foreground sprite range so it renders above
+the dim overlay. The fixed-width `1700px` listing box is pinned at `x=110`, and
+the width tag now wraps the full `p:11` popup body so every listing line uses
+the same centered wrap area. The active English script was repacked and
+decode round-trip verified after each pass. `make -j8` reported the binary
+target was already current each time; the current `onscripter-new.exe` and
+updated `en.file` were copied to `D:\Umineko Project`. Per project instruction,
+the executable was not booted.
+
 SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
 `ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,
 texture-upload, readback, native-draw, CPU-blit, CPU-shader-fallback, and

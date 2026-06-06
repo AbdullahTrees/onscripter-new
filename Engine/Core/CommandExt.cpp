@@ -568,10 +568,10 @@ int ONScripter::spritePropertyWaitCommand() {
 	bool is_lsp2 = (script_h.isName("sptwait2"));
 
 	int property = 0;
-	for (unsigned int i = 0; i < dynamicSpritePropertyNames.size(); i++) {
-		if (script_h.compareString(dynamicSpritePropertyNames.at(i))) {
+	for (size_t i = 0; i < dynamicSpritePropertyNames.size(); i++) {
+		if (script_h.compareString(dynamicSpritePropertyNames[i])) {
 			script_h.readName();
-			property = i;
+			property = static_cast<int>(i);
 			break;
 		}
 	}
@@ -593,10 +593,10 @@ int ONScripter::spritePropertyCommand() {
 	bool is_abs  = (script_h.isName("aspt") || script_h.isName("aspt2"));
 
 	int property = 0;
-	for (unsigned int i = 0; i < dynamicSpritePropertyNames.size(); i++) {
-		if (script_h.compareString(dynamicSpritePropertyNames.at(i))) {
+	for (size_t i = 0; i < dynamicSpritePropertyNames.size(); i++) {
+		if (script_h.compareString(dynamicSpritePropertyNames[i])) {
 			script_h.readName();
-			property = i;
+			property = static_cast<int>(i);
 			break;
 		}
 	}
@@ -1068,10 +1068,10 @@ int ONScripter::saveresetCommand() {
 // gptwait property
 int ONScripter::globalPropertyWaitCommand() {
 	int property = 0;
-	for (unsigned int i = 0; i < dynamicGlobalPropertyNames.size(); i++) {
-		if (script_h.compareString(dynamicGlobalPropertyNames.at(i))) {
+	for (size_t i = 0; i < dynamicGlobalPropertyNames.size(); i++) {
+		if (script_h.compareString(dynamicGlobalPropertyNames[i])) {
 			script_h.readName();
-			property = i;
+			property = static_cast<int>(i);
 			break;
 		}
 	}
@@ -1094,10 +1094,10 @@ int ONScripter::globalPropertyCommand() {
 	bool is_abs = (script_h.isName("agpt"));
 
 	int property = 0;
-	for (unsigned int i = 0; i < dynamicGlobalPropertyNames.size(); i++) {
-		if (script_h.compareString(dynamicGlobalPropertyNames.at(i))) {
+	for (size_t i = 0; i < dynamicGlobalPropertyNames.size(); i++) {
+		if (script_h.compareString(dynamicGlobalPropertyNames[i])) {
 			script_h.readName();
-			property = i;
+			property = static_cast<int>(i);
 			break;
 		}
 	}
@@ -1231,10 +1231,10 @@ int ONScripter::subtitleFontCommand() {
 int ONScripter::spritesetPropertyWaitCommand() {
 
 	int property = 0;
-	for (unsigned int i = 0; i < dynamicSpritesetPropertyNames.size(); i++) {
-		if (script_h.compareString(dynamicSpritesetPropertyNames.at(i))) {
+	for (size_t i = 0; i < dynamicSpritesetPropertyNames.size(); i++) {
+		if (script_h.compareString(dynamicSpritesetPropertyNames[i])) {
 			script_h.readName();
-			property = i;
+			property = static_cast<int>(i);
 			break;
 		}
 	}
@@ -1252,10 +1252,10 @@ int ONScripter::spritesetPropertyCommand() {
 	bool is_abs = (script_h.isName("aspritesetpt"));
 
 	int property = 0;
-	for (unsigned int i = 0; i < dynamicSpritesetPropertyNames.size(); i++) {
-		if (script_h.compareString(dynamicSpritesetPropertyNames.at(i))) {
+	for (size_t i = 0; i < dynamicSpritesetPropertyNames.size(); i++) {
+		if (script_h.compareString(dynamicSpritesetPropertyNames[i])) {
 			script_h.readName();
-			property = i;
+			property = static_cast<int>(i);
 			break;
 		}
 	}

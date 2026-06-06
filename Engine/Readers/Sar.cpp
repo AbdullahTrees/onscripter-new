@@ -10,6 +10,29 @@
 #include "Engine/Readers/Sar.hpp"
 #include "Support/FileIO.hpp"
 
+namespace {
+std::string normalizeArchiveLookupName(const char *file_name) {
+	std::string normalized(file_name ? file_name : "");
+	for (char &ch : normalized) {
+		if ('a' <= ch && ch <= 'z')
+			ch += 'A' - 'a';
+		else if (ch == '/')
+			ch = '\\';
+	}
+	return normalized;
+}
+
+void buildArchiveIndex(BaseReader::ArchiveInfo *ai) {
+	if (!ai || !ai->fi_list)
+		return;
+
+	ai->file_index.clear();
+	ai->file_index.reserve(ai->num_of_files);
+	for (size_t i = 0; i < ai->num_of_files; ++i)
+		ai->file_index.emplace(ai->fi_list[i].name, i);
+}
+} // namespace
+
 SarReader::SarReader(DirPaths &path)
     : DirectReader(path) {
 	root_archive_info = last_archive_info = &archive_info;
@@ -134,6 +157,7 @@ int SarReader::readArchive(ArchiveInfo *ai, int archive_type, size_t offset) {
 		}
 	}
 
+	buildArchiveIndex(ai);
 	return 0;
 }
 
@@ -167,28 +191,17 @@ size_t SarReader::getNumFiles() {
 }
 
 size_t SarReader::getIndexFromFile(ArchiveInfo *ai, const char *file_name) {
+	if (!ai)
+		return 0;
 
-	char *name_copy = copystr(file_name);
-
-	for (size_t i = 0; name_copy[i]; i++) {
-		if ('a' <= name_copy[i] && name_copy[i] <= 'z')
-			name_copy[i] += 'A' - 'a';
-		else if (name_copy[i] == '/')
-			name_copy[i] = '\\';
-	}
-
-	size_t i;
-	for (i = 0; i < ai->num_of_files; i++) {
-		if (equalstr(name_copy, ai->fi_list[i].name))
-			break;
-	}
-
-	freearr(&name_copy);
-
-	return i;
+	const auto normalized = normalizeArchiveLookupName(file_name);
+	const auto entry = ai->file_index.find(normalized);
+	return entry == ai->file_index.end() ? ai->num_of_files : entry->second;
 }
 
 bool SarReader::getFileSub(ArchiveInfo *ai, const char *file_name, size_t &len, uint8_t **buffer) {
+	if (!ai)
+		return false;
 	size_t i = getIndexFromFile(ai, file_name);
 	if (i == ai->num_of_files)
 		return false;
@@ -203,6 +216,25 @@ bool SarReader::getFileSub(ArchiveInfo *ai, const char *file_name, size_t &len, 
 			throw std::runtime_error("Error reading file");
 	}
 
+	return true;
+}
+
+bool SarReader::getFileSub(ArchiveInfo *ai, const char *file_name, size_t &len, std::vector<uint8_t> &buffer) {
+	if (!ai)
+		return false;
+	size_t i = getIndexFromFile(ai, file_name);
+	if (i == ai->num_of_files)
+		return false;
+
+	len = ai->fi_list[i].length;
+	if (buffer.size() < len + 1)
+		buffer.resize(len + 1);
+	if (len > 0) {
+		FileIO::seekFile(ai->file_handle, ai->fi_list[i].offset, SEEK_SET);
+		if (std::fread(buffer.data(), len, 1, ai->file_handle) != 1)
+			throw std::runtime_error("Error reading file");
+	}
+	buffer[len] = 0x00;
 	return true;
 }
 
@@ -225,9 +257,12 @@ bool SarReader::getFile(const char *file_name, size_t &len, std::vector<uint8_t>
 	if (DirectReader::getFile(file_name, len, buffer))
 		return true;
 
-	uint8_t *tmp = nullptr;
-	if (getFile(file_name, len, &tmp)) {
-		return updateVector(buffer, tmp, len);
+	ArchiveInfo *info = archive_info.next;
+
+	for (size_t i = 0; i < num_of_sar_archives; i++) {
+		if (getFileSub(info, file_name, len, buffer))
+			return true;
+		info = info->next;
 	}
 
 	return false;
@@ -239,6 +274,7 @@ bool SarReader::updateVector(std::vector<uint8_t> &buffer, uint8_t *tmp, size_t 
 		if (buffer.size() < len + 1)
 			buffer.resize(len + 1);
 		std::memcpy(buffer.data(), tmp, len);
+		buffer[len] = 0x00;
 		freearr(&tmp);
 	}
 	return true;

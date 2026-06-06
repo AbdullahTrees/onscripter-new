@@ -15,6 +15,7 @@
 #include "Engine/Entities/Spriteset.hpp"
 #include "Support/Clock.hpp"
 
+#include <array>
 #include <deque>
 #include <vector>
 #include <stdexcept>
@@ -82,9 +83,9 @@ enum {
 	SPRITE_PROPERTY_Z_ORDER            = 27
 };
 // keep this in sync with the above enum.
-const std::vector<const char *> dynamicSpritePropertyNames{"none", "xpos", "ypos", "alpha", "darken_r", "darken_g", "darken_b", "scalex", "scaley", "rot", "blur", "breakupdir",
-                                                           "breakup", "quakexmul", "quakexamp", "quakexcycle", "quakeymul", "quakeyamp", "quakeycycle", "warp_spd", "warp_wave",
-                                                           "warp_amp", "scroll_h", "scroll_w", "scroll_y", "scroll_x", "flip"};
+const std::array<const char *, 27> dynamicSpritePropertyNames{{"none", "xpos", "ypos", "alpha", "darken_r", "darken_g", "darken_b", "scalex", "scaley", "rot", "blur", "breakupdir",
+                                                              "breakup", "quakexmul", "quakexamp", "quakexcycle", "quakeymul", "quakeyamp", "quakeycycle", "warp_spd", "warp_wave",
+                                                              "warp_amp", "scroll_h", "scroll_w", "scroll_y", "scroll_x", "flip"}};
 
 enum {
 	GLOBAL_PROPERTY_NONE               = 0,
@@ -108,8 +109,8 @@ enum {
 	GLOBAL_PROPERTY_BGM_CHANNEL_VOLUME = 127,
 	GLOBAL_PROPERTY_MIX_CHANNEL_VOLUME = 128 // bit of a hack
 };
-const std::vector<const char *> dynamicGlobalPropertyNames{"none", "quakexmul", "quakexamp", "quakexcycle", "quakeymul", "quakeyamp", "quakeycycle", "onionalpha", "onionscale", "extension", "blur",
-                                                           "xpos", "ypos", "centrex", "centrey", "warp_spd", "warp_wave", "warp_amp"};
+const std::array<const char *, 18> dynamicGlobalPropertyNames{{"none", "quakexmul", "quakexamp", "quakexcycle", "quakeymul", "quakeyamp", "quakeycycle", "onionalpha", "onionscale", "extension", "blur",
+                                                              "xpos", "ypos", "centrex", "centrey", "warp_spd", "warp_wave", "warp_amp"}};
 
 enum {
 	SPRITESET_PROPERTY_NONE              = 0,
@@ -130,8 +131,8 @@ enum {
 	SPRITESET_PROPERTY_ROTATION_ANGLE    = 15,
 	SPRITESET_PROPERTY_FLIP_MODE         = 16
 };
-const std::vector<const char *> dynamicSpritesetPropertyNames{"none", "xpos", "ypos", "alpha", "blur", "breakupdir", "breakup", "pixelate", "warp_spd", "warp_wave", "warp_amp",
-                                                              "centrex", "centrey", "scalex", "scaley", "rot", "flip"};
+const std::array<const char *, 17> dynamicSpritesetPropertyNames{{"none", "xpos", "ypos", "alpha", "blur", "breakupdir", "breakup", "pixelate", "warp_spd", "warp_wave", "warp_amp",
+                                                                 "centrex", "centrey", "scalex", "scaley", "rot", "flip"}};
 
 struct DynamicPropertyInterface {
 	double (*getValue)(void *);
@@ -254,7 +255,8 @@ public:
 		// This int is to conform to the legacy API :/
 		auto idx = static_cast<int>(registeredProperties.size());
 		registeredProperties.emplace_back(iface);
-		return registeredPropertiesMap[name] = idx;
+		registeredPropertiesMap.emplace(name, idx);
+		return idx;
 	}
 	// Returns previously registered property id
 	int getRegisteredProperty(const std::string &name) {

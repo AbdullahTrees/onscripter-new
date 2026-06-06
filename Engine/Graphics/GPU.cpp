@@ -211,14 +211,15 @@ void GPUController::createShadersFromResources() {
 	}
 	for (auto r = getResourceList(); r->buffer; ++r) {
 		try {
-			if (shaders.count(r->filename) > 0 && getShaderTypeByExtension(r->filename) == GPU_FRAGMENT_SHADER &&
+			auto shader = shaders.find(r->filename);
+			if (shader != shaders.end() && getShaderTypeByExtension(r->filename) == GPU_FRAGMENT_SHADER &&
 			    isStandaloneShader(reinterpret_cast<const char *>(r->buffer))) {
 				std::vector<uint32_t> linksWith = findAllLinkTargets(reinterpret_cast<const char *>(r->buffer), r->size);
 				if (linksWith.empty()) {
 					createProgramFromShaders(r->filename, r->filename, "defaultVertex.vert"); // Also make a default program that we can use, with the shader filename
 				} else {
-					linksWith.push_back(shaders.at("defaultVertex.vert"));
-					linksWith.push_back(shaders.at(r->filename));
+					linksWith.push_back(shaders.find("defaultVertex.vert")->second);
+					linksWith.push_back(shader->second);
 					createProgramFromShaders(r->filename, linksWith);
 				}
 			}
@@ -249,7 +250,10 @@ std::vector<uint32_t> GPUController::findAllLinkTargets(const char *text, size_t
 		text = end;
 
 		try {
-			targets.push_back(shaders.at(std::string(pos, end - pos)));
+			auto shader = shaders.find(std::string(pos, end - pos));
+			if (shader == shaders.end())
+				throw std::out_of_range("shader import");
+			targets.push_back(shader->second);
 		} catch (const std::out_of_range &) {
 			ons.errorAndExit("Trying to import a non-existent shader");
 		}
@@ -259,7 +263,8 @@ std::vector<uint32_t> GPUController::findAllLinkTargets(const char *text, size_t
 
 void GPUController::createShader(const char *filename) {
 	// Check to see if it's already created; if so do nothing
-	if (gpu.shaders.count(std::string(filename)) > 0) {
+	const std::string shaderFilename(filename);
+	if (gpu.shaders.find(shaderFilename) != gpu.shaders.end()) {
 		return;
 	}
 
@@ -876,12 +881,13 @@ PooledGPUImage GPUController::getBlurredImage(GPUTransformableCanvasImage &im, i
 	size.y /= sizeDivisor;
 
 	RenderImage *src = nullptr;
-	if (!im.pooledDownscaledImages.count(size)) {
-		im.pooledDownscaledImages.emplace(size, getPooledImage(size.x, size.y));
-		src = im.pooledDownscaledImages.at(size).image;
+	auto pooledDownscaled = im.pooledDownscaledImages.find(size);
+	if (pooledDownscaled == im.pooledDownscaledImages.end()) {
+		pooledDownscaled = im.pooledDownscaledImages.emplace(size, getPooledImage(size.x, size.y)).first;
+		src              = pooledDownscaled->second.image;
 		copyGPUImage(im.image, nullptr, nullptr, src->target, src->w / 2.0f, src->h / 2.0f, 1.0f / sizeDivisor, 1.0f / sizeDivisor, 0, true);
 	} else {
-		src = im.pooledDownscaledImages.at(size).image;
+		src = pooledDownscaled->second.image;
 	}
 
 	PooledGPUImage myImg  = getPooledImage(size.x, size.y);
@@ -1462,10 +1468,12 @@ PooledGPUImage GPUController::getPooledImage(int w, int h) {
 		return PooledGPUImage(&scriptImagePool);
 
 	SDL_Point size{w, h};
-	if (!typedImagePools.count(size)) {
-		typedImagePools[size].size = size; // make sure size member is properly initialized
+	auto poolEntry = typedImagePools.find(size);
+	if (poolEntry == typedImagePools.end()) {
+		poolEntry              = typedImagePools.emplace(size, TempGPUImagePool{}).first;
+		poolEntry->second.size = size; // make sure size member is properly initialized
 	}
-	TempGPUImagePool *pool = &typedImagePools[size];
+	TempGPUImagePool *pool = &poolEntry->second;
 	return PooledGPUImage(pool);
 }
 

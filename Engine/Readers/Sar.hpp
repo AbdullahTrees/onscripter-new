@@ -33,6 +33,7 @@ protected:
 	int readArchive(ArchiveInfo *ai, int archive_type = ARCHIVE_TYPE_SAR, size_t offset = 0);
 	size_t getIndexFromFile(ArchiveInfo *ai, const char *file_name);
 	bool getFileSub(ArchiveInfo *ai, const char *file_name, size_t &len, uint8_t **buffer);
+	bool getFileSub(ArchiveInfo *ai, const char *file_name, size_t &len, std::vector<uint8_t> &buffer);
 
 	bool updateVector(std::vector<uint8_t> &buffer, uint8_t *tmp, size_t len);
 };

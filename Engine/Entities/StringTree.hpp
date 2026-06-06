@@ -15,6 +15,7 @@
 #include <string>
 #include <deque>
 #include <vector>
+#include <tuple>
 
 class StringTree {
 public:
@@ -49,19 +50,23 @@ public:
 	bool has(long key) {
 		return branches.count(std::to_string(key));
 	}
-	StringTree &operator[](const std::string &&key) {
-		bool existed = this->branches.count(key);
-		auto &ret    = branches[key];
-		if (!existed)
-			this->insertionOrder.push_back(key);
-		return ret;
+	StringTree &operator[](std::string &&key) {
+		auto it = branches.find(key);
+		if (it == branches.end()) {
+			auto inserted = branches.emplace(std::piecewise_construct, std::forward_as_tuple(std::move(key)), std::forward_as_tuple());
+			it = inserted.first;
+			insertionOrder.push_back(it->first);
+		}
+		return it->second;
 	}
 	StringTree &operator[](const std::string &key) {
-		bool existed = this->branches.count(key);
-		auto &ret    = branches[key];
-		if (!existed)
-			this->insertionOrder.push_back(key);
-		return ret;
+		auto it = branches.find(key);
+		if (it == branches.end()) {
+			auto inserted = branches.emplace(std::piecewise_construct, std::forward_as_tuple(key), std::forward_as_tuple());
+			it = inserted.first;
+			insertionOrder.push_back(it->first);
+		}
+		return it->second;
 	}
 	StringTree &operator[](const long key) {
 		return operator[](std::to_string(key));

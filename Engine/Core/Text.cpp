@@ -710,7 +710,7 @@ void ONScripter::renderDynamicTextWindow(RenderTarget *target, RenderRect *canva
 		return;
 
 	auto blits = wndCtrl.getRegions();
-	for (auto blit : blits) {
+	for (const auto &blit : blits) {
 		RenderRect clip_src = blit.src;
 		RenderRect real_dst = blit.dst;
 		if (useCamera) {

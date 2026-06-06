@@ -161,10 +161,20 @@ bool NsaReader::getFile(const char *file_name, size_t &len, std::vector<uint8_t>
 	if (DirectReader::getFile(file_name, len, buffer))
 		return true;
 
-	uint8_t *tmp = nullptr;
-	if (getFile(file_name, len, &tmp)) {
-		return updateVector(buffer, tmp, len);
+	for (size_t i = 0; i < num_of_ns2_archives; i++) {
+		if (getFileSub(&archive_info_ns2[i], file_name, len, buffer))
+			return true;
 	}
 
-	return false;
+	if (getFileSub(&archive_info_nsa, file_name, len, buffer))
+		return true;
+
+	if (num_of_nsa_archives > 0) {
+		for (size_t i = 0; i < num_of_nsa_archives - 1; i++) {
+			if (getFileSub(&archive_info2[i], file_name, len, buffer))
+				return true;
+		}
+	}
+
+	return sar_flag && SarReader::getFile(file_name, len, buffer);
 }

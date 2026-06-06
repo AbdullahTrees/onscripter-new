@@ -533,15 +533,17 @@ void DialogueController::layoutDialogue() {
 void DialogueController::layoutLines(TextRenderingState &state) {
 	// Vertically position lines
 	float y{0}, previousDescender{0}, lineHeightMultiplier{0};
-	if (!state.getPieces().empty()) {
-		auto &fi             = state.getPieces().front()->getPreFontInfo();
+	auto statePieces = state.getPieces();
+	if (!statePieces.empty()) {
+		auto &fi             = statePieces.front()->getPreFontInfo();
 		lineHeightMultiplier = static_cast<float>(fi.style().line_height) / static_cast<float>(fi.style().font_size);
 		y                    = fi.y();
 	}
 	for (auto &line : state.lines) {
 		bool hasAtLeastOneChar{false};
 
-		for (auto piece : line.getPieces(true)) {
+		auto linePiecesWithRuby = line.getPieces(true);
+		for (auto piece : linePiecesWithRuby) {
 			if (std::any_of(piece->charRenderBuffer.begin(), piece->charRenderBuffer.end(),
 			                [](RenderBufferGlyph &g) { return !g.applyNewFontinfoHere && !g.renderRubyHere; })) {
 				hasAtLeastOneChar = true;
@@ -549,8 +551,8 @@ void DialogueController::layoutLines(TextRenderingState &state) {
 			}
 		}
 
-		if (!hasAtLeastOneChar && !line.getPieces().empty()) {
-			Fontinfo &myFi           = line.getPieces().front()->getPreFontInfo();
+		if (!hasAtLeastOneChar && !line.pieces.empty()) {
+			Fontinfo &myFi           = line.pieces.front()->getPreFontInfo();
 			const GlyphValues *glyph = myFi.renderUnicodeGlyph(','); // any random letter will do, they all have the same fontface (not glyph) ascender/descenders
 			line.maxAscender         = glyph->faceAscender;
 			line.maxDescender        = glyph->faceDescender;
@@ -610,7 +612,8 @@ void DialogueController::layoutLines(TextRenderingState &state) {
 		if (line.pieces.empty())
 			continue;
 		float frontX = line.pieces.front()->position.x;
-		for (auto piecePtr : line.getPieces(true)) {
+		auto linePiecesWithRuby = line.getPieces(true);
+		for (auto piecePtr : linePiecesWithRuby) {
 			DialoguePiece &piece = *piecePtr;
 			piece.position.x += line.position.x;
 			if (line.horizontalResize != 1.0) {

@@ -191,7 +191,10 @@ bool ONScripter::updateEventQueue() {
 		return false;
 	}
 
-	localEventQueue.splice(localEventQueue.begin(), fetchedEventQueue);
+	while (!fetchedEventQueue.empty()) {
+		localEventQueue.emplace_front(fetchedEventQueue.back());
+		fetchedEventQueue.pop_back();
+	}
 
 	eventsArrived.store(false, std::memory_order_release);
 	SDL_AtomicUnlock(&fetchedEventQueueLock);
@@ -209,15 +212,16 @@ void ONScripter::fetchEventsToQueue() {
 	};
 
 	auto pushFingerEvents = [this, &lastTimeStamp, pushEvent](bool force = false) {
-		for (auto &fingerEvent : fingerEvents) {
-			if (fingerEvent) {
+		for (size_t i = 0; i < 2; ++i) {
+			if (fingerEventActive[i]) {
+				auto &fingerEvent = fingerEvents[i];
 				//sendToLog(LogLevel::Error, "Pushing finger event %s force %d at %d by %d, current %d\n",
-				//			fingerEvent->type == SDL_FINGERUP ? "up" : "down", force,
-				//			fingerEvent->common.timestamp, lastTimeStamp, SDL_GetTicks());
-				if (force || fingerEvent->common.timestamp + MAX_TOUCH_TAP_TIMESPAN <
+				//			fingerEvent.type == SDL_FINGERUP ? "up" : "down", force,
+				//			fingerEvent.common.timestamp, lastTimeStamp, SDL_GetTicks());
+				if (force || fingerEvent.common.timestamp + MAX_TOUCH_TAP_TIMESPAN <
 				                 (lastTimeStamp == 0 ? (lastTimeStamp = SDL_GetTicks()) : lastTimeStamp)) {
-					pushEvent(*fingerEvent);
-					fingerEvent.reset();
+					pushEvent(fingerEvent);
+					fingerEventActive[i] = false;
 				}
 			}
 		}
@@ -240,19 +244,22 @@ void ONScripter::fetchEventsToQueue() {
 		// group finger events
 		bool queueEmpty{false};
 		while (event.type == SDL_FINGERDOWN || event.type == SDL_FINGERUP) {
-			auto &finger = event.type == SDL_FINGERUP ? fingerEvents[1] : fingerEvents[0];
+			const size_t fingerIndex = event.type == SDL_FINGERUP ? 1 : 0;
+			auto &finger             = fingerEvents[fingerIndex];
+			bool &fingerActive       = fingerEventActive[fingerIndex];
 			//sendToLog(LogLevel::Error, "Found finger %s event %d from %lld (%f, %f, %f, %f, %f) current %d has %d fingers\n",
-			//			event->type == SDL_FINGERUP ? "up" : "down",
+			//			event.type == SDL_FINGERUP ? "up" : "down",
 			//			event->common.timestamp, event->tfinger.touchId, event->tfinger.x, event->tfinger.y,
 			//			event->tfinger.dx, event->tfinger.dy, event->tfinger.pressure,
-			//			finger ? finger->common.timestamp : -1, finger ? (uint32_t)onsTouchFingerId(finger->tfinger) : 0);
-			if (finger && finger->common.timestamp + MAX_TOUCH_TAP_TIMESPAN >= event.common.timestamp) {
-				onsTouchFingerId(finger->tfinger)++;
+			//			fingerActive ? finger.common.timestamp : -1, fingerActive ? (uint32_t)onsTouchFingerId(finger.tfinger) : 0);
+			if (fingerActive && finger.common.timestamp + MAX_TOUCH_TAP_TIMESPAN >= event.common.timestamp) {
+				onsTouchFingerId(finger.tfinger)++;
 			} else {
-				if (finger)
+				if (fingerActive)
 					pushFingerEvents(true);
-				finger = std::make_unique<SDL_Event>(event);
-				onsTouchFingerId(finger->tfinger) = 1;
+				finger = event;
+				fingerActive = true;
+				onsTouchFingerId(finger.tfinger) = 1;
 			}
 
 			if (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT) <= 0) {
@@ -1518,8 +1525,9 @@ void ONScripter::runEventLoop() {
 					}
 				}
 			} else {
-				event_mode = registeredCRActions[handler]->eventMode();
-				if (!registeredCRActions[handler]->handledEvents().count(event->type)) {
+				const auto &action = registeredCRActions[handler];
+				event_mode         = action->eventMode();
+				if (!action->handledEvents().count(event->type)) {
 					// this event type is not handled by this handler
 					continue;
 				}
@@ -1722,17 +1730,18 @@ void ONScripter::runEventLoop() {
 				// WARNING: These may be in an improper place, particularly buttonWaitAction.
 				// If you intend to respond to a click, put it in mousePressEvent, etc.
 				if (handler < registeredCRActions.size()) {
-					auto *bma = dynamic_cast<ButtonMonitorAction *>(registeredCRActions[handler].get());
+					const auto &action = registeredCRActions[handler];
+					auto *bma          = dynamic_cast<ButtonMonitorAction *>(action.get());
 					if (bma) {
 						if (state.buttonState.valid_flag)
 							bma->buttonState = state.buttonState;
 					}
-					auto *bwa = dynamic_cast<ButtonWaitAction *>(registeredCRActions[handler].get());
+					auto *bwa = dynamic_cast<ButtonWaitAction *>(action.get());
 					if (bwa) {
 						if (state.buttonState.valid_flag) {
 							// Regardless of wait-for-voice or not, buttons should always terminate a ButtonWaitAction. (Unless it's async.)
 							bwa->buttonState = state.buttonState;
-							registeredCRActions[handler]->terminate();
+							action->terminate();
 						} else if (bwa->eventMode() & WAIT_VOICE_MODE && !(bwa->eventMode() & WAIT_TIMER_MODE) && !bwa->timer_set) {
 							// This is a wait-for-voice.
 							// When the voice ends, we are expected to expire the wait, or otherwise set up a timer that will expire it later.

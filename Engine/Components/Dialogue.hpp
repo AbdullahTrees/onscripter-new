@@ -110,8 +110,9 @@ struct DialoguePiece {
 struct DialogueRun {
 	std::deque<DialoguePiece> pieces;
 	std::deque<DialoguePiece> rubyPieces;
-	std::deque<DialoguePiece *> getPieces(bool includeRuby = false) {
-		std::deque<DialoguePiece *> ret;
+	std::vector<DialoguePiece *> getPieces(bool includeRuby = false) {
+		std::vector<DialoguePiece *> ret;
+		ret.reserve(pieces.size() + (includeRuby ? rubyPieces.size() : 0));
 		for (auto &piece : pieces) ret.push_back(&piece);
 		if (includeRuby)
 			for (auto &piece : rubyPieces) ret.push_back(&piece);
@@ -125,10 +126,17 @@ struct DialogueRun {
 struct DialogueSegment {
 	std::deque<DialogueRun> runs{1}; // These will be rendered concurrently.
 	float2 cursorPosition{0, 0};     // the position of the cursor after rendering this segment
-	std::deque<DialoguePiece *> getPieces(bool includeRuby = false) {
-		std::deque<DialoguePiece *> ret;
-		for (auto &run : runs)
-			for (auto piece : run.getPieces(includeRuby)) ret.push_back(piece);
+	std::vector<DialoguePiece *> getPieces(bool includeRuby = false) {
+		std::vector<DialoguePiece *> ret;
+		size_t pieceCount{0};
+		for (const auto &run : runs)
+			pieceCount += run.pieces.size() + (includeRuby ? run.rubyPieces.size() : 0);
+		ret.reserve(pieceCount);
+		for (auto &run : runs) {
+			for (auto &piece : run.pieces) ret.push_back(&piece);
+			if (includeRuby)
+				for (auto &piece : run.rubyPieces) ret.push_back(&piece);
+		}
 		return ret;
 	}
 };
@@ -137,8 +145,9 @@ struct DialogueSegment {
 struct DialogueLine {
 	std::deque<DialoguePiece *> pieces;
 	std::deque<DialoguePiece *> rubyPieces;
-	std::deque<DialoguePiece *> getPieces(bool includeRuby = false) {
-		std::deque<DialoguePiece *> ret;
+	std::vector<DialoguePiece *> getPieces(bool includeRuby = false) {
+		std::vector<DialoguePiece *> ret;
+		ret.reserve(pieces.size() + (includeRuby ? rubyPieces.size() : 0));
 		for (auto &piece : pieces) ret.push_back(piece);
 		if (includeRuby)
 			for (auto &piece : rubyPieces) ret.push_back(piece);
@@ -154,10 +163,21 @@ struct DialogueLine {
 // The things between @s. Used for character counting for automode wait times.
 struct DialogueClickPart {
 	std::deque<DialogueSegment *> segments;
-	std::deque<DialoguePiece *> getPieces(bool includeRuby = false) {
-		std::deque<DialoguePiece *> ret;
-		for (auto &seg : segments)
-			for (auto piece : seg->getPieces(includeRuby)) ret.push_back(piece);
+	std::vector<DialoguePiece *> getPieces(bool includeRuby = false) {
+		std::vector<DialoguePiece *> ret;
+		size_t pieceCount{0};
+		for (const auto *seg : segments) {
+			for (const auto &run : seg->runs)
+				pieceCount += run.pieces.size() + (includeRuby ? run.rubyPieces.size() : 0);
+		}
+		ret.reserve(pieceCount);
+		for (auto &seg : segments) {
+			for (auto &run : seg->runs) {
+				for (auto &piece : run.pieces) ret.push_back(&piece);
+				if (includeRuby)
+					for (auto &piece : run.rubyPieces) ret.push_back(&piece);
+			}
+		}
 		return ret;
 	}
 	unsigned int getCharacterCount() {
@@ -186,10 +206,21 @@ struct TextRenderingState {
 	std::deque<DialogueSegment> segments;
 	std::deque<DialogueLine> lines;
 	std::deque<DialogueClickPart> clickParts;
-	std::deque<DialoguePiece *> getPieces(bool includeRuby = false) {
-		std::deque<DialoguePiece *> ret;
-		for (auto &seg : segments)
-			for (auto piece : seg.getPieces(includeRuby)) ret.push_back(piece);
+	std::vector<DialoguePiece *> getPieces(bool includeRuby = false) {
+		std::vector<DialoguePiece *> ret;
+		size_t pieceCount{0};
+		for (const auto &seg : segments) {
+			for (const auto &run : seg.runs)
+				pieceCount += run.pieces.size() + (includeRuby ? run.rubyPieces.size() : 0);
+		}
+		ret.reserve(pieceCount);
+		for (auto &seg : segments) {
+			for (auto &run : seg.runs) {
+				for (auto &piece : run.pieces) ret.push_back(&piece);
+				if (includeRuby)
+					for (auto &piece : run.rubyPieces) ret.push_back(&piece);
+			}
+		}
 		return ret;
 	}
 	int clickPartCharacterCount() {

@@ -14,6 +14,7 @@
 
 #include <vector>
 #include <string>
+#include <unordered_map>
 #include <cstdint>
 #include <cstdio>
 
@@ -38,6 +39,7 @@ public:
 		FILE *file_handle{nullptr};
 		char *file_name{nullptr};
 		FileInfo *fi_list{nullptr};
+		std::unordered_map<std::string, size_t> file_index;
 		size_t num_of_files{0};
 		size_t base_offset{0};
 		ArchiveInfo()                    = default;

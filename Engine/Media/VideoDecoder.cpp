@@ -210,16 +210,14 @@ void MediaProcController::VideoDecoder::processFrame(MediaFrame &vf) {
 		if (imageConvertSourceFormat != frameFormat) {
 			/* Check if we can use shader later on for conversion */
 			if (media.hardwareConversion && HardwareDecoderIFace::isFormatHWConverted(frameFormat)) {
-				vf.avFrame = av_frame_alloc();
-				if (vf.avFrame && av_frame_ref(vf.avFrame, decodedFrame) >= 0) {
+				vf.avFrame = av_frame_clone(decodedFrame);
+				if (vf.avFrame) {
 					vf.ownsPlanes = false;
 					for (size_t i = 0; i < sizeof(vf.planes) / sizeof(*vf.planes) && vf.avFrame->data[i]; i++) {
 						vf.planes[i] = vf.avFrame->data[i];
 						vf.planesCnt++;
 					}
 				} else {
-					if (vf.avFrame)
-						av_frame_free(&vf.avFrame);
 					for (size_t i = 0; i < sizeof(vf.planes) / sizeof(*vf.planes) && decodedFrame->data[i]; i++) {
 						AVBufferRef *buf = av_frame_get_plane_buffer(decodedFrame, static_cast<int>(i));
 						if (!buf)
