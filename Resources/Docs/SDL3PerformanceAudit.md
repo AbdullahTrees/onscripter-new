@@ -238,6 +238,20 @@ telemetry is still useful for representative shader/effect validation, but this
 cleanup changes the dependency graph and packaging surface rather than renderer
 runtime semantics.
 
+### Android SDL3 Packaging Cutover
+
+Android now uses the SDL3 3.4.10 Java activity/support sources with a
+Gradle/Android Gradle Plugin package project instead of the legacy checked-in
+`classes.dex`, `resources.arsc`, and custom `aapt`/`d8` script flow. The
+manifest targets SDK 36, the package keeps min SDK 34, native libraries are
+packaged for `arm64-v8a` and `x86_64`, and `ONSActivity` maps engine storage to
+the app-scoped external files directory.
+
+Status: local Android release builds completed for arm64-v8a and x86_64, and a
+multi-ABI APK verified with apksigner/aapt. This changes the Android packaging,
+storage, and SDL Java integration surface; no renderer benchmark was run because
+the SDL3_GPU hot path was not changed.
+
 ### SDL3_mixer High-Resolution Dynamic Fades
 
 Dynamic BGM fades (`abgm_prop`) and mix-channel fades (`ach_prop`) interpolate

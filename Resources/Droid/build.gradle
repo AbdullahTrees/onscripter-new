@@ -1,0 +1,74 @@
+plugins {
+    id 'com.android.application' version '9.2.0'
+}
+
+def envOrProperty = { String name, String fallback ->
+    providers.gradleProperty(name)
+        .orElse(providers.environmentVariable(name))
+        .orElse(fallback)
+        .get()
+}
+
+android {
+    namespace = 'org.umineko_project.onscripter_ru'
+    compileSdk = 36
+    ndkVersion = '29.0.14206865'
+
+    defaultConfig {
+        applicationId = 'org.umineko_project.onscripter_ru'
+        minSdk = 34
+        targetSdk = 36
+        versionCode = 1
+        versionName = '1.0'
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src']
+            res.srcDirs = ['res']
+            jniLibs.srcDirs = ['lib']
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        release {
+            storeFile = file(envOrProperty('ONS_ANDROID_KEYSTORE', "${rootDir}/Test.keystore"))
+            storePassword = envOrProperty('ONS_ANDROID_KEYSTORE_PASSWORD', 'password')
+            keyAlias = envOrProperty('ONS_ANDROID_KEY_ALIAS', 'Test')
+            keyPassword = envOrProperty('ONS_ANDROID_KEY_PASSWORD', 'password')
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable = true
+            jniDebuggable = true
+        }
+        release {
+            debuggable = false
+            jniDebuggable = false
+            minifyEnabled = false
+            signingConfig = signingConfigs.release
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.each { output ->
+            output.outputFileName.set("onscripter-new-${variant.name}.apk")
+        }
+    }
+}

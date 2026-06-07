@@ -55,7 +55,10 @@ configure() {
     local lcxf="$CPPFLAGS ${cppflags[@]} ${cflags[@]} $CPPFLAGS_EXTRA $CFLAGS_EXTRA"
     local llf="$LDFLAGS ${ldflags[@]} $LDFLAGS_EXTRA"
     local meson_outdir="$outdir"
+    local meson_prefix="$outdir"
+    local meson_destdir="$outdir"
     local meson_pcdir="$PWD/.meson-pkgconfig"
+    local meson_cross_args=()
 
     rm -rf build
     rm -rf "$meson_pcdir"
@@ -63,9 +66,18 @@ configure() {
 
     if [ "$(getHost)" == "win32" ]; then
         meson_outdir="$(cygpath -m "$outdir")"
+        if [ "$(getTarget)" == "droid" ]; then
+            meson_prefix="/"
+            meson_destdir="$meson_outdir"
+        else
+            meson_prefix="$meson_outdir"
+        fi
         lcf="${lcf//$outdir/$meson_outdir}"
         lcxf="${lcxf//$outdir/$meson_outdir}"
         llf="${llf//$outdir/$meson_outdir}"
+    fi
+    if [ "$(getTarget)" == "droid" ] && command -v cygpath >/dev/null 2>&1; then
+        meson_prefix="/"
     fi
 
     for pcdir in "$outdir/lib/pkgconfig" "$outdir/share/pkgconfig"; do
@@ -77,19 +89,60 @@ configure() {
         fi
     done
 
-    export CC="$(getCC)"
-    export CXX="$(getCXX)"
+    local meson_cc="$(getCC)"
+    local meson_cxx="$(getCXX)"
+    if [ "$(getTarget)" == "droid" ]; then
+        [ "$CMAKE_CC" != "" ] && meson_cc="$CMAKE_CC"
+        [ "$CMAKE_CXX" != "" ] && meson_cxx="$CMAKE_CXX"
+
+        local cpu_family="aarch64"
+        local cpu="aarch64"
+        if [ "$ANDROID_ABI" == "x86_64" ]; then
+            cpu_family="x86_64"
+            cpu="x86_64"
+        fi
+
+        local meson_cross="$PWD/ons-android-cross.ini"
+        cat > "$meson_cross" <<EOF
+[binaries]
+c = '$meson_cc'
+cpp = '$meson_cxx'
+ar = '${CMAKE_AR:-$AR}'
+strip = '${CMAKE_STRIP:-$STRIP}'
+pkg-config = 'pkg-config'
+
+[host_machine]
+system = 'android'
+cpu_family = '$cpu_family'
+cpu = '$cpu'
+endian = 'little'
+
+[properties]
+needs_exe_wrapper = true
+EOF
+        meson_cross_args=(--cross-file "$meson_cross")
+    fi
+
+    export CC="$meson_cc"
+    export CXX="$meson_cxx"
     export CFLAGS="$lcf"
     export CXXFLAGS="$lcxf"
     export LDFLAGS="$llf"
     export PKG_CONFIG_PATH="$meson_pcdir:$PKG_CONFIG_PATH"
     export PKG_CONFIG_LIBDIR="$meson_pcdir"
 
+    local old_arg_conv_excl="$MSYS2_ARG_CONV_EXCL"
+    if [ "$(getTarget)" == "droid" ] && [ "$(getHost)" == "win32" ]; then
+        export MSYS2_ARG_CONV_EXCL="--prefix="
+    fi
+
     meson setup build \
-        --prefix="$meson_outdir" \
+        --prefix="$meson_prefix" \
         --libdir=lib \
+        "${meson_cross_args[@]}" \
         "${mesonopts[@]}" &>"$logfile" || ret=$?
 
+    export MSYS2_ARG_CONV_EXCL="$old_arg_conv_excl"
     unset CC
     unset CXX
     unset CFLAGS
@@ -121,7 +174,22 @@ compile() {
 copy() {
     local logfile="$logdir/$pkgname.install.log"
     local ret=0
-    ninja -C build install &>"$logfile" || ret=$?
+    if [ "$(getTarget)" == "droid" ]; then
+        local meson_destdir="$outdir"
+        if [ "$(getHost)" == "win32" ] && command -v cygpath >/dev/null 2>&1; then
+            meson_destdir="$(cygpath -m "$outdir")"
+        fi
+        DESTDIR="$meson_destdir" ninja -C build install &>"$logfile" || ret=$?
+        for pcdir in "$outdir/lib/pkgconfig" "$outdir/share/pkgconfig"; do
+            [ -d "$pcdir" ] || continue
+            for pcfile in "$pcdir"/*.pc; do
+                [ -f "$pcfile" ] || continue
+                sed -i "s#^prefix=.*#prefix=$outdir#" "$pcfile"
+            done
+        done
+    else
+        ninja -C build install &>"$logfile" || ret=$?
+    fi
     if (( $ret )); then
         tail -n 20 "$logfile"
         error "Installing %s failed" "$pkgname"

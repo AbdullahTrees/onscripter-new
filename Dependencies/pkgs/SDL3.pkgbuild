@@ -58,6 +58,11 @@ configure() {
 
     rm -rf build
 
+    # SDL3 uses floating-point environment pragmas in audio conversion code.
+    # The global fast-math flag makes those pragmas invalid under Clang.
+    lcf="${lcf//-ffast-math/}"
+    lcxf="${lcxf//-ffast-math/}"
+
     if [ "$(getHost)" == "win32" ]; then
         cmake_outdir="$(cygpath -m "$outdir")"
         lcf="${lcf//$outdir/$cmake_outdir}"
@@ -67,15 +72,35 @@ configure() {
 
     local cmake_cmd="$(cmake_command)"
     local generator="$(cmake_generator)"
+    local cmake_cc="$(getCC)"
+    local cmake_cxx="$(getCXX)"
+    [ "$CMAKE_CC" != "" ] && cmake_cc="$CMAKE_CC"
+    [ "$CMAKE_CXX" != "" ] && cmake_cxx="$CMAKE_CXX"
+    local cmake_tool_opts=()
+    [ "${CMAKE_AR:-$AR}" != "" ] && cmake_tool_opts+=("-DCMAKE_AR=${CMAKE_AR:-$AR}")
+    [ "${CMAKE_RANLIB:-$RANLIB}" != "" ] && cmake_tool_opts+=("-DCMAKE_RANLIB=${CMAKE_RANLIB:-$RANLIB}")
+    [ "${CMAKE_STRIP:-$STRIP}" != "" ] && cmake_tool_opts+=("-DCMAKE_STRIP=${CMAKE_STRIP:-$STRIP}")
+    [ "${CMAKE_NM:-$NM}" != "" ] && cmake_tool_opts+=("-DCMAKE_NM=${CMAKE_NM:-$NM}")
+    [ "${CMAKE_OBJCOPY:-$OBJCOPY}" != "" ] && cmake_tool_opts+=("-DCMAKE_OBJCOPY=${CMAKE_OBJCOPY:-$OBJCOPY}")
+    [ "${CMAKE_OBJDUMP:-$OBJDUMP}" != "" ] && cmake_tool_opts+=("-DCMAKE_OBJDUMP=${CMAKE_OBJDUMP:-$OBJDUMP}")
+    if [ "$(getTarget)" == "droid" ]; then
+        cmake_tool_opts+=(
+            "-DCMAKE_SYSTEM_NAME=Android"
+            "-DCMAKE_SYSTEM_VERSION=${ANDROID_API:-34}"
+            "-DCMAKE_ANDROID_ARCH_ABI=$ANDROID_ABI"
+        )
+        [ "$ANDROID_NDK_ROOT_CMAKE" != "" ] && cmake_tool_opts+=("-DCMAKE_ANDROID_NDK=$ANDROID_NDK_ROOT_CMAKE")
+    fi
 
     "$cmake_cmd" -S . -B build -G "$generator" \
         -DCMAKE_INSTALL_PREFIX="$cmake_outdir" \
         -DCMAKE_PREFIX_PATH="$cmake_outdir" \
-        -DCMAKE_C_COMPILER="$(getCC)" \
-        -DCMAKE_CXX_COMPILER="$(getCXX)" \
+        -DCMAKE_C_COMPILER="$cmake_cc" \
+        -DCMAKE_CXX_COMPILER="$cmake_cxx" \
         -DCMAKE_C_FLAGS="$lcf" \
         -DCMAKE_CXX_FLAGS="$lcxf" \
         -DCMAKE_EXE_LINKER_FLAGS="$llf" \
+        "${cmake_tool_opts[@]}" \
         "${cmakeopts[@]}" &>"$logfile" || ret=$?
 
     if (( ret )); then

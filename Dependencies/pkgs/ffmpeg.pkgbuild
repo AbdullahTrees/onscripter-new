@@ -60,7 +60,7 @@ else
     )
 fi
 
-cflags_droid="-D__STDC_CONSTANT_MACROS"
+cflags_droid="-D__STDC_CONSTANT_MACROS -fvisibility=hidden"
 configopts_droid=(
     "--cc=$(getCC)"
     '--enable-pic'

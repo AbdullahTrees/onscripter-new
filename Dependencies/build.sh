@@ -231,8 +231,39 @@ while getopts O:defphilm:a:o:r:b:c:g: o; do
             if [[ $(uname) == MINGW* ]] || [[ $(uname) == MSYS* ]]; then
                 CROSS_SYS_PREFIX="$OPTARG/bin/"
             fi
+            TOOL_SUFFIX=""
+            if { [[ $(uname) == MINGW* ]] || [[ $(uname) == MSYS* ]]; } && [ -f "$OPTARG/bin/clang.cmd" ]; then
+                TOOL_SUFFIX=".cmd"
+            fi
+            ANDROID_API="$(cat "$OPTARG/api" 2>/dev/null)"
+            ANDROID_NDK_ROOT="$(cat "$OPTARG/ndk-root" 2>/dev/null)"
+            ANDROID_NDK_ROOT_CMAKE="$ANDROID_NDK_ROOT"
+            if { [[ $(uname) == MINGW* ]] || [[ $(uname) == MSYS* ]]; } && [ "$ANDROID_NDK_ROOT_CMAKE" != "" ] && command -v cygpath >/dev/null 2>&1; then
+                ANDROID_NDK_ROOT_CMAKE="$(cygpath -m "$ANDROID_NDK_ROOT_CMAKE")"
+            fi
+            case "$CROSS_TRIPLE" in
+                aarch64-linux-android) ANDROID_ABI="arm64-v8a" ;;
+                x86_64-linux-android)  ANDROID_ABI="x86_64" ;;
+                *)                     ANDROID_ABI="" ;;
+            esac
             CC="${CROSS_SYS_PREFIX}clang"
             CXX="${CROSS_SYS_PREFIX}clang++"
+            AR="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-ar"
+            RANLIB="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-ranlib"
+            STRIP="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-strip"
+            NM="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-nm"
+            OBJCOPY="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-objcopy"
+            OBJDUMP="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-objdump"
+            CMAKE_CC="${CROSS_SYS_PREFIX}clang${TOOL_SUFFIX}"
+            CMAKE_CXX="${CROSS_SYS_PREFIX}clang++${TOOL_SUFFIX}"
+            CMAKE_AR="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-ar${TOOL_SUFFIX}"
+            CMAKE_RANLIB="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-ranlib${TOOL_SUFFIX}"
+            CMAKE_STRIP="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-strip${TOOL_SUFFIX}"
+            CMAKE_NM="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-nm${TOOL_SUFFIX}"
+            CMAKE_OBJCOPY="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-objcopy${TOOL_SUFFIX}"
+            CMAKE_OBJDUMP="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-objdump${TOOL_SUFFIX}"
+            export ANDROID_API ANDROID_ABI ANDROID_NDK_ROOT ANDROID_NDK_ROOT_CMAKE
+            export CMAKE_CC CMAKE_CXX CMAKE_AR CMAKE_RANLIB CMAKE_STRIP CMAKE_NM CMAKE_OBJCOPY CMAKE_OBJDUMP
             ;;
         o)
             ret=0

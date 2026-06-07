@@ -24,11 +24,6 @@ if [ "$(getTarget)" != "darwin-iOS" ] && [ "$(getTarget)" != "droid" ]; then
     depends=(${depends[@]} 'lua' 'libusb');
 fi
 
-if [ "$(getTarget)" == "droid" ] && [ "$(getTargetCPU)" != "arm" ]; then
-    depends=(${depends[@]} 'libunwind');
-fi
-
-
 build() {
     msg "onscrlib built successfully."
 }

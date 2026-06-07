@@ -144,7 +144,7 @@ complete investigation log.
 | Windows | Windows 10 | Prefer x86_64 UCRT64 builds. `_WIN32_WINNT` and `WINVER` are set to `0x0A00`. |
 | macOS | macOS 14 | x86_64 remains supported; arm64 is the target for Apple Silicon work. Legacy i386/custom libc++ support is removed from the active floor. |
 | iOS | iOS 17 | arm64 devices and current simulator targets. armv7/armv7s are unsupported. |
-| Android | Android 14/API 34 | arm64-v8a is the default target; x86_64 is available for emulator and development builds. |
+| Android | Android 14/API 34 | arm64-v8a is the default target; x86_64 is available for emulator and development builds. APK packaging targets Android 16/API 36. |
 | Debian | Debian 11 | Conservative Linux ABI/build floor for generic Linux binaries. |
 | Ubuntu | Ubuntu 22.04 LTS | LTS baseline for generic Linux builds. |
 
@@ -161,7 +161,7 @@ complete investigation log.
 | HarfBuzz | 14.2.0 | Updated; built with Meson/Ninja. |
 | FriBidi | 1.0.16 | Updated as part of the text stack. |
 | libass | 0.17.4 | Updated as part of the text/subtitle stack. |
-| FFmpeg | 7.1.4 | Engine ported to current send/receive decode APIs and `AVChannelLayout`. Windows D3D11VA/DXVA2/Media Foundation/CUDA LLVM probing is disabled in the package. |
+| FFmpeg | 7.1.4 | Engine ported to current send/receive decode APIs and `AVChannelLayout`. Windows D3D11VA/DXVA2/Media Foundation/CUDA LLVM probing is disabled in the package. Android builds use hidden visibility so static AArch64 FFmpeg objects can link into `libmain.so`. |
 | SDL2 | 2.32.10 | Retired from the engine dependency graph after the SDL3 cutover; package recipe remains for historical reference. |
 | SDL2_image | 2.8.12 | Retired from the engine dependency graph after the SDL3 cutover; package recipe remains for historical reference. |
 | SDL2_mixer | 2.8.2 | Retired from the engine dependency graph after the SDL3 cutover; package recipe remains for historical reference. |
@@ -174,7 +174,7 @@ complete investigation log.
 | jpeg | libjpeg-turbo 3.1.4.1 | Replaces IJG 9c while still providing the `jpeg` package and static `libjpeg` API for SDL3_image. Built with JPEG v8 API emulation and TurboJPEG API disabled. |
 | Lua | 5.4.8 | Latest Lua 5.4 line; Windows recipe builds the static `liblua.a` archive instead of Lua's DLL-oriented MinGW target. |
 | libusb | 1.0.30 | Updated from the official release tarball. The old MinGW GUID patch is obsolete because current libusb uses `DEFINE_GUID()`. |
-| libunwind | Android legacy package | Pending removal if modern NDK unwinder coverage is sufficient. |
+| libunwind | removed | Android now relies on the modern NDK/runtime unwinder and the profiling code's header-gated fallback. |
 | libc++/libc++abi | legacy 8.0.0 packages | Pending removal with the old macOS/iOS floor cleanup. |
 
 ## Completed Work
@@ -189,8 +189,9 @@ Platform/build modernization:
   and recognizes Android x86_64.
 - `Scripts/ndktoolchain.sh` targets NDK r29/API 34 and creates arm64/x86_64
   wrapper toolchains.
-- Android packaging uses min SDK 34, target SDK 36, D8, apksigner/zipalign when
-  available, and arm64-v8a/x86_64 packaging.
+- Android packaging uses Gradle 9.4.1, Android Gradle Plugin 9.2.0, min SDK
+  34, target SDK 36, AAPT2, D8, zipalign, apksigner, scoped app storage, and
+  arm64-v8a/x86_64 packaging.
 - Xcode project deployment targets were raised to macOS 14 and iOS 17.
 - Windows helper packaging now points at MSYS2 UCRT64. Old ANGLE, EGL/GLES, and
   d3dcompiler renderer DLL payloads are no longer part of the Windows package.
@@ -771,10 +772,7 @@ SDL3 source-tagged runtime telemetry:
    triangle/shader draw batching impact outside the synthetic benchmark.
 9. Port or translate any non-trivial external OpenGL GLSL that falls outside the
    current simple SDL2_gpu-style translator.
-10. Replace Android packaging with a Gradle/AGP, aapt2, apksigner, scoped-storage,
-   and modern manifest flow.
-11. Evaluate Android libunwind removal and removal of legacy custom
-   libc++/libc++abi packages.
+10. Evaluate removal of legacy custom libc++/libc++abi packages.
 
 ## References
 

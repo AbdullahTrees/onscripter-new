@@ -41,22 +41,35 @@ ndkapi=(
 )
 archnum="${#ndkarch[@]}"
 
+is_windows_host() {
+    case $(uname) in
+        MINGW*|MSYS*|CYGWIN*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 for ((i=0; $i<$archnum; i++)); do
     arch="${ndkarch[$i]}"
     api="${ndkapi[$i]}"
     abi="${ndkabi[$i]}"
+    toolchain="$dstdir/ndk/toolchain-$arch"
 
-    if [ ! -f "$dstdir/ndk/toolchain-$arch/triple" ] || [ "$(cat "$dstdir/ndk/toolchain-$arch/triple")" != "$abi" ]; then
+    if [ ! -f "$toolchain/triple" ] || [ "$(cat "$toolchain/triple")" != "$abi" ]; then
         ndkgood=false
         break
     fi
 
-    if [ ! -f "$dstdir/ndk/toolchain-$arch/api" ] || [ "$(cat "$dstdir/ndk/toolchain-$arch/api")" != "$api" ]; then
+    if [ ! -f "$toolchain/api" ] || [ "$(cat "$toolchain/api")" != "$api" ]; then
         ndkgood=false
         break
     fi
 
-    if [ ! -f "$dstdir/ndk/toolchain-$arch/version" ] || [ "$(cat "$dstdir/ndk/toolchain-$arch/version")" != "${ndkver}-${ndkrel}" ]; then
+    if [ ! -f "$toolchain/version" ] || [ "$(cat "$toolchain/version")" != "${ndkver}-${ndkrel}" ]; then
+        ndkgood=false
+        break
+    fi
+
+    if is_windows_host && { [ ! -f "$toolchain/bin/clang.cmd" ] || [ ! -f "$toolchain/bin/${abi}-ar.cmd" ]; }; then
         ndkgood=false
         break
     fi
@@ -146,6 +159,26 @@ EOF
     chmod a+x "$wrapper"
 }
 
+write_cmd_wrapper() {
+    local wrapper="$1"
+    local target="$2"
+    local extra="$3"
+    local wintarget="$target"
+
+    if command -v cygpath >/dev/null 2>&1; then
+        wintarget="$(cygpath -m "$target")"
+    fi
+
+    {
+        printf '@echo off\r\n'
+        if [ "$extra" != "" ]; then
+            printf '"%s" %s %%*\r\n' "$wintarget" "$extra"
+        else
+            printf '"%s" %%*\r\n' "$wintarget"
+        fi
+    } > "$wrapper"
+}
+
 download_ndk() {
     local platform package url hash hashcmd nhash ndkdir
 
@@ -232,10 +265,21 @@ for ((i=0; $i<$archnum; i++)); do
     write_wrapper "$toolchain/bin/clang++" "$clangxx" "--target=${abi}${api}"
     write_wrapper "$toolchain/bin/${abi}-clang" "$clang" "--target=${abi}${api}"
     write_wrapper "$toolchain/bin/${abi}-clang++" "$clangxx" "--target=${abi}${api}"
+    if is_windows_host; then
+        write_cmd_wrapper "$toolchain/bin/clang.cmd" "$clang" "--target=${abi}${api}"
+        write_cmd_wrapper "$toolchain/bin/clang++.cmd" "$clangxx" "--target=${abi}${api}"
+        write_cmd_wrapper "$toolchain/bin/${abi}-clang.cmd" "$clang" "--target=${abi}${api}"
+        write_cmd_wrapper "$toolchain/bin/${abi}-clang++.cmd" "$clangxx" "--target=${abi}${api}"
+    fi
 
     for tool in ar ranlib strip nm objcopy objdump readelf; do
         target="$(tool_path "$llvmbin" "llvm-$tool")" || exit 1
+        write_wrapper "$toolchain/bin/$tool" "$target" ""
         write_wrapper "$toolchain/bin/${abi}-${tool}" "$target" ""
+        if is_windows_host; then
+            write_cmd_wrapper "$toolchain/bin/$tool.cmd" "$target" ""
+            write_cmd_wrapper "$toolchain/bin/${abi}-${tool}.cmd" "$target" ""
+        fi
     done
 
     echo "$abi" > "$toolchain/triple"

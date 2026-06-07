@@ -602,12 +602,10 @@ As an alternative to Codelite you may use CLion IDE created by JetBrains. Copy t
 **Prerequisities**:
 
 - everything necessary to build a hosted engine
-- openssl command line tool
-- zip command line tool (pacman -S zip in msys2)
 - wget or curl command line tool
-- libtool for libunwind compilation
 - JDK 17+ for APK packaging
-- Android SDK platform 36, Build Tools 36.1.0, Platform Tools, and NDK r29
+- Android SDK platform 36, Platform Tools, and NDK r29
+- Android SDK Build Tools 36.1.0 for local APK inspection/signature verification
 
 **Basic compilation guide**:
 
@@ -627,6 +625,20 @@ make -j8
 make apk
 ```
 
+Android packaging is Gradle/Android Gradle Plugin based. The checked-in Gradle
+wrapper uses Gradle 9.4.1 and the package project uses Android Gradle Plugin
+9.2.0, `compileSdk 36`, `minSdk 34`, `targetSdk 36`, AAPT2, D8, zipalign, and
+apksigner. The package id remains `org.umineko_project.onscripter_ru` to
+preserve existing installs and save locations, while the visible app label is
+`onscripter-new`.
+
+Android no longer requests broad storage permissions. `ONSActivity` maps the
+engine's storage environment to app-scoped external storage under:
+
+```
+Android/data/org.umineko_project.onscripter_ru/files/ONScripter-RU
+```
+
 **Multiple architecture compilation guide**:
 
 To compile for multiple architectures (i.e. create a FAT apk file) for deployment you could either use `./Scripts/quickdroid.tool` tool or run the following commands manually:
@@ -636,6 +648,12 @@ make
 ./configure --droid-build --droid-arch=x86_64
 make
 make apkall
+```
+
+The final multi-ABI release APK is written to:
+
+```
+DerivedData/Droid-package/onscripter-new.apk
 ```
 
 `./Scripts/quickdroid.tool` accepts the following arguments:
@@ -649,14 +667,14 @@ It is recommended to debug using IDA Pro.
 
 1. Setting Java debugger in order to properly start the application. It is worth checking the [official documentation](https://www.hex-rays.com/products/ida/support/tutorials/debugging_dalvik.pdf) first.
    
-    1. Open classes.dex in (32-bit) IDA Pro by dragging onscripter-ru.apk into its main window
+    1. Open classes.dex in (32-bit) IDA Pro by dragging onscripter-new.apk into its main window
     2. Put a breakpoint on `_def_Activity__init_@V`
     3. Go to `Debugger` → `Debugger options` → Set specific options and fill adb path
     4. Launch the debugger and specify source path mapping (`.` → `path/to/onscripter/sources`)
 
 2. Setting hardware debugger in order to debug the binary.
 
-    1. Open `libmain.so` in IDA Pro by dragging `onscripter-ru.apk` into its main window
+    1. Open `libmain.so` in IDA Pro by dragging `onscripter-new.apk` into its main window
     2. Set debugger to `Remote Linux Debugger`
     3. Upload a correct android debugger server to the device (e.g. to `/data/debug/`):
         - `android_server64` — for arm64
@@ -671,7 +689,7 @@ It is recommended to debug using IDA Pro.
     5. Set `Debugger` → `Process` options parameters:
         - Application and Input file to your device libmain.so path, e.g.:
             ```
-            /data/app-lib/org.umineko_project.onscripter_ru-1/libmain.so
+            /data/app/~~*/org.umineko_project.onscripter_ru-*/lib/arm64/libmain.so
             ```
         - Hostname to your device IP address, e.g.:
             ```
@@ -693,9 +711,8 @@ It is recommended to debug using IDA Pro.
 
 **NOTES**:
 
-- Java, Android SDK Build Tools, Android platform 36, and NDK r29 are required for supported APK packaging.
+- Java 17+, Android platform 36, and NDK r29 are required for supported APK packaging.
 - Only arm64-v8a and x86_64 binaries are compiled.
-- Building on Linux and Windows systems is mostly untested
 - Building standalone onscrlib package may fail on Windows due to `%PATH%`/`$PATH` design
 - Source level debugging may not always be available
 - The logs are generated with ONScripter-RU and SDL tags:
@@ -703,9 +720,9 @@ It is recommended to debug using IDA Pro.
 adb logcat | grep -E '(ONScripter-RU|SDL)'
 ```
 
-#### Building Android Java sources
+#### Building Android APKs
 
-Even though all the Java-dependent files are provided in compiled form you may rebuild them.
+Android Java sources are compiled by Gradle during APK packaging.
 
 1. Download a current [Java SE Development Kit](https://www.oracle.com/java/technologies/downloads/) or OpenJDK distribution for your platform.
 2. Download [Android command line tools](https://developer.android.com/studio/index.html#downloads) for your platform (avoid Android Studio itself).
@@ -722,20 +739,31 @@ Even though all the Java-dependent files are provided in compiled form you may r
     ./bin/sdkmanager platform-tools 'platforms;android-36' 'build-tools;36.1.0' 'ndk;29.0.14206865'
     ```
 
-5. Recompile the resources by running the following command:
+5. Build an APK from existing Android engine outputs by running one of:
     ```
-    ./Scripts/apkbuild.tool DerivedData
+    ./Scripts/apkbuild.tool DerivedData/Droid-aarch64 --release
+    ./Scripts/apkbuild.tool DerivedData/Droid-x86_64 --debug
+    ./Scripts/apkbuild.tool DerivedData --release
     ```
 
     The following arguments are supported:
 
-    - `--jsign` — signs apk file with jarsigner
+    - `--release` - builds and signs the release variant
+    - `--debug` - builds the debug variant
+
+    `--jsign` and `--no-recompile` are obsolete and intentionally rejected.
 
     The following environment variables are supported:
 
-    - `JAVA_PATH` — path to `bin/javac`
-    - `DROID_TOOLS` — path to Android build-tools
-    - `DROID_PLATFORM` — path to `android.jar`
+    - `JAVA_PATH` - path to the JDK `bin` directory
+    - `JAVA_HOME` - JDK root used when `JAVA_PATH` is not set
+    - `DROID_SDK_ROOT`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME` - Android SDK root
+    - `DROID_TOOLS` - path to Android build-tools, used to infer the SDK root
+    - `DROID_PLATFORM` - path to `android.jar`, used to infer the SDK root
+    - `ONS_ANDROID_KEYSTORE` - release signing keystore path
+    - `ONS_ANDROID_KEYSTORE_PASSWORD` - release signing keystore password
+    - `ONS_ANDROID_KEY_ALIAS` - release signing key alias
+    - `ONS_ANDROID_KEY_PASSWORD` - release signing key password
 
 #### Linux Ubuntu 22.04 LTS/Debian 11/SteamOS
 

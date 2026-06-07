@@ -677,20 +677,9 @@ genlink freetype
 genlink harfbuzz
 
 if [ "$SYS" == "Droid" ]; then
-  if [ "$ARCH" == "aarch64" ]; then
-    genlink unwind -aarch64
-    LINKunwindArch="$LINKunwind"
-    genlink unwind
-    LINKunwind="$LINKunwind $LINKunwindArch"
-  elif [ "$ARCH" == "arm" ]; then
-    # No arm support atm
-    LINKunwind=""
-  else
-    genlink unwind -x86
-    LINKunwindArch="$LINKunwind"
-    genlink unwind
-    LINKunwind="$LINKunwind $LINKunwindArch"
-  fi
+  # Modern Android NDKs provide the required runtime unwind support. The old
+  # custom libunwind archives are no longer built or linked.
+  LINKunwind=""
 else
 	genlink usb -1.0
 fi
@@ -876,7 +865,6 @@ HEADERS=(
   'Support/DirPaths.hpp'
   'Support/DirtyRect.hpp'
   'Support/Droid/DroidProfile.hpp'
-  'Support/Droid/hidapi.hpp'
   'Support/FileDefs.hpp'
   'Support/FileIO.hpp'
   'Support/KeyState.hpp'
@@ -892,7 +880,7 @@ HEADERS=(
 )
 
 if [ "$SYS" == "Droid" ]; then
-  SOURCES+=('Support/Droid/DroidProfile.cpp' 'Support/Droid/hid.cpp')
+  SOURCES+=('Support/Droid/DroidProfile.cpp')
 elif [ "$SYS" == "MinGW" ]; then
   SOURCES+=('Resources/Support/WinRes.rc.in')
 fi
