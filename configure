@@ -559,14 +559,14 @@ case "$CXX_TMP:$SYS" in
     EXTRACFLAGS="$EXTRACFLAGS -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
     EXTRALDFLAGS="$EXTRALDFLAGS -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
     EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DMACOSX -DDISABLE_OBJC"
-    EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -stdlib=libc++ -Wl,-framework,VideoToolbox -Wl,-framework,CoreMedia -lc++ -lc++abi"
+    EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -stdlib=libc++ -Wl,-framework,VideoToolbox -Wl,-framework,CoreMedia"
   ;;
   Apple*:"MacOSX")
     CXXSTD="$CXXSTD -stdlib=libc++"
     EXTRACFLAGS="$EXTRACFLAGS -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
     EXTRALDFLAGS="$EXTRALDFLAGS -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
     EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DMACOSX -DDISABLE_OBJC"
-    EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -stdlib=libc++ -Wl,-framework,VideoToolbox -Wl,-framework,CoreMedia -lc++ -lc++abi"
+    EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -stdlib=libc++ -Wl,-framework,VideoToolbox -Wl,-framework,CoreMedia"
   ;;
   *clang*:"MinGW")
     LINK_START_GROUP="-Wl,--start-group"

@@ -846,7 +846,7 @@ int main(int argc, char **argv) {
 
 	if (!works) {
 #ifdef MACOSX
-		performTerminate("Invalid launch directory!\nTry executing xattr -cr /path/to/onscripter-ru-osx.app");
+		performTerminate("Invalid launch directory!\nTry executing xattr -cr /path/to/onscripter-ru-osx64.app");
 #else
 		performTerminate("Invalid launch directory!");
 #endif

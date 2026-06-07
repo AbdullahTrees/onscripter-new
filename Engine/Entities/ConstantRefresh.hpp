@@ -169,7 +169,7 @@ public:
 	}
 	int32_t ch{-1};
 	uint32_t soundDelayMs{0};
-	// Not using std::function due to clang+armv7s alignment bug
+	// Keep this as a raw callback because queued sounds only need a plain completion hook.
 	void (*func)(){nullptr};
 	bool suspendsMainScript() override {
 		return false;

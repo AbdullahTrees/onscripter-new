@@ -157,8 +157,6 @@
 		CE61AC8220E3C0E1000B31C7 /* libfribidi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126F020E3821800C286AF /* libfribidi.a */; };
 		CE61AC8420E3C0E1000B31C7 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CE61AC0F20E3AE21000B31C7 /* Images.xcassets */; };
 		CE9D808920E3C80C00670C17 /* Resources.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE9D808720E3C7FD00670C17 /* Resources.cpp */; };
-		CE9D808C20E3CA2D00670C17 /* libc++.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE9D808A20E3CA2D00670C17 /* libc++.a */; };
-		CE9D808D20E3CA2D00670C17 /* libc++abi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE9D808B20E3CA2D00670C17 /* libc++abi.a */; };
 		CE9D809620E3CA9200670C17 /* LUA.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0A5F8717478EFA004A9BCC /* LUA.cpp */; };
 		CE9D809720E3CA9200670C17 /* Script.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0A5FA517478EFA004A9BCC /* Script.cpp */; };
 		CE9D809820E3CA9200670C17 /* Animation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0A5F6D17478EFA004A9BCC /* Animation.cpp */; };
@@ -230,37 +228,7 @@
 		CE9D80DE20E3CA9200670C17 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE641DEF1D1ADFA600184E36 /* CoreMedia.framework */; };
 		CE9D80DF20E3CA9200670C17 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1270C20E3823F00C286AF /* CoreGraphics.framework */; };
 		CE9D80E020E3CA9200670C17 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C0A60921747A490004A9BCC /* CoreAudio.framework */; };
-		CE9D80E120E3CA9200670C17 /* libSDL2main.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D720E3821700C286AF /* libSDL2main.a */; };
-		CE9D80E420E3CA9200670C17 /* libSDL2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DA20E3821700C286AF /* libSDL2.a */; };
-		CE9D80E520E3CA9200670C17 /* libass.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DB20E3821700C286AF /* libass.a */; };
-		CE9D80E620E3CA9200670C17 /* libSDL2_test.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DC20E3821700C286AF /* libSDL2_test.a */; };
-		CE9D80E720E3CA9200670C17 /* libswscale.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DD20E3821700C286AF /* libswscale.a */; };
-		CE9D80E820E3CA9200670C17 /* libvorbis.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DE20E3821700C286AF /* libvorbis.a */; };
-		CE9D80E920E3CA9200670C17 /* liblua.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DF20E3821700C286AF /* liblua.a */; };
-		CE9D80EA20E3CA9200670C17 /* libvorbisfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E020E3821700C286AF /* libvorbisfile.a */; };
-		CE9D80EB20E3CA9200670C17 /* libvorbisenc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E120E3821700C286AF /* libvorbisenc.a */; };
-		CE9D80EC20E3CA9200670C17 /* libavutil.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E220E3821700C286AF /* libavutil.a */; };
-		CE9D80ED20E3CA9200670C17 /* libavformat.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1271720E3839A00C286AF /* libavformat.a */; };
-		CE9D80EF20E3CA9200670C17 /* libfreetype.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E420E3821700C286AF /* libfreetype.a */; };
-		CE9D80F020E3CA9200670C17 /* libjpeg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E520E3821700C286AF /* libjpeg.a */; };
-		CE9D80F120E3CA9200670C17 /* libSDL2_image.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E620E3821800C286AF /* libSDL2_image.a */; };
-		CE9D80F220E3CA9200670C17 /* libz.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E720E3821800C286AF /* libz.a */; };
-		CE9D80F320E3CA9200670C17 /* libharfbuzz.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E820E3821800C286AF /* libharfbuzz.a */; };
-		CE9D80F420E3CA9200670C17 /* libswresample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E920E3821800C286AF /* libswresample.a */; };
-		CE9D80F520E3CA9200670C17 /* libavcodec.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126EA20E3821800C286AF /* libavcodec.a */; };
-		CE9D80F620E3CA9200670C17 /* libSDL2_mixer.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126EB20E3821800C286AF /* libSDL2_mixer.a */; };
-		CE9D80F720E3CA9200670C17 /* libogg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126EC20E3821800C286AF /* libogg.a */; };
-		CE9D80F820E3CA9200670C17 /* libusb-1.0.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126ED20E3821800C286AF /* libusb-1.0.a */; };
-		CE9D80F920E3CA9200670C17 /* libpng16.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126EE20E3821800C286AF /* libpng16.a */; };
-		CE9D80FA20E3CA9200670C17 /* libbz2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126EF20E3821800C286AF /* libbz2.a */; };
-		CE9D80FB20E3CA9200670C17 /* libc++.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE9D808A20E3CA2D00670C17 /* libc++.a */; };
-		CE9D80FC20E3CA9200670C17 /* libc++abi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CE9D808B20E3CA2D00670C17 /* libc++abi.a */; };
-		CE9D80FD20E3CA9200670C17 /* libfribidi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126F020E3821800C286AF /* libfribidi.a */; };
 		CE9D80FF20E3CA9200670C17 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CE61AC0F20E3AE21000B31C7 /* Images.xcassets */; };
-		CE9D810820E3CDD800670C17 /* Resources.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE9D810720E3CDD800670C17 /* Resources.cpp */; };
-		CE9D817920E3ECCC00670C17 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CE61AC0F20E3AE21000B31C7 /* Images.xcassets */; };
-		CE9D818520E3EF4000670C17 /* mac_reloader.c in Sources */ = {isa = PBXBuildFile; fileRef = CE44679C1E212045007F847C /* mac_reloader.c */; };
-		CE9D818620E3F0E000670C17 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C0A603317479DF8004A9BCC /* Cocoa.framework */; };
 		CE9D819120E3FBEE00670C17 /* nscmake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB264520E0252300E79DC4 /* nscmake.cpp */; };
 		CE9D819B20E3FBFA00670C17 /* nscdec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB264220E0252300E79DC4 /* nscdec.cpp */; };
 		CE9D819D20E3FC4A00670C17 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CE9D819C20E3FC4A00670C17 /* libz.tbd */; };
@@ -326,29 +294,6 @@
 		CEE126D020E374BD00C286AF /* Unicode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE24317B1E3A6A50003276DA /* Unicode.cpp */; };
 		CEE126D120E374BD00C286AF /* slre.c in Sources */ = {isa = PBXBuildFile; fileRef = 1CD59BB4180D4441005A57A7 /* slre.c */; };
 		CEE126D620E3792200C286AF /* UIKitWrapper.mm in Sources */ = {isa = PBXBuildFile; fileRef = CEFEC4701D52B2CA00957675 /* UIKitWrapper.mm */; };
-		CEE126F120E3821800C286AF /* libSDL2main.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126D720E3821700C286AF /* libSDL2main.a */; };
-		CEE126F420E3821800C286AF /* libSDL2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DA20E3821700C286AF /* libSDL2.a */; };
-		CEE126F520E3821800C286AF /* libass.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DB20E3821700C286AF /* libass.a */; };
-		CEE126F620E3821800C286AF /* libSDL2_test.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DC20E3821700C286AF /* libSDL2_test.a */; };
-		CEE126F720E3821800C286AF /* libswscale.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DD20E3821700C286AF /* libswscale.a */; };
-		CEE126F820E3821800C286AF /* libvorbis.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DE20E3821700C286AF /* libvorbis.a */; };
-		CEE126F920E3821800C286AF /* liblua.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126DF20E3821700C286AF /* liblua.a */; };
-		CEE126FA20E3821800C286AF /* libvorbisfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E020E3821700C286AF /* libvorbisfile.a */; };
-		CEE126FB20E3821800C286AF /* libvorbisenc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E120E3821700C286AF /* libvorbisenc.a */; };
-		CEE126FC20E3821800C286AF /* libavutil.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E220E3821700C286AF /* libavutil.a */; };
-		CEE126FE20E3821800C286AF /* libfreetype.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E420E3821700C286AF /* libfreetype.a */; };
-		CEE126FF20E3821800C286AF /* libjpeg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E520E3821700C286AF /* libjpeg.a */; };
-		CEE1270020E3821800C286AF /* libSDL2_image.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E620E3821800C286AF /* libSDL2_image.a */; };
-		CEE1270120E3821800C286AF /* libz.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E720E3821800C286AF /* libz.a */; };
-		CEE1270220E3821800C286AF /* libharfbuzz.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E820E3821800C286AF /* libharfbuzz.a */; };
-		CEE1270320E3821800C286AF /* libswresample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126E920E3821800C286AF /* libswresample.a */; };
-		CEE1270420E3821800C286AF /* libavcodec.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126EA20E3821800C286AF /* libavcodec.a */; };
-		CEE1270520E3821800C286AF /* libSDL2_mixer.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126EB20E3821800C286AF /* libSDL2_mixer.a */; };
-		CEE1270620E3821800C286AF /* libogg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126EC20E3821800C286AF /* libogg.a */; };
-		CEE1270720E3821800C286AF /* libusb-1.0.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126ED20E3821800C286AF /* libusb-1.0.a */; };
-		CEE1270820E3821800C286AF /* libpng16.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126EE20E3821800C286AF /* libpng16.a */; };
-		CEE1270920E3821800C286AF /* libbz2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126EF20E3821800C286AF /* libbz2.a */; };
-		CEE1270A20E3821800C286AF /* libfribidi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE126F020E3821800C286AF /* libfribidi.a */; };
 		CEE1270B20E3823700C286AF /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C0A60921747A490004A9BCC /* CoreAudio.framework */; };
 		CEE1270D20E3824000C286AF /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1270C20E3823F00C286AF /* CoreGraphics.framework */; };
 		CEE1270E20E3824700C286AF /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE641DEF1D1ADFA600184E36 /* CoreMedia.framework */; };
@@ -359,36 +304,34 @@
 		CEE1271420E382BE00C286AF /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C3F19E31C5302A3007C1CB2 /* CoreVideo.framework */; };
 		CEE1271520E382CD00C286AF /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C0A603317479DF8004A9BCC /* Cocoa.framework */; };
 		CEE1271620E382DB00C286AF /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE641DED1D1ADF9200184E36 /* VideoToolbox.framework */; };
-		CEE1271820E3839A00C286AF /* libavformat.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1271720E3839A00C286AF /* libavformat.a */; };
 		CEE1271A20E3840C00C286AF /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C0A603217479DF8004A9BCC /* Carbon.framework */; };
 		CEE1272020E38BBD00C286AF /* CoreServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1271F20E38BBD00C286AF /* CoreServices.framework */; };
-		CEE1272320E3901C00C286AF /* Resources.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEE1272220E3901B00C286AF /* Resources.cpp */; };
 		CEE1272B20E399FC00C286AF /* Glyph.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB263820DFF4CA00E79DC4 /* Glyph.cpp */; };
 		CEE1272C20E399FC00C286AF /* StringTree.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB264820E0374500E79DC4 /* StringTree.cpp */; };
 		CEE1272D20E399FC00C286AF /* Fonts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB263520DFF46400E79DC4 /* Fonts.cpp */; };
 		CEE1272E20E399FC00C286AF /* GlyphAtlas.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB263B20DFF6AE00E79DC4 /* GlyphAtlas.cpp */; };
 		CEE1272F20E399FC00C286AF /* Pool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB261920DF692100E79DC4 /* Pool.cpp */; };
 		CEE1273020E399FC00C286AF /* Furu.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEDB261420DF64DC00E79DC4 /* Furu.cpp */; };
-		CEE1277320E3A6BD00C286AF /* libharfbuzz.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1275C20E3A6BB00C286AF /* libharfbuzz.a */; };
-		CEE1277420E3A6BD00C286AF /* libass.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1275D20E3A6BB00C286AF /* libass.a */; };
-		CEE1277520E3A6BD00C286AF /* libSDL2_image.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1275E20E3A6BC00C286AF /* libSDL2_image.a */; };
-		CEE1277620E3A6BD00C286AF /* libz.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1275F20E3A6BC00C286AF /* libz.a */; };
-		CEE1277720E3A6BD00C286AF /* libvorbis.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276020E3A6BC00C286AF /* libvorbis.a */; };
+		CEE1277320E3A6BD00C286AF /* libharfbuzz.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1274120E3A68000C286AF /* libharfbuzz.a */; };
+		CEE1277420E3A6BD00C286AF /* libass.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1274320E3A68000C286AF /* libass.a */; };
+		CEE1277520E3A6BD00C286AF /* libSDL2_image.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1274620E3A68000C286AF /* libSDL2_image.a */; };
+		CEE1277620E3A6BD00C286AF /* libz.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273C20E3A67F00C286AF /* libz.a */; };
+		CEE1277720E3A6BD00C286AF /* libvorbis.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273F20E3A68000C286AF /* libvorbis.a */; };
 		CEE1277820E3A6BD00C286AF /* libavformat.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276120E3A6BC00C286AF /* libavformat.a */; };
-		CEE1277920E3A6BD00C286AF /* libogg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276220E3A6BC00C286AF /* libogg.a */; };
-		CEE1277B20E3A6BD00C286AF /* libSDL2_mixer.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276420E3A6BC00C286AF /* libSDL2_mixer.a */; };
-		CEE1277D20E3A6BD00C286AF /* libavcodec.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276620E3A6BC00C286AF /* libavcodec.a */; };
-		CEE1277E20E3A6BD00C286AF /* libfreetype.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276720E3A6BC00C286AF /* libfreetype.a */; };
-		CEE1277F20E3A6BD00C286AF /* libfribidi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276820E3A6BC00C286AF /* libfribidi.a */; };
-		CEE1278020E3A6BD00C286AF /* libjpeg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276920E3A6BC00C286AF /* libjpeg.a */; };
-		CEE1278120E3A6BD00C286AF /* libpng16.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276A20E3A6BC00C286AF /* libpng16.a */; };
-		CEE1278220E3A6BD00C286AF /* libbz2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276B20E3A6BC00C286AF /* libbz2.a */; };
-		CEE1278420E3A6BD00C286AF /* libvorbisenc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276D20E3A6BD00C286AF /* libvorbisenc.a */; };
-		CEE1278520E3A6BD00C286AF /* libswscale.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276E20E3A6BD00C286AF /* libswscale.a */; };
+		CEE1277920E3A6BD00C286AF /* libogg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273720E3A67F00C286AF /* libogg.a */; };
+		CEE1277B20E3A6BD00C286AF /* libSDL2_mixer.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273920E3A67F00C286AF /* libSDL2_mixer.a */; };
+		CEE1277D20E3A6BD00C286AF /* libavcodec.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273320E3A67F00C286AF /* libavcodec.a */; };
+		CEE1277E20E3A6BD00C286AF /* libfreetype.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1274420E3A68000C286AF /* libfreetype.a */; };
+		CEE1277F20E3A6BD00C286AF /* libfribidi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273520E3A67F00C286AF /* libfribidi.a */; };
+		CEE1278020E3A6BD00C286AF /* libjpeg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273620E3A67F00C286AF /* libjpeg.a */; };
+		CEE1278120E3A6BD00C286AF /* libpng16.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273820E3A67F00C286AF /* libpng16.a */; };
+		CEE1278220E3A6BD00C286AF /* libbz2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273D20E3A68000C286AF /* libbz2.a */; };
+		CEE1278420E3A6BD00C286AF /* libvorbisenc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273220E3A67F00C286AF /* libvorbisenc.a */; };
+		CEE1278520E3A6BD00C286AF /* libswscale.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1274520E3A68000C286AF /* libswscale.a */; };
 		CEE1278620E3A6BD00C286AF /* libswresample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1276F20E3A6BD00C286AF /* libswresample.a */; };
-		CEE1278720E3A6BD00C286AF /* libSDL2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1277020E3A6BD00C286AF /* libSDL2.a */; };
-		CEE1278820E3A6BD00C286AF /* libvorbisfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1277120E3A6BD00C286AF /* libvorbisfile.a */; };
-		CEE1278920E3A6BD00C286AF /* libavutil.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1277220E3A6BD00C286AF /* libavutil.a */; };
+		CEE1278720E3A6BD00C286AF /* libSDL2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273420E3A67F00C286AF /* libSDL2.a */; };
+		CEE1278820E3A6BD00C286AF /* libvorbisfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273A20E3A67F00C286AF /* libvorbisfile.a */; };
+		CEE1278920E3A6BD00C286AF /* libavutil.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1273B20E3A67F00C286AF /* libavutil.a */; };
 		CEE1278B20E3A75700C286AF /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1278A20E3A75600C286AF /* AudioToolbox.framework */; };
 		CEE1278D20E3A76100C286AF /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1278C20E3A76000C286AF /* AVFoundation.framework */; };
 		CEE1278F20E3A76600C286AF /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1278E20E3A76600C286AF /* CoreAudio.framework */; };
@@ -408,13 +351,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		2F5351A51D51FF6A0023D8F0 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 1C0A5F5717478DCF004A9BCC /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 2F53519D1D51FEDA0023D8F0;
-			remoteInfo = onscrlib_armv7s;
-		};
 		2FD1DB661D52124F00362A7C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 1C0A5F5717478DCF004A9BCC /* Project object */;
@@ -450,54 +386,12 @@
 			remoteGlobalIDString = 1C0A5FF117478F59004A9BCC;
 			remoteInfo = embed;
 		};
-		CE9D810520E3CB2400670C17 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 1C0A5F5717478DCF004A9BCC /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 1C9F26D91ADB101C00138E84;
-			remoteInfo = onscrlib32;
-		};
-		CE9D817F20E3ECE200670C17 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 1C0A5F5717478DCF004A9BCC /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = CE9D808E20E3CA9200670C17;
-			remoteInfo = "onscripter-ru-osx32";
-		};
-		CE9D818120E3ECE200670C17 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 1C0A5F5717478DCF004A9BCC /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = CE61AC1520E3C0E1000B31C7;
-			remoteInfo = "onscripter-ru-osx64";
-		};
-		CE9D818320E3ECE200670C17 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 1C0A5F5717478DCF004A9BCC /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = CEE1268220E3707E00C286AF;
-			remoteInfo = "onscripter-ru-osx64h";
-		};
-		CEE126D220E374CA00C286AF /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 1C0A5F5717478DCF004A9BCC /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = CEF816981EF01A550059103C;
-			remoteInfo = onscrlib64h;
-		};
 		CEE126D420E374CE00C286AF /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 1C0A5F5717478DCF004A9BCC /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 1C0A5FF117478F59004A9BCC;
 			remoteInfo = embed;
-		};
-		CEF2085D21ADF38300D01AD8 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 1C0A5F5717478DCF004A9BCC /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = CEF2085921ADF36100D01AD8;
-			remoteInfo = onscrlib_armv7;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -651,7 +545,6 @@
 		CE24317B1E3A6A50003276DA /* Unicode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Unicode.cpp; sourceTree = "<group>"; };
 		CE24317C1E3A6A50003276DA /* Unicode.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = Unicode.hpp; sourceTree = "<group>"; };
 		CE28334F1EB21F7700E06E4C /* Base.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = Base.hpp; sourceTree = "<group>"; };
-		CE44679C1E212045007F847C /* mac_reloader.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = mac_reloader.c; sourceTree = "<group>"; };
 		CE61AC0C20E3A8AF000B31C7 /* Resources.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Resources.cpp; path = "DerivedData/Xcode/onscripter-ru-ios/Resources.cpp"; sourceTree = "<group>"; };
 		CE61AC0F20E3AE21000B31C7 /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Resources/Bundle/Images.xcassets; sourceTree = SOURCE_ROOT; };
 		CE61AC1120E3AE2E000B31C7 /* iTunesArtwork */ = {isa = PBXFileReference; lastKnownFileType = file; name = iTunesArtwork; path = Resources/Bundle/iTunesArtwork; sourceTree = SOURCE_ROOT; };
@@ -663,30 +556,12 @@
 		CE8CC04F1ED89E08002181E6 /* VideoDecodeAcceleration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = VideoDecodeAcceleration.framework; path = System/Library/Frameworks/VideoDecodeAcceleration.framework; sourceTree = SDKROOT; };
 		CE9998301E087D3E005CE99F /* glassSmash.frag */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.glsl; path = glassSmash.frag; sourceTree = "<group>"; };
 		CE9D808720E3C7FD00670C17 /* Resources.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Resources.cpp; path = "DerivedData/Xcode/onscripter-ru-osx64/Resources.cpp"; sourceTree = "<group>"; };
-		CE9D808A20E3CA2D00670C17 /* libc++.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libc++.a"; path = "DerivedData/Xcode/onscrlib64/onscrlib/lib/libc++.a"; sourceTree = "<group>"; };
-		CE9D808B20E3CA2D00670C17 /* libc++abi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libc++abi.a"; path = "DerivedData/Xcode/onscrlib64/onscrlib/lib/libc++abi.a"; sourceTree = "<group>"; };
-		CE9D810320E3CA9200670C17 /* onscripter-ru-osx32.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "onscripter-ru-osx32.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		CE9D810720E3CDD800670C17 /* Resources.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Resources.cpp; path = "DerivedData/Xcode/onscripter-ru-osx32/Resources.cpp"; sourceTree = "<group>"; };
-		CE9D817D20E3ECCC00670C17 /* onscripter-ru-osx.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "onscripter-ru-osx.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE9D819020E3FBDD00670C17 /* nscmake */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = nscmake; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE9D819A20E3FBF100670C17 /* nscdec */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = nscdec; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE9D819C20E3FC4A00670C17 /* libz.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libz.tbd; path = usr/lib/libz.tbd; sourceTree = SDKROOT; };
 		CEBE7B421E02CB0F00479441 /* _clang-format */ = {isa = PBXFileReference; lastKnownFileType = text; path = "_clang-format"; sourceTree = "<group>"; };
 		CEBE7B451E02CB0F00479441 /* configure */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = configure; sourceTree = "<group>"; };
 		CEC5C3B81EB852250044AB50 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
-		CEC5C3C11EB855CE0044AB50 /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/OpenGLES.framework; sourceTree = DEVELOPER_DIR; };
-		CEC5C3C31EB855DF0044AB50 /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/CoreText.framework; sourceTree = DEVELOPER_DIR; };
-		CEC5C3C51EB855E90044AB50 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/UIKit.framework; sourceTree = DEVELOPER_DIR; };
-		CEC5C3C71EB855F10044AB50 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/CoreAudio.framework; sourceTree = DEVELOPER_DIR; };
-		CEC5C3C91EB855F90044AB50 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/AudioToolbox.framework; sourceTree = DEVELOPER_DIR; };
-		CEC5C3CB1EB8560A0044AB50 /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/CoreVideo.framework; sourceTree = DEVELOPER_DIR; };
-		CEC5C3CD1EB856160044AB50 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/AVFoundation.framework; sourceTree = DEVELOPER_DIR; };
-		CEC5C3CF1EB856200044AB50 /* VideoToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = VideoToolbox.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/VideoToolbox.framework; sourceTree = DEVELOPER_DIR; };
-		CEC5C3D11EB8562A0044AB50 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/CoreMedia.framework; sourceTree = DEVELOPER_DIR; };
-		CEC5C3D31EB856370044AB50 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/CoreGraphics.framework; sourceTree = DEVELOPER_DIR; };
-		CEC5C3D51EB856680044AB50 /* CoreMotion.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMotion.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/CoreMotion.framework; sourceTree = DEVELOPER_DIR; };
-		CEC5C3D71EB856950044AB50 /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/GameController.framework; sourceTree = DEVELOPER_DIR; };
-		CEC5C3D91EB856AB0044AB50 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.3.sdk/System/Library/Frameworks/QuartzCore.framework; sourceTree = DEVELOPER_DIR; };
 		CEC81E2B1E3BD9F100C27578 /* FileIO.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileIO.cpp; sourceTree = "<group>"; };
 		CEC81E2C1E3BD9F100C27578 /* FileIO.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = FileIO.hpp; sourceTree = "<group>"; };
 		CECE894D1DE426FB003BB424 /* defaultVertex.gles.vert */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.glsl; path = defaultVertex.gles.vert; sourceTree = "<group>"; };
@@ -723,38 +598,34 @@
 		CEDB264B20E3423D00E79DC4 /* icon.ico */ = {isa = PBXFileReference; lastKnownFileType = image.ico; path = icon.ico; sourceTree = "<group>"; };
 		CEDB264C20E3423D00E79DC4 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = icon.png; sourceTree = "<group>"; };
 		CEDB264D20E3428500E79DC4 /* Dependencies */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Dependencies; sourceTree = "<group>"; };
-		CEE1267C20E346CD00C286AF /* Clang MacPorts.xcplugin */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = "Clang MacPorts.xcplugin"; sourceTree = "<group>"; };
-		CEE1267D20E346CD00C286AF /* llvm_macports3.pbcompspec */ = {isa = PBXFileReference; lastKnownFileType = text; path = llvm_macports3.pbcompspec; sourceTree = "<group>"; };
 		CEE1267E20E36FA900C286AF /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = SOURCE_ROOT; };
-		CEE1268320E3707E00C286AF /* onscripter-ru-osx64h.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "onscripter-ru-osx64h.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		CEE126D720E3821700C286AF /* libSDL2main.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2main.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2main.a; sourceTree = "<group>"; };
-		CEE126DA20E3821700C286AF /* libSDL2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2.a; sourceTree = "<group>"; };
-		CEE126DB20E3821700C286AF /* libass.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libass.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libass.a; sourceTree = "<group>"; };
-		CEE126DC20E3821700C286AF /* libSDL2_test.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_test.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2_test.a; sourceTree = "<group>"; };
-		CEE126DD20E3821700C286AF /* libswscale.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libswscale.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libswscale.a; sourceTree = "<group>"; };
-		CEE126DE20E3821700C286AF /* libvorbis.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbis.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libvorbis.a; sourceTree = "<group>"; };
-		CEE126DF20E3821700C286AF /* liblua.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = liblua.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/liblua.a; sourceTree = "<group>"; };
-		CEE126E020E3821700C286AF /* libvorbisfile.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisfile.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libvorbisfile.a; sourceTree = "<group>"; };
-		CEE126E120E3821700C286AF /* libvorbisenc.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisenc.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libvorbisenc.a; sourceTree = "<group>"; };
-		CEE126E220E3821700C286AF /* libavutil.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavutil.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libavutil.a; sourceTree = "<group>"; };
-		CEE126E420E3821700C286AF /* libfreetype.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfreetype.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libfreetype.a; sourceTree = "<group>"; };
-		CEE126E520E3821700C286AF /* libjpeg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libjpeg.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libjpeg.a; sourceTree = "<group>"; };
-		CEE126E620E3821800C286AF /* libSDL2_image.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_image.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2_image.a; sourceTree = "<group>"; };
-		CEE126E720E3821800C286AF /* libz.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libz.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libz.a; sourceTree = "<group>"; };
-		CEE126E820E3821800C286AF /* libharfbuzz.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libharfbuzz.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libharfbuzz.a; sourceTree = "<group>"; };
-		CEE126E920E3821800C286AF /* libswresample.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libswresample.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libswresample.a; sourceTree = "<group>"; };
-		CEE126EA20E3821800C286AF /* libavcodec.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavcodec.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libavcodec.a; sourceTree = "<group>"; };
-		CEE126EB20E3821800C286AF /* libSDL2_mixer.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_mixer.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libSDL2_mixer.a; sourceTree = "<group>"; };
-		CEE126EC20E3821800C286AF /* libogg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libogg.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libogg.a; sourceTree = "<group>"; };
-		CEE126ED20E3821800C286AF /* libusb-1.0.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libusb-1.0.a"; path = "DerivedData/Xcode/onscrlib64h/onscrlib/lib/libusb-1.0.a"; sourceTree = "<group>"; };
-		CEE126EE20E3821800C286AF /* libpng16.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libpng16.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libpng16.a; sourceTree = "<group>"; };
-		CEE126EF20E3821800C286AF /* libbz2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbz2.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libbz2.a; sourceTree = "<group>"; };
-		CEE126F020E3821800C286AF /* libfribidi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfribidi.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libfribidi.a; sourceTree = "<group>"; };
+		CEE126D720E3821700C286AF /* libSDL2main.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2main.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libSDL2main.a; sourceTree = "<group>"; };
+		CEE126DA20E3821700C286AF /* libSDL2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libSDL2.a; sourceTree = "<group>"; };
+		CEE126DB20E3821700C286AF /* libass.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libass.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libass.a; sourceTree = "<group>"; };
+		CEE126DC20E3821700C286AF /* libSDL2_test.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_test.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libSDL2_test.a; sourceTree = "<group>"; };
+		CEE126DD20E3821700C286AF /* libswscale.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libswscale.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libswscale.a; sourceTree = "<group>"; };
+		CEE126DE20E3821700C286AF /* libvorbis.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbis.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libvorbis.a; sourceTree = "<group>"; };
+		CEE126DF20E3821700C286AF /* liblua.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = liblua.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/liblua.a; sourceTree = "<group>"; };
+		CEE126E020E3821700C286AF /* libvorbisfile.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisfile.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libvorbisfile.a; sourceTree = "<group>"; };
+		CEE126E120E3821700C286AF /* libvorbisenc.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisenc.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libvorbisenc.a; sourceTree = "<group>"; };
+		CEE126E220E3821700C286AF /* libavutil.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavutil.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libavutil.a; sourceTree = "<group>"; };
+		CEE126E420E3821700C286AF /* libfreetype.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfreetype.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libfreetype.a; sourceTree = "<group>"; };
+		CEE126E520E3821700C286AF /* libjpeg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libjpeg.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libjpeg.a; sourceTree = "<group>"; };
+		CEE126E620E3821800C286AF /* libSDL2_image.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_image.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libSDL2_image.a; sourceTree = "<group>"; };
+		CEE126E720E3821800C286AF /* libz.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libz.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libz.a; sourceTree = "<group>"; };
+		CEE126E820E3821800C286AF /* libharfbuzz.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libharfbuzz.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libharfbuzz.a; sourceTree = "<group>"; };
+		CEE126E920E3821800C286AF /* libswresample.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libswresample.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libswresample.a; sourceTree = "<group>"; };
+		CEE126EA20E3821800C286AF /* libavcodec.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavcodec.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libavcodec.a; sourceTree = "<group>"; };
+		CEE126EB20E3821800C286AF /* libSDL2_mixer.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_mixer.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libSDL2_mixer.a; sourceTree = "<group>"; };
+		CEE126EC20E3821800C286AF /* libogg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libogg.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libogg.a; sourceTree = "<group>"; };
+		CEE126ED20E3821800C286AF /* libusb-1.0.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libusb-1.0.a"; path = "DerivedData/Xcode/onscrlib64/onscrlib/lib/libusb-1.0.a"; sourceTree = "<group>"; };
+		CEE126EE20E3821800C286AF /* libpng16.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libpng16.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libpng16.a; sourceTree = "<group>"; };
+		CEE126EF20E3821800C286AF /* libbz2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbz2.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libbz2.a; sourceTree = "<group>"; };
+		CEE126F020E3821800C286AF /* libfribidi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfribidi.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libfribidi.a; sourceTree = "<group>"; };
+		CEE1271720E3839A00C286AF /* libavformat.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavformat.a; path = DerivedData/Xcode/onscrlib64/onscrlib/lib/libavformat.a; sourceTree = "<group>"; };
 		CEE1270C20E3823F00C286AF /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		CEE1271020E3829700C286AF /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = System/Library/Frameworks/CoreText.framework; sourceTree = SDKROOT; };
-		CEE1271720E3839A00C286AF /* libavformat.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavformat.a; path = DerivedData/Xcode/onscrlib64h/onscrlib/lib/libavformat.a; sourceTree = "<group>"; };
 		CEE1271F20E38BBD00C286AF /* CoreServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreServices.framework; path = System/Library/Frameworks/CoreServices.framework; sourceTree = SDKROOT; };
-		CEE1272220E3901B00C286AF /* Resources.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Resources.cpp; path = "DerivedData/Xcode/onscripter-ru-osx64h/Resources.cpp"; sourceTree = "<group>"; };
 		CEE1272920E396B200C286AF /* Info-mac.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "Info-mac.plist"; path = "Resources/Bundle/Info-mac.plist"; sourceTree = SOURCE_ROOT; };
 		CEE1273120E3A30400C286AF /* Info-ios.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "Info-ios.plist"; path = "Resources/Bundle/Info-ios.plist"; sourceTree = SOURCE_ROOT; };
 		CEE1273220E3A67F00C286AF /* libvorbisenc.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisenc.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libvorbisenc.a"; sourceTree = "<group>"; };
@@ -776,41 +647,22 @@
 		CEE1274420E3A68000C286AF /* libfreetype.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfreetype.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libfreetype.a"; sourceTree = "<group>"; };
 		CEE1274520E3A68000C286AF /* libswscale.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libswscale.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libswscale.a"; sourceTree = "<group>"; };
 		CEE1274620E3A68000C286AF /* libSDL2_image.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_image.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libSDL2_image.a"; sourceTree = "<group>"; };
-		CEE1275C20E3A6BB00C286AF /* libharfbuzz.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libharfbuzz.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libharfbuzz.a"; sourceTree = "<group>"; };
-		CEE1275D20E3A6BB00C286AF /* libass.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libass.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libass.a"; sourceTree = "<group>"; };
-		CEE1275E20E3A6BC00C286AF /* libSDL2_image.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_image.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libSDL2_image.a"; sourceTree = "<group>"; };
-		CEE1275F20E3A6BC00C286AF /* libz.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libz.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libz.a"; sourceTree = "<group>"; };
-		CEE1276020E3A6BC00C286AF /* libvorbis.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbis.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libvorbis.a"; sourceTree = "<group>"; };
-		CEE1276120E3A6BC00C286AF /* libavformat.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavformat.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libavformat.a"; sourceTree = "<group>"; };
-		CEE1276220E3A6BC00C286AF /* libogg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libogg.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libogg.a"; sourceTree = "<group>"; };
-		CEE1276320E3A6BC00C286AF /* libSDL2main.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2main.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libSDL2main.a"; sourceTree = "<group>"; };
-		CEE1276420E3A6BC00C286AF /* libSDL2_mixer.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2_mixer.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libSDL2_mixer.a"; sourceTree = "<group>"; };
-		CEE1276620E3A6BC00C286AF /* libavcodec.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavcodec.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libavcodec.a"; sourceTree = "<group>"; };
-		CEE1276720E3A6BC00C286AF /* libfreetype.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfreetype.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libfreetype.a"; sourceTree = "<group>"; };
-		CEE1276820E3A6BC00C286AF /* libfribidi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfribidi.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libfribidi.a"; sourceTree = "<group>"; };
-		CEE1276920E3A6BC00C286AF /* libjpeg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libjpeg.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libjpeg.a"; sourceTree = "<group>"; };
-		CEE1276A20E3A6BC00C286AF /* libpng16.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libpng16.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libpng16.a"; sourceTree = "<group>"; };
-		CEE1276B20E3A6BC00C286AF /* libbz2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbz2.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libbz2.a"; sourceTree = "<group>"; };
-		CEE1276D20E3A6BD00C286AF /* libvorbisenc.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisenc.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libvorbisenc.a"; sourceTree = "<group>"; };
-		CEE1276E20E3A6BD00C286AF /* libswscale.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libswscale.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libswscale.a"; sourceTree = "<group>"; };
-		CEE1276F20E3A6BD00C286AF /* libswresample.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libswresample.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libswresample.a"; sourceTree = "<group>"; };
-		CEE1277020E3A6BD00C286AF /* libSDL2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libSDL2.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libSDL2.a"; sourceTree = "<group>"; };
-		CEE1277120E3A6BD00C286AF /* libvorbisfile.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisfile.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libvorbisfile.a"; sourceTree = "<group>"; };
-		CEE1277220E3A6BD00C286AF /* libavutil.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavutil.a; path = "DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib/libavutil.a"; sourceTree = "<group>"; };
-		CEE1278A20E3A75600C286AF /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/AudioToolbox.framework; sourceTree = DEVELOPER_DIR; };
-		CEE1278C20E3A76000C286AF /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/AVFoundation.framework; sourceTree = DEVELOPER_DIR; };
-		CEE1278E20E3A76600C286AF /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/CoreAudio.framework; sourceTree = DEVELOPER_DIR; };
-		CEE1279020E3A77700C286AF /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/CoreGraphics.framework; sourceTree = DEVELOPER_DIR; };
-		CEE1279120E3A77700C286AF /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/CoreMedia.framework; sourceTree = DEVELOPER_DIR; };
-		CEE1279220E3A77700C286AF /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/CoreVideo.framework; sourceTree = DEVELOPER_DIR; };
-		CEE1279320E3A77700C286AF /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/CoreText.framework; sourceTree = DEVELOPER_DIR; };
-		CEE1279420E3A77700C286AF /* CoreMotion.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMotion.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/CoreMotion.framework; sourceTree = DEVELOPER_DIR; };
-		CEE1279A20E3A77E00C286AF /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/GameController.framework; sourceTree = DEVELOPER_DIR; };
-		CEE1279C20E3A78200C286AF /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/OpenGLES.framework; sourceTree = DEVELOPER_DIR; };
-		CEE1279E20E3A78800C286AF /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/QuartzCore.framework; sourceTree = DEVELOPER_DIR; };
-		CEE127A020E3A78F00C286AF /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/UIKit.framework; sourceTree = DEVELOPER_DIR; };
-		CEE127A220E3A79400C286AF /* VideoToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = VideoToolbox.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/VideoToolbox.framework; sourceTree = DEVELOPER_DIR; };
-		CEE127A420E3A7A300C286AF /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS11.4.sdk/System/Library/Frameworks/Metal.framework; sourceTree = DEVELOPER_DIR; };
+		CEE1276120E3A6BC00C286AF /* libavformat.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavformat.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libavformat.a"; sourceTree = "<group>"; };
+		CEE1276F20E3A6BD00C286AF /* libswresample.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libswresample.a; path = "DerivedData/Xcode/onscrlib-arm64/onscrlib/lib/libswresample.a"; sourceTree = "<group>"; };
+		CEE1278A20E3A75600C286AF /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
+		CEE1278C20E3A76000C286AF /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		CEE1278E20E3A76600C286AF /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
+		CEE1279020E3A77700C286AF /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		CEE1279120E3A77700C286AF /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
+		CEE1279220E3A77700C286AF /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
+		CEE1279320E3A77700C286AF /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = System/Library/Frameworks/CoreText.framework; sourceTree = SDKROOT; };
+		CEE1279420E3A77700C286AF /* CoreMotion.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMotion.framework; path = System/Library/Frameworks/CoreMotion.framework; sourceTree = SDKROOT; };
+		CEE1279A20E3A77E00C286AF /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = System/Library/Frameworks/GameController.framework; sourceTree = SDKROOT; };
+		CEE1279C20E3A78200C286AF /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = System/Library/Frameworks/OpenGLES.framework; sourceTree = SDKROOT; };
+		CEE1279E20E3A78800C286AF /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		CEE127A020E3A78F00C286AF /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		CEE127A220E3A79400C286AF /* VideoToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = VideoToolbox.framework; path = System/Library/Frameworks/VideoToolbox.framework; sourceTree = SDKROOT; };
+		CEE127A420E3A7A300C286AF /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		CEE770631D42A5370074A2F9 /* colourConversion.frag */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.glsl; path = colourConversion.frag; sourceTree = "<group>"; };
 		CEFEC4701D52B2CA00957675 /* UIKitWrapper.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = UIKitWrapper.mm; sourceTree = "<group>"; };
 		CEFEC4731D52B2FA00957675 /* UIKitWrapper.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = UIKitWrapper.hpp; sourceTree = "<group>"; };
@@ -905,62 +757,7 @@
 				CE61AC7F20E3C0E1000B31C7 /* libusb-1.0.a in Frameworks */,
 				CE61AC8020E3C0E1000B31C7 /* libpng16.a in Frameworks */,
 				CE61AC8120E3C0E1000B31C7 /* libbz2.a in Frameworks */,
-				CE9D808C20E3CA2D00670C17 /* libc++.a in Frameworks */,
-				CE9D808D20E3CA2D00670C17 /* libc++abi.a in Frameworks */,
 				CE61AC8220E3C0E1000B31C7 /* libfribidi.a in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		CE9D80D420E3CA9200670C17 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				CE9D80D520E3CA9200670C17 /* CoreServices.framework in Frameworks */,
-				CE9D80D620E3CA9200670C17 /* Carbon.framework in Frameworks */,
-				CE9D80D720E3CA9200670C17 /* VideoToolbox.framework in Frameworks */,
-				CE9D80D820E3CA9200670C17 /* Cocoa.framework in Frameworks */,
-				CE9D80D920E3CA9200670C17 /* CoreVideo.framework in Frameworks */,
-				CE9D80DA20E3CA9200670C17 /* IOKit.framework in Frameworks */,
-				CE9D80DB20E3CA9200670C17 /* ForceFeedback.framework in Frameworks */,
-				CE9D80DC20E3CA9200670C17 /* CoreText.framework in Frameworks */,
-				CE9D80DD20E3CA9200670C17 /* AudioToolbox.framework in Frameworks */,
-				CE9D80DE20E3CA9200670C17 /* CoreMedia.framework in Frameworks */,
-				CE9D80DF20E3CA9200670C17 /* CoreGraphics.framework in Frameworks */,
-				CE9D80E020E3CA9200670C17 /* CoreAudio.framework in Frameworks */,
-				CE9D80E120E3CA9200670C17 /* libSDL2main.a in Frameworks */,
-				CE9D80E420E3CA9200670C17 /* libSDL2.a in Frameworks */,
-				CE9D80E520E3CA9200670C17 /* libass.a in Frameworks */,
-				CE9D80E620E3CA9200670C17 /* libSDL2_test.a in Frameworks */,
-				CE9D80E720E3CA9200670C17 /* libswscale.a in Frameworks */,
-				CE9D80E820E3CA9200670C17 /* libvorbis.a in Frameworks */,
-				CE9D80E920E3CA9200670C17 /* liblua.a in Frameworks */,
-				CE9D80EA20E3CA9200670C17 /* libvorbisfile.a in Frameworks */,
-				CE9D80EB20E3CA9200670C17 /* libvorbisenc.a in Frameworks */,
-				CE9D80EC20E3CA9200670C17 /* libavutil.a in Frameworks */,
-				CE9D80ED20E3CA9200670C17 /* libavformat.a in Frameworks */,
-				CE9D80EF20E3CA9200670C17 /* libfreetype.a in Frameworks */,
-				CE9D80F020E3CA9200670C17 /* libjpeg.a in Frameworks */,
-				CE9D80F120E3CA9200670C17 /* libSDL2_image.a in Frameworks */,
-				CE9D80F220E3CA9200670C17 /* libz.a in Frameworks */,
-				CE9D80F320E3CA9200670C17 /* libharfbuzz.a in Frameworks */,
-				CE9D80F420E3CA9200670C17 /* libswresample.a in Frameworks */,
-				CE9D80F520E3CA9200670C17 /* libavcodec.a in Frameworks */,
-				CE9D80F620E3CA9200670C17 /* libSDL2_mixer.a in Frameworks */,
-				CE9D80F720E3CA9200670C17 /* libogg.a in Frameworks */,
-				CE9D80F820E3CA9200670C17 /* libusb-1.0.a in Frameworks */,
-				CE9D80F920E3CA9200670C17 /* libpng16.a in Frameworks */,
-				CE9D80FA20E3CA9200670C17 /* libbz2.a in Frameworks */,
-				CE9D80FB20E3CA9200670C17 /* libc++.a in Frameworks */,
-				CE9D80FC20E3CA9200670C17 /* libc++abi.a in Frameworks */,
-				CE9D80FD20E3CA9200670C17 /* libfribidi.a in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		CE9D815020E3ECCC00670C17 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				CE9D818620E3F0E000670C17 /* Cocoa.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -977,49 +774,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				CE9D819D20E3FC4A00670C17 /* libz.tbd in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		CEE1268020E3707E00C286AF /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				CEE1272020E38BBD00C286AF /* CoreServices.framework in Frameworks */,
-				CEE1271A20E3840C00C286AF /* Carbon.framework in Frameworks */,
-				CEE1271620E382DB00C286AF /* VideoToolbox.framework in Frameworks */,
-				CEE1271520E382CD00C286AF /* Cocoa.framework in Frameworks */,
-				CEE1271420E382BE00C286AF /* CoreVideo.framework in Frameworks */,
-				CEE1271320E382AD00C286AF /* IOKit.framework in Frameworks */,
-				CEE1271220E382A100C286AF /* ForceFeedback.framework in Frameworks */,
-				CEE1271120E3829700C286AF /* CoreText.framework in Frameworks */,
-				CEE1270F20E3828D00C286AF /* AudioToolbox.framework in Frameworks */,
-				CEE1270E20E3824700C286AF /* CoreMedia.framework in Frameworks */,
-				CEE1270D20E3824000C286AF /* CoreGraphics.framework in Frameworks */,
-				CEE1270B20E3823700C286AF /* CoreAudio.framework in Frameworks */,
-				CEE126F120E3821800C286AF /* libSDL2main.a in Frameworks */,
-				CEE126F420E3821800C286AF /* libSDL2.a in Frameworks */,
-				CEE126F520E3821800C286AF /* libass.a in Frameworks */,
-				CEE126F620E3821800C286AF /* libSDL2_test.a in Frameworks */,
-				CEE126F720E3821800C286AF /* libswscale.a in Frameworks */,
-				CEE126F820E3821800C286AF /* libvorbis.a in Frameworks */,
-				CEE126F920E3821800C286AF /* liblua.a in Frameworks */,
-				CEE126FA20E3821800C286AF /* libvorbisfile.a in Frameworks */,
-				CEE126FB20E3821800C286AF /* libvorbisenc.a in Frameworks */,
-				CEE126FC20E3821800C286AF /* libavutil.a in Frameworks */,
-				CEE1271820E3839A00C286AF /* libavformat.a in Frameworks */,
-				CEE126FE20E3821800C286AF /* libfreetype.a in Frameworks */,
-				CEE126FF20E3821800C286AF /* libjpeg.a in Frameworks */,
-				CEE1270020E3821800C286AF /* libSDL2_image.a in Frameworks */,
-				CEE1270120E3821800C286AF /* libz.a in Frameworks */,
-				CEE1270220E3821800C286AF /* libharfbuzz.a in Frameworks */,
-				CEE1270320E3821800C286AF /* libswresample.a in Frameworks */,
-				CEE1270420E3821800C286AF /* libavcodec.a in Frameworks */,
-				CEE1270520E3821800C286AF /* libSDL2_mixer.a in Frameworks */,
-				CEE1270620E3821800C286AF /* libogg.a in Frameworks */,
-				CEE1270720E3821800C286AF /* libusb-1.0.a in Frameworks */,
-				CEE1270820E3821800C286AF /* libpng16.a in Frameworks */,
-				CEE1270920E3821800C286AF /* libbz2.a in Frameworks */,
-				CEE1270A20E3821800C286AF /* libfribidi.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1043,10 +797,7 @@
 			children = (
 				1C0A5FF217478F59004A9BCC /* embed */,
 				2F5351771D51FD970023D8F0 /* onscripter-ru-ios.app */,
-				CEE1268320E3707E00C286AF /* onscripter-ru-osx64h.app */,
 				CE61AC8820E3C0E1000B31C7 /* onscripter-ru-osx64.app */,
-				CE9D810320E3CA9200670C17 /* onscripter-ru-osx32.app */,
-				CE9D817D20E3ECCC00670C17 /* onscripter-ru-osx.app */,
 				CE9D819020E3FBDD00670C17 /* nscmake */,
 				CE9D819A20E3FBF100670C17 /* nscdec */,
 			);
@@ -1070,8 +821,6 @@
 			isa = PBXGroup;
 			children = (
 				CE9D819C20E3FC4A00670C17 /* libz.tbd */,
-				CE9D808A20E3CA2D00670C17 /* libc++.a */,
-				CE9D808B20E3CA2D00670C17 /* libc++abi.a */,
 				CEE127A420E3A7A300C286AF /* Metal.framework */,
 				CEE127A220E3A79400C286AF /* VideoToolbox.framework */,
 				CEE127A020E3A78F00C286AF /* UIKit.framework */,
@@ -1089,86 +838,28 @@
 				CEE1274320E3A68000C286AF /* libass.a */,
 				CEE1273320E3A67F00C286AF /* libavcodec.a */,
 				CEE1273B20E3A67F00C286AF /* libavutil.a */,
-				CEE1277220E3A6BD00C286AF /* libavutil.a */,
 				CEE1273D20E3A68000C286AF /* libbz2.a */,
-				CEE1276B20E3A6BC00C286AF /* libbz2.a */,
 				CEE1274420E3A68000C286AF /* libfreetype.a */,
 				CEE1273520E3A67F00C286AF /* libfribidi.a */,
-				CEE1275D20E3A6BB00C286AF /* libass.a */,
-				CEE1276620E3A6BC00C286AF /* libavcodec.a */,
-				CEE1276120E3A6BC00C286AF /* libavformat.a */,
-				CEE1276720E3A6BC00C286AF /* libfreetype.a */,
-				CEE1276820E3A6BC00C286AF /* libfribidi.a */,
 				CEE1274120E3A68000C286AF /* libharfbuzz.a */,
 				CEE1273620E3A67F00C286AF /* libjpeg.a */,
-				CEE1276920E3A6BC00C286AF /* libjpeg.a */,
 				CEE1273720E3A67F00C286AF /* libogg.a */,
 				CEE1273820E3A67F00C286AF /* libpng16.a */,
-				CEE1276220E3A6BC00C286AF /* libogg.a */,
-				CEE1276A20E3A6BC00C286AF /* libpng16.a */,
 				CEE1274620E3A68000C286AF /* libSDL2_image.a */,
 				CEE1273920E3A67F00C286AF /* libSDL2_mixer.a */,
 				CEE1273420E3A67F00C286AF /* libSDL2.a */,
-				CEE1276420E3A6BC00C286AF /* libSDL2_mixer.a */,
-				CEE1277020E3A6BD00C286AF /* libSDL2.a */,
 				CEE1274020E3A68000C286AF /* libSDL2main.a */,
-				CEE1276F20E3A6BD00C286AF /* libswresample.a */,
 				CEE1274520E3A68000C286AF /* libswscale.a */,
-				CEE1276320E3A6BC00C286AF /* libSDL2main.a */,
-				CEE1276E20E3A6BD00C286AF /* libswscale.a */,
 				CEE1273F20E3A68000C286AF /* libvorbis.a */,
 				CEE1273220E3A67F00C286AF /* libvorbisenc.a */,
 				CEE1273A20E3A67F00C286AF /* libvorbisfile.a */,
-				CEE1276020E3A6BC00C286AF /* libvorbis.a */,
-				CEE1276D20E3A6BD00C286AF /* libvorbisenc.a */,
-				CEE1277120E3A6BD00C286AF /* libvorbisfile.a */,
 				CEE1273C20E3A67F00C286AF /* libz.a */,
-				CEE1275C20E3A6BB00C286AF /* libharfbuzz.a */,
-				CEE1275E20E3A6BC00C286AF /* libSDL2_image.a */,
-				CEE1275F20E3A6BC00C286AF /* libz.a */,
 				CEE1271F20E38BBD00C286AF /* CoreServices.framework */,
-				CEE1271720E3839A00C286AF /* libavformat.a */,
 				CEE1271020E3829700C286AF /* CoreText.framework */,
 				CEE1270C20E3823F00C286AF /* CoreGraphics.framework */,
-				CEE126DB20E3821700C286AF /* libass.a */,
-				CEE126EA20E3821800C286AF /* libavcodec.a */,
-				CEE126E220E3821700C286AF /* libavutil.a */,
-				CEE126EF20E3821800C286AF /* libbz2.a */,
-				CEE126E420E3821700C286AF /* libfreetype.a */,
-				CEE126F020E3821800C286AF /* libfribidi.a */,
-				CEE126E820E3821800C286AF /* libharfbuzz.a */,
-				CEE126E520E3821700C286AF /* libjpeg.a */,
-				CEE126DF20E3821700C286AF /* liblua.a */,
-				CEE126EC20E3821800C286AF /* libogg.a */,
-				CEE126EE20E3821800C286AF /* libpng16.a */,
-				CEE126E620E3821800C286AF /* libSDL2_image.a */,
-				CEE126EB20E3821800C286AF /* libSDL2_mixer.a */,
-				CEE126DC20E3821700C286AF /* libSDL2_test.a */,
-				CEE126DA20E3821700C286AF /* libSDL2.a */,
-				CEE126D720E3821700C286AF /* libSDL2main.a */,
-				CEE126E920E3821800C286AF /* libswresample.a */,
-				CEE126DD20E3821700C286AF /* libswscale.a */,
-				CEE126ED20E3821800C286AF /* libusb-1.0.a */,
-				CEE126DE20E3821700C286AF /* libvorbis.a */,
-				CEE126E120E3821700C286AF /* libvorbisenc.a */,
-				CEE126E020E3821700C286AF /* libvorbisfile.a */,
-				CEE126E720E3821800C286AF /* libz.a */,
 				1CE24BE91C47FBAA002A27EA /* libc++.tbd */,
 				1CE24BEA1C47FBAA002A27EA /* libc++abi.tbd */,
 				CE8CC04F1ED89E08002181E6 /* VideoDecodeAcceleration.framework */,
-				CEC5C3D91EB856AB0044AB50 /* QuartzCore.framework */,
-				CEC5C3D71EB856950044AB50 /* GameController.framework */,
-				CEC5C3D51EB856680044AB50 /* CoreMotion.framework */,
-				CEC5C3D31EB856370044AB50 /* CoreGraphics.framework */,
-				CEC5C3D11EB8562A0044AB50 /* CoreMedia.framework */,
-				CEC5C3CF1EB856200044AB50 /* VideoToolbox.framework */,
-				CEC5C3CD1EB856160044AB50 /* AVFoundation.framework */,
-				CEC5C3CB1EB8560A0044AB50 /* CoreVideo.framework */,
-				CEC5C3C91EB855F90044AB50 /* AudioToolbox.framework */,
-				CEC5C3C71EB855F10044AB50 /* CoreAudio.framework */,
-				CEC5C3C51EB855E90044AB50 /* UIKit.framework */,
-				CEC5C3C31EB855DF0044AB50 /* CoreText.framework */,
-				CEC5C3C11EB855CE0044AB50 /* OpenGLES.framework */,
 				CEC5C3B81EB852250044AB50 /* Foundation.framework */,
 				CE641DEF1D1ADFA600184E36 /* CoreMedia.framework */,
 				CE641DED1D1ADF9200184E36 /* VideoToolbox.framework */,
@@ -1202,14 +893,6 @@
 			name = "Resources-osx64";
 			sourceTree = "<group>";
 		};
-		CE9D810920E3CDDF00670C17 /* Resources-osx32 */ = {
-			isa = PBXGroup;
-			children = (
-				CE9D810720E3CDD800670C17 /* Resources.cpp */,
-			);
-			name = "Resources-osx32";
-			sourceTree = "<group>";
-		};
 		CEBE7B471E02CB1400479441 /* Other */ = {
 			isa = PBXGroup;
 			children = (
@@ -1228,7 +911,6 @@
 				CEFEC4771D53D5A200957675 /* ExceptionHandler.cpp */,
 				1C75F0AE1ACF3B0700C4A9A8 /* LimitedQueue.hpp */,
 				1C5F2B1F17494FC7007DEDD6 /* LRUCache.hpp */,
-				CE44679C1E212045007F847C /* mac_reloader.c */,
 				1CD59BB3180D4441005A57A7 /* slre.h */,
 				1CD59BB4180D4441005A57A7 /* slre.c */,
 			);
@@ -1443,7 +1125,6 @@
 				CEE1272820E3968500C286AF /* Bundle */,
 				CEDB262F20DFD1FA00E79DC4 /* Support */,
 				CEDB262620DFD0F200E79DC4 /* Images */,
-				CEE1267B20E346CD00C286AF /* Plugins */,
 				CEDB262520DFD0E200E79DC4 /* Shaders */,
 			);
 			path = Resources;
@@ -1534,33 +1215,13 @@
 			path = embed;
 			sourceTree = "<group>";
 		};
-		CEE1267B20E346CD00C286AF /* Plugins */ = {
-			isa = PBXGroup;
-			children = (
-				CEE1267C20E346CD00C286AF /* Clang MacPorts.xcplugin */,
-				CEE1267D20E346CD00C286AF /* llvm_macports3.pbcompspec */,
-			);
-			name = Plugins;
-			path = Resources/Plugins;
-			sourceTree = SOURCE_ROOT;
-		};
 		CEE1271E20E38B5700C286AF /* Generated */ = {
 			isa = PBXGroup;
 			children = (
-				CE9D810920E3CDDF00670C17 /* Resources-osx32 */,
 				CE9D808820E3C80000670C17 /* Resources-osx64 */,
-				CEE1272420E3902800C286AF /* Resources-osx64h */,
 				CE61AC0E20E3A8B9000B31C7 /* Resources-ios */,
 			);
 			name = Generated;
-			sourceTree = "<group>";
-		};
-		CEE1272420E3902800C286AF /* Resources-osx64h */ = {
-			isa = PBXGroup;
-			children = (
-				CEE1272220E3901B00C286AF /* Resources.cpp */,
-			);
-			name = "Resources-osx64h";
 			sourceTree = "<group>";
 		};
 		CEE1272820E3968500C286AF /* Bundle */ = {
@@ -1591,34 +1252,6 @@
 			passBuildSettingsInEnvironment = 0;
 			productName = onscrlib64;
 		};
-		1C9F26D91ADB101C00138E84 /* onscrlib32 */ = {
-			isa = PBXLegacyTarget;
-			buildArgumentsString = "\"${PROJECT_DIR}/Scripts/onscrlib.sh\" i386 \"${PROJECT_DIR}\" $(ACTION)";
-			buildConfigurationList = 1C9F26DA1ADB101C00138E84 /* Build configuration list for PBXLegacyTarget "onscrlib32" */;
-			buildPhases = (
-			);
-			buildToolPath = /bin/bash;
-			buildWorkingDirectory = "";
-			dependencies = (
-			);
-			name = onscrlib32;
-			passBuildSettingsInEnvironment = 0;
-			productName = onscrlib32;
-		};
-		2F53519D1D51FEDA0023D8F0 /* onscrlib_armv7s */ = {
-			isa = PBXLegacyTarget;
-			buildArgumentsString = "\"${PROJECT_DIR}/Scripts/onscrlib.sh\" armv7s \"${PROJECT_DIR}\" $(ACTION)";
-			buildConfigurationList = 2F53519E1D51FEDA0023D8F0 /* Build configuration list for PBXLegacyTarget "onscrlib_armv7s" */;
-			buildPhases = (
-			);
-			buildToolPath = /bin/bash;
-			buildWorkingDirectory = "";
-			dependencies = (
-			);
-			name = onscrlib_armv7s;
-			passBuildSettingsInEnvironment = 0;
-			productName = onscrlib_armv7s;
-		};
 		2FA9448A1D52156D00A8C187 /* onscrlib_arm64 */ = {
 			isa = PBXLegacyTarget;
 			buildArgumentsString = "\"${PROJECT_DIR}/Scripts/onscrlib.sh\" arm64 \"${PROJECT_DIR}\" $(ACTION)";
@@ -1631,35 +1264,7 @@
 			);
 			name = onscrlib_arm64;
 			passBuildSettingsInEnvironment = 0;
-			productName = onscrlib_armv7s;
-		};
-		CEF2085921ADF36100D01AD8 /* onscrlib_armv7 */ = {
-			isa = PBXLegacyTarget;
-			buildArgumentsString = "\"${PROJECT_DIR}/Scripts/onscrlib.sh\" armv7 \"${PROJECT_DIR}\" $(ACTION)";
-			buildConfigurationList = CEF2085A21ADF36100D01AD8 /* Build configuration list for PBXLegacyTarget "onscrlib_armv7" */;
-			buildPhases = (
-			);
-			buildToolPath = /bin/bash;
-			buildWorkingDirectory = "";
-			dependencies = (
-			);
-			name = onscrlib_armv7;
-			passBuildSettingsInEnvironment = 0;
-			productName = onscrlib_armv7s;
-		};
-		CEF816981EF01A550059103C /* onscrlib64h */ = {
-			isa = PBXLegacyTarget;
-			buildArgumentsString = "\"${PROJECT_DIR}/Scripts/onscrlib.sh\" x86_64h \"${PROJECT_DIR}\" $(ACTION)";
-			buildConfigurationList = CEF816991EF01A550059103C /* Build configuration list for PBXLegacyTarget "onscrlib64h" */;
-			buildPhases = (
-			);
-			buildToolPath = /bin/bash;
-			buildWorkingDirectory = "";
-			dependencies = (
-			);
-			name = onscrlib64h;
-			passBuildSettingsInEnvironment = 0;
-			productName = onscrlib64;
+			productName = onscrlib_arm64;
 		};
 /* End PBXLegacyTarget section */
 
@@ -1717,48 +1322,8 @@
 				CE9D808620E3C7BF00670C17 /* PBXTargetDependency */,
 			);
 			name = "onscripter-ru-osx64";
-			productName = "onscripter-ru-osx64h";
+			productName = "onscripter-ru-osx64";
 			productReference = CE61AC8820E3C0E1000B31C7 /* onscripter-ru-osx64.app */;
-			productType = "com.apple.product-type.application";
-		};
-		CE9D808E20E3CA9200670C17 /* onscripter-ru-osx32 */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = CE9D810020E3CA9200670C17 /* Build configuration list for PBXNativeTarget "onscripter-ru-osx32" */;
-			buildPhases = (
-				CE9D809320E3CA9200670C17 /* Prepare Generated Source */,
-				CE9D809420E3CA9200670C17 /* Sources */,
-				CE9D80D420E3CA9200670C17 /* Frameworks */,
-				CE9D80FE20E3CA9200670C17 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				CE9D808F20E3CA9200670C17 /* PBXTargetDependency */,
-				CE9D810620E3CB2400670C17 /* PBXTargetDependency */,
-			);
-			name = "onscripter-ru-osx32";
-			productName = "onscripter-ru-osx64h";
-			productReference = CE9D810320E3CA9200670C17 /* onscripter-ru-osx32.app */;
-			productType = "com.apple.product-type.application";
-		};
-		CE9D810A20E3ECCC00670C17 /* onscripter-ru-osx */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = CE9D817A20E3ECCC00670C17 /* Build configuration list for PBXNativeTarget "onscripter-ru-osx" */;
-			buildPhases = (
-				CE9D810F20E3ECCC00670C17 /* Prepare Generated Source */,
-				CE9D811020E3ECCC00670C17 /* Sources */,
-				CE9D815020E3ECCC00670C17 /* Frameworks */,
-				CE9D817820E3ECCC00670C17 /* Resources */,
-				CE9D818720E3F12500670C17 /* Replace real executable */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				CE9D818220E3ECE200670C17 /* PBXTargetDependency */,
-			);
-			name = "onscripter-ru-osx";
-			productName = "onscripter-ru-osx64h";
-			productReference = CE9D817D20E3ECCC00670C17 /* onscripter-ru-osx.app */;
 			productType = "com.apple.product-type.application";
 		};
 		CE9D818820E3FBDD00670C17 /* nscmake */ = {
@@ -1795,26 +1360,6 @@
 			productReference = CE9D819A20E3FBF100670C17 /* nscdec */;
 			productType = "com.apple.product-type.tool";
 		};
-		CEE1268220E3707E00C286AF /* onscripter-ru-osx64h */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = CEE1269120E3708000C286AF /* Build configuration list for PBXNativeTarget "onscripter-ru-osx64h" */;
-			buildPhases = (
-				CEE1272120E38F1500C286AF /* Prepare Generated Source */,
-				CEE1267F20E3707E00C286AF /* Sources */,
-				CEE1268020E3707E00C286AF /* Frameworks */,
-				CEE1268120E3707E00C286AF /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				CEE126D520E374CE00C286AF /* PBXTargetDependency */,
-				CEE126D320E374CA00C286AF /* PBXTargetDependency */,
-			);
-			name = "onscripter-ru-osx64h";
-			productName = "onscripter-ru-osx64h";
-			productReference = CEE1268320E3707E00C286AF /* onscripter-ru-osx64h.app */;
-			productType = "com.apple.product-type.application";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -1826,25 +1371,12 @@
 					1C9F26D51ADB0E7900138E84 = {
 						CreatedOnToolsVersion = 6.3;
 					};
-					1C9F26D91ADB101C00138E84 = {
-						CreatedOnToolsVersion = 6.3;
-					};
 					2F5351761D51FD970023D8F0 = {
 						CreatedOnToolsVersion = 6.2;
 						DevelopmentTeam = DHK4829982;
 						ProvisioningStyle = Manual;
 					};
 					CE61AC1520E3C0E1000B31C7 = {
-						ProvisioningStyle = Manual;
-					};
-					CE9D808E20E3CA9200670C17 = {
-						ProvisioningStyle = Manual;
-					};
-					CE9D810A20E3ECCC00670C17 = {
-						ProvisioningStyle = Manual;
-					};
-					CEE1268220E3707E00C286AF = {
-						CreatedOnToolsVersion = 9.4.1;
 						ProvisioningStyle = Manual;
 					};
 				};
@@ -1866,16 +1398,9 @@
 				CE9D818820E3FBDD00670C17 /* nscmake */,
 				CE9D819220E3FBF100670C17 /* nscdec */,
 				2F5351761D51FD970023D8F0 /* onscripter-ru-ios */,
-				CE9D808E20E3CA9200670C17 /* onscripter-ru-osx32 */,
 				CE61AC1520E3C0E1000B31C7 /* onscripter-ru-osx64 */,
-				CEE1268220E3707E00C286AF /* onscripter-ru-osx64h */,
-				CE9D810A20E3ECCC00670C17 /* onscripter-ru-osx */,
-				CEF2085921ADF36100D01AD8 /* onscrlib_armv7 */,
-				2F53519D1D51FEDA0023D8F0 /* onscrlib_armv7s */,
 				2FA9448A1D52156D00A8C187 /* onscrlib_arm64 */,
-				1C9F26D91ADB101C00138E84 /* onscrlib32 */,
 				1C9F26D51ADB0E7900138E84 /* onscrlib64 */,
-				CEF816981EF01A550059103C /* onscrlib64h */,
 			);
 		};
 /* End PBXProject section */
@@ -1897,160 +1422,10 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		CE9D80FE20E3CA9200670C17 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				CE9D80FF20E3CA9200670C17 /* Images.xcassets in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		CE9D817820E3ECCC00670C17 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				CE9D817920E3ECCC00670C17 /* Images.xcassets in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		CEE1268120E3707E00C286AF /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				CE61AC1420E3BD43000B31C7 /* Images.xcassets in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		CE61AC1A20E3C0E1000B31C7 /* Prepare Generated Source */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"$(PROJECT_DIR)/Resources/Shaders/alphaOutsideTextures.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/glassSmash.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/defaultVertex.gles.vert",
-				"$(PROJECT_DIR)/Resources/Shaders/defaultVertex.gl.vert",
-				"$(PROJECT_DIR)/Resources/Shaders/glyphGradient.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/effectTrvswave.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/effectWarp.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/effectWhirl.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/blendByMask.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/cropByMask.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/colorModification.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/mergeAlpha.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/multiplyAlpha.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/blurH.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/blurV.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/breakup.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/textFade.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/pixelate.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/colourConversion.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/renderSubtitles.frag",
-				"$(PROJECT_DIR)/Resources/Images/icon.png",
-				"$(PROJECT_DIR)/Resources/Images/breakup-cellforms.png",
-			);
-			name = "Prepare Generated Source";
-			outputPaths = (
-				"$(PROJECT_DIR)/DerivedData/Xcode/$(TARGET_NAME)/Resources.cpp",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/bash;
-			shellScript = "mkdir -p \"${PROJECT_DIR}/DerivedData/Xcode/${TARGET_NAME}\"\nsource \"${PROJECT_DIR}/Scripts/resources.sh\"\n\"${TARGET_BUILD_DIR}/embed\" \"${RESOURCE_LIST[@]}\" \"${PROJECT_DIR}/DerivedData/Xcode/${TARGET_NAME}/Resources.cpp\"\n";
-		};
-		CE9D809320E3CA9200670C17 /* Prepare Generated Source */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"$(PROJECT_DIR)/Resources/Shaders/alphaOutsideTextures.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/glassSmash.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/defaultVertex.gles.vert",
-				"$(PROJECT_DIR)/Resources/Shaders/defaultVertex.gl.vert",
-				"$(PROJECT_DIR)/Resources/Shaders/glyphGradient.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/effectTrvswave.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/effectWarp.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/effectWhirl.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/blendByMask.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/cropByMask.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/colorModification.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/mergeAlpha.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/multiplyAlpha.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/blurH.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/blurV.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/breakup.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/textFade.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/pixelate.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/colourConversion.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/renderSubtitles.frag",
-				"$(PROJECT_DIR)/Resources/Images/icon.png",
-				"$(PROJECT_DIR)/Resources/Images/breakup-cellforms.png",
-			);
-			name = "Prepare Generated Source";
-			outputPaths = (
-				"$(PROJECT_DIR)/DerivedData/Xcode/$(TARGET_NAME)/Resources.cpp",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/bash;
-			shellScript = "mkdir -p \"${PROJECT_DIR}/DerivedData/Xcode/${TARGET_NAME}\"\nsource \"${PROJECT_DIR}/Scripts/resources.sh\"\n\"${TARGET_BUILD_DIR}/embed\" \"${RESOURCE_LIST[@]}\" \"${PROJECT_DIR}/DerivedData/Xcode/${TARGET_NAME}/Resources.cpp\"\n";
-		};
-		CE9D810F20E3ECCC00670C17 /* Prepare Generated Source */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"$(PROJECT_DIR)/Resources/Shaders/alphaOutsideTextures.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/glassSmash.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/defaultVertex.gles.vert",
-				"$(PROJECT_DIR)/Resources/Shaders/defaultVertex.gl.vert",
-				"$(PROJECT_DIR)/Resources/Shaders/glyphGradient.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/effectTrvswave.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/effectWarp.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/effectWhirl.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/blendByMask.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/cropByMask.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/colorModification.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/mergeAlpha.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/multiplyAlpha.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/blurH.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/blurV.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/breakup.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/textFade.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/pixelate.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/colourConversion.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/renderSubtitles.frag",
-				"$(PROJECT_DIR)/Resources/Shaders/deband.frag",
-				"$(PROJECT_DIR)/Resources/Images/icon.png",
-				"$(PROJECT_DIR)/Resources/Images/breakup-cellforms.png",
-			);
-			name = "Prepare Generated Source";
-			outputPaths = (
-				"$(PROJECT_DIR)/DerivedData/Xcode/$(TARGET_NAME)/Resources.cpp",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/bash;
-			shellScript = "mkdir -p \"${PROJECT_DIR}/DerivedData/Xcode/${TARGET_NAME}\"\nsource \"${PROJECT_DIR}/Scripts/resources.sh\"\n\"${TARGET_BUILD_DIR}/embed\" \"${RESOURCE_LIST[@]}\" \"${PROJECT_DIR}/DerivedData/Xcode/${TARGET_NAME}/Resources.cpp\"\n";
-		};
-		CE9D818720E3F12500670C17 /* Replace real executable */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Replace real executable";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/bash;
-			shellScript = "/bin/bash \"${PROJECT_DIR}/Scripts/fatbuild.sh\" \"${TARGET_BUILD_DIR}/onscripter-ru-osx64.app/Contents/MacOS/onscripter-ru-osx64\" \"${TARGET_BUILD_DIR}/${EXECUTABLE_PATH}\" \"${ACTION}\"";
-		};
-		CEE1272120E38F1500C286AF /* Prepare Generated Source */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2269,81 +1644,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		CE9D809420E3CA9200670C17 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				CE9D810820E3CDD800670C17 /* Resources.cpp in Sources */,
-				CE9D809620E3CA9200670C17 /* LUA.cpp in Sources */,
-				CE9D809720E3CA9200670C17 /* Script.cpp in Sources */,
-				CE9D809820E3CA9200670C17 /* Animation.cpp in Sources */,
-				CE9D809920E3CA9200670C17 /* ConstantRefresh.cpp in Sources */,
-				CE9D809A20E3CA9200670C17 /* Font.cpp in Sources */,
-				CE9D809B20E3CA9200670C17 /* Glyph.cpp in Sources */,
-				CE9D809C20E3CA9200670C17 /* StringTree.cpp in Sources */,
-				CE9D809D20E3CA9200670C17 /* Async.cpp in Sources */,
-				CE9D809E20E3CA9200670C17 /* Dialogue.cpp in Sources */,
-				CE9D809F20E3CA9200670C17 /* DynamicProperty.cpp in Sources */,
-				CE9D80A020E3CA9200670C17 /* Fonts.cpp in Sources */,
-				CE9D80A120E3CA9200670C17 /* GlyphAtlas.cpp in Sources */,
-				CE9D80A220E3CA9200670C17 /* Joystick.cpp in Sources */,
-				CE9D80A320E3CA9200670C17 /* TextWindow.cpp in Sources */,
-				CE9D80A420E3CA9200670C17 /* Window.cpp in Sources */,
-				CE9D80A520E3CA9200670C17 /* Animation.cpp in Sources */,
-				CE9D80A620E3CA9200670C17 /* Command.cpp in Sources */,
-				CE9D80A720E3CA9200670C17 /* CommandExt.cpp in Sources */,
-				CE9D80A820E3CA9200670C17 /* Effect.cpp in Sources */,
-				CE9D80A920E3CA9200670C17 /* EffectBreakup.cpp in Sources */,
-				CE9D80AA20E3CA9200670C17 /* EffectTrig.cpp in Sources */,
-				CE9D80AB20E3CA9200670C17 /* Event.cpp in Sources */,
-				CE9D80AC20E3CA9200670C17 /* File.cpp in Sources */,
-				CE9D80AD20E3CA9200670C17 /* Image.cpp in Sources */,
-				CE9D80AE20E3CA9200670C17 /* Lips.cpp in Sources */,
-				CE9D80AF20E3CA9200670C17 /* Loader.cpp in Sources */,
-				CE9D80B020E3CA9200670C17 /* ONScripter.cpp in Sources */,
-				CE9D80B120E3CA9200670C17 /* Parser.cpp in Sources */,
-				CE9D80B220E3CA9200670C17 /* ParserCommand.cpp in Sources */,
-				CE9D80B320E3CA9200670C17 /* Sound.cpp in Sources */,
-				CE9D80B420E3CA9200670C17 /* Text.cpp in Sources */,
-				CE9D80B520E3CA9200670C17 /* Controller.cpp in Sources */,
-				CE9D80B620E3CA9200670C17 /* Demux.cpp in Sources */,
-				CE9D80B720E3CA9200670C17 /* AudioDecoder.cpp in Sources */,
-				CE9D80B820E3CA9200670C17 /* VideoDecoder.cpp in Sources */,
-				CE9D80B920E3CA9200670C17 /* HardwareDecoder.cpp in Sources */,
-				CE9D80BA20E3CA9200670C17 /* SubtitleDecoder.cpp in Sources */,
-				CE9D80BB20E3CA9200670C17 /* SubtitleDriver.cpp in Sources */,
-				CE9D80BC20E3CA9200670C17 /* GPU.cpp in Sources */,
-				CE9D80C020E3CA9200670C17 /* Common.cpp in Sources */,
-				CE9D80C120E3CA9200670C17 /* Pool.cpp in Sources */,
-				CE9D80C220E3CA9200670C17 /* PNG.cpp in Sources */,
-				CE9D80C320E3CA9200670C17 /* Layer.cpp in Sources */,
-				CE9D80C420E3CA9200670C17 /* Furu.cpp in Sources */,
-				CE9D80C520E3CA9200670C17 /* ObjectFall.cpp in Sources */,
-				CE9D80C620E3CA9200670C17 /* Media.cpp in Sources */,
-				CE9D80C720E3CA9200670C17 /* Subtitle.cpp in Sources */,
-				CE9D80C820E3CA9200670C17 /* Direct.cpp in Sources */,
-				CE9D80C920E3CA9200670C17 /* Nsa.cpp in Sources */,
-				CE9D80CA20E3CA9200670C17 /* Sar.cpp in Sources */,
-				CE9D80CB20E3CA9200670C17 /* CocoaWrapper.mm in Sources */,
-				CE9D80CC20E3CA9200670C17 /* UIKitWrapper.mm in Sources */,
-				CE9D80CD20E3CA9200670C17 /* AudioBridge.cpp in Sources */,
-				CE9D80CE20E3CA9200670C17 /* Cache.cpp in Sources */,
-				CE9D80CF20E3CA9200670C17 /* DirPaths.cpp in Sources */,
-				CE9D80D020E3CA9200670C17 /* DirtyRect.cpp in Sources */,
-				CE9D80D120E3CA9200670C17 /* FileIO.cpp in Sources */,
-				CE9D80D220E3CA9200670C17 /* Unicode.cpp in Sources */,
-				CE9D80D320E3CA9200670C17 /* slre.c in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		CE9D811020E3ECCC00670C17 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				CE9D818520E3EF4000670C17 /* mac_reloader.c in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		CE9D818920E3FBDD00670C17 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -2360,81 +1660,9 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		CEE1267F20E3707E00C286AF /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				CEE1272320E3901C00C286AF /* Resources.cpp in Sources */,
-				CEE1269420E374BD00C286AF /* LUA.cpp in Sources */,
-				CEE1269520E374BD00C286AF /* Script.cpp in Sources */,
-				CEE1269620E374BD00C286AF /* Animation.cpp in Sources */,
-				CEE1269720E374BD00C286AF /* ConstantRefresh.cpp in Sources */,
-				CEE1269820E374BD00C286AF /* Font.cpp in Sources */,
-				CEE1269920E374BD00C286AF /* Glyph.cpp in Sources */,
-				CEE1269A20E374BD00C286AF /* StringTree.cpp in Sources */,
-				CEE1269B20E374BD00C286AF /* Async.cpp in Sources */,
-				CEE1269C20E374BD00C286AF /* Dialogue.cpp in Sources */,
-				CEE1269D20E374BD00C286AF /* DynamicProperty.cpp in Sources */,
-				CEE1269E20E374BD00C286AF /* Fonts.cpp in Sources */,
-				CEE1269F20E374BD00C286AF /* GlyphAtlas.cpp in Sources */,
-				CEE126A020E374BD00C286AF /* Joystick.cpp in Sources */,
-				CEE126A120E374BD00C286AF /* TextWindow.cpp in Sources */,
-				CEE126A220E374BD00C286AF /* Window.cpp in Sources */,
-				CEE126A320E374BD00C286AF /* Animation.cpp in Sources */,
-				CEE126A420E374BD00C286AF /* Command.cpp in Sources */,
-				CEE126A520E374BD00C286AF /* CommandExt.cpp in Sources */,
-				CEE126A620E374BD00C286AF /* Effect.cpp in Sources */,
-				CEE126A720E374BD00C286AF /* EffectBreakup.cpp in Sources */,
-				CEE126A820E374BD00C286AF /* EffectTrig.cpp in Sources */,
-				CEE126A920E374BD00C286AF /* Event.cpp in Sources */,
-				CEE126AA20E374BD00C286AF /* File.cpp in Sources */,
-				CEE126AB20E374BD00C286AF /* Image.cpp in Sources */,
-				CEE126AC20E374BD00C286AF /* Lips.cpp in Sources */,
-				CEE126AD20E374BD00C286AF /* Loader.cpp in Sources */,
-				CEE126AE20E374BD00C286AF /* ONScripter.cpp in Sources */,
-				CEE126AF20E374BD00C286AF /* Parser.cpp in Sources */,
-				CEE126B020E374BD00C286AF /* ParserCommand.cpp in Sources */,
-				CEE126B120E374BD00C286AF /* Sound.cpp in Sources */,
-				CEE126B220E374BD00C286AF /* Text.cpp in Sources */,
-				CEE126B320E374BD00C286AF /* Controller.cpp in Sources */,
-				CEE126B420E374BD00C286AF /* Demux.cpp in Sources */,
-				CEE126B520E374BD00C286AF /* AudioDecoder.cpp in Sources */,
-				CEE126B620E374BD00C286AF /* VideoDecoder.cpp in Sources */,
-				CEE126B720E374BD00C286AF /* HardwareDecoder.cpp in Sources */,
-				CEE126B820E374BD00C286AF /* SubtitleDecoder.cpp in Sources */,
-				CEE126B920E374BD00C286AF /* SubtitleDriver.cpp in Sources */,
-				CEE126BA20E374BD00C286AF /* GPU.cpp in Sources */,
-				CEE126BF20E374BD00C286AF /* Common.cpp in Sources */,
-				CEE126C020E374BD00C286AF /* Pool.cpp in Sources */,
-				CEE126C120E374BD00C286AF /* PNG.cpp in Sources */,
-				CEE126C220E374BD00C286AF /* Layer.cpp in Sources */,
-				CEE126C320E374BD00C286AF /* Furu.cpp in Sources */,
-				CEE126C420E374BD00C286AF /* ObjectFall.cpp in Sources */,
-				CEE126C520E374BD00C286AF /* Media.cpp in Sources */,
-				CEE126C620E374BD00C286AF /* Subtitle.cpp in Sources */,
-				CEE126C720E374BD00C286AF /* Direct.cpp in Sources */,
-				CEE126C820E374BD00C286AF /* Nsa.cpp in Sources */,
-				CEE126C920E374BD00C286AF /* Sar.cpp in Sources */,
-				CEE126CA20E374BD00C286AF /* CocoaWrapper.mm in Sources */,
-				CEE126D620E3792200C286AF /* UIKitWrapper.mm in Sources */,
-				CEE126CB20E374BD00C286AF /* AudioBridge.cpp in Sources */,
-				CEE126CC20E374BD00C286AF /* Cache.cpp in Sources */,
-				CEE126CD20E374BD00C286AF /* DirPaths.cpp in Sources */,
-				CEE126CE20E374BD00C286AF /* DirtyRect.cpp in Sources */,
-				CEE126CF20E374BD00C286AF /* FileIO.cpp in Sources */,
-				CEE126D020E374BD00C286AF /* Unicode.cpp in Sources */,
-				CEE126D120E374BD00C286AF /* slre.c in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		2F5351A61D51FF6A0023D8F0 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 2F53519D1D51FEDA0023D8F0 /* onscrlib_armv7s */;
-			targetProxy = 2F5351A51D51FF6A0023D8F0 /* PBXContainerItemProxy */;
-		};
 		2FD1DB671D52124F00362A7C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 1C0A5FF117478F59004A9BCC /* embed */;
@@ -2460,40 +1688,10 @@
 			target = 1C0A5FF117478F59004A9BCC /* embed */;
 			targetProxy = CE9D809020E3CA9200670C17 /* PBXContainerItemProxy */;
 		};
-		CE9D810620E3CB2400670C17 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 1C9F26D91ADB101C00138E84 /* onscrlib32 */;
-			targetProxy = CE9D810520E3CB2400670C17 /* PBXContainerItemProxy */;
-		};
-		CE9D818020E3ECE200670C17 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = CE9D808E20E3CA9200670C17 /* onscripter-ru-osx32 */;
-			targetProxy = CE9D817F20E3ECE200670C17 /* PBXContainerItemProxy */;
-		};
-		CE9D818220E3ECE200670C17 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = CE61AC1520E3C0E1000B31C7 /* onscripter-ru-osx64 */;
-			targetProxy = CE9D818120E3ECE200670C17 /* PBXContainerItemProxy */;
-		};
-		CE9D818420E3ECE200670C17 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = CEE1268220E3707E00C286AF /* onscripter-ru-osx64h */;
-			targetProxy = CE9D818320E3ECE200670C17 /* PBXContainerItemProxy */;
-		};
-		CEE126D320E374CA00C286AF /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = CEF816981EF01A550059103C /* onscrlib64h */;
-			targetProxy = CEE126D220E374CA00C286AF /* PBXContainerItemProxy */;
-		};
 		CEE126D520E374CE00C286AF /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 1C0A5FF117478F59004A9BCC /* embed */;
 			targetProxy = CEE126D420E374CE00C286AF /* PBXContainerItemProxy */;
-		};
-		CEF2085E21ADF38300D01AD8 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = CEF2085921ADF36100D01AD8 /* onscrlib_armv7 */;
-			targetProxy = CEF2085D21ADF38300D01AD8 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -2738,78 +1936,6 @@
 			};
 			name = Release;
 		};
-		1C9F26DB1ADB101C00138E84 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				DEBUGGING_SYMBOLS = YES;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu99;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"DEBUG=1",
-					"$(inherited)",
-				);
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MTL_ENABLE_DEBUG_INFO = YES;
-				OTHER_CFLAGS = "";
-				OTHER_LDFLAGS = "";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-			};
-			name = Debug;
-		};
-		1C9F26DC1ADB101C00138E84 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu99;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				OTHER_CFLAGS = "";
-				OTHER_LDFLAGS = "";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-			};
-			name = Release;
-		};
 		2F5351981D51FD980023D8F0 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2835,20 +1961,10 @@
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-arm64/onscrlib/include",
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-arm64/onscrlib/include/freetype2",
 				);
-				"HEADER_SEARCH_PATHS[arch=armv7]" = (
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7/onscrlib/include",
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7/onscrlib/include/freetype2",
-				);
-				"HEADER_SEARCH_PATHS[arch=armv7s]" = (
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7s/onscrlib/include",
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7s/onscrlib/include/freetype2",
-				);
 				INFOPLIST_FILE = "$(PROJECT_DIR)/Resources/Bundle/Info-ios.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LIBRARY_SEARCH_PATHS = "";
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-arm64/onscrlib/lib";
-				"LIBRARY_SEARCH_PATHS[arch=armv7]" = "$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7/onscrlib/lib";
-				"LIBRARY_SEARCH_PATHS[arch=armv7s]" = "$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib";
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_CFLAGS = (
 					"-Wall",
@@ -2894,20 +2010,10 @@
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-arm64/onscrlib/include",
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-arm64/onscrlib/include/freetype2",
 				);
-				"HEADER_SEARCH_PATHS[arch=armv7]" = (
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7/onscrlib/include",
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7/onscrlib/include/freetype2",
-				);
-				"HEADER_SEARCH_PATHS[arch=armv7s]" = (
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7s/onscrlib/include",
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7s/onscrlib/include/freetype2",
-				);
 				INFOPLIST_FILE = "$(PROJECT_DIR)/Resources/Bundle/Info-ios.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LIBRARY_SEARCH_PATHS = "";
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-arm64/onscrlib/lib";
-				"LIBRARY_SEARCH_PATHS[arch=armv7]" = "$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7/onscrlib/lib";
-				"LIBRARY_SEARCH_PATHS[arch=armv7s]" = "$(PROJECT_DIR)/DerivedData/Xcode/onscrlib-armv7s/onscrlib/lib";
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_CFLAGS = (
 					"-Wall",
@@ -2924,86 +2030,6 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
 				VALID_ARCHS = arm64;
-			};
-			name = Release;
-		};
-		2F53519F1D51FEDA0023D8F0 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = armv7s;
-				CFLAGS = "-L$(SDKROOT)/usr/lib/system/";
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				DEBUGGING_SYMBOLS = YES;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu99;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"DEBUG=1",
-					"$(inherited)",
-				);
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MTL_ENABLE_DEBUG_INFO = YES;
-				OTHER_CFLAGS = "";
-				PRODUCT_NAME = "onscrlib-armv7s";
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = iphoneos;
-				TARGETED_DEVICE_FAMILY = 2;
-			};
-			name = Debug;
-		};
-		2F5351A01D51FEDA0023D8F0 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = armv7s;
-				CFLAGS = "-L$(SDKROOT)/usr/lib/system/";
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu99;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				OTHER_CFLAGS = "";
-				PRODUCT_NAME = "onscrlib-armv7s";
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = iphoneos;
-				TARGETED_DEVICE_FAMILY = 2;
 			};
 			name = Release;
 		};
@@ -3093,14 +2119,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-mac";
-				CLANG = /opt/clang/bin/clang;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
 				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_LINK_OBJC_RUNTIME = NO;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_X86_VECTOR_INSTRUCTIONS = ssse3;
 				CODE_SIGN_IDENTITY = "";
@@ -3115,7 +2139,6 @@
 					"MACOSX=1",
 					"_THREAD_SAFE=1",
 				);
-				GCC_VERSION = com.apple.compilers.clang.mp;
 				HEADER_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64/onscrlib/include",
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64/onscrlib/include/freetype2",
@@ -3145,14 +2168,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-mac";
-				CLANG = /opt/clang/bin/clang;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
 				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_LINK_OBJC_RUNTIME = NO;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_X86_VECTOR_INSTRUCTIONS = ssse3;
 				CODE_SIGN_IDENTITY = "";
@@ -3171,7 +2192,6 @@
 					"_THREAD_SAFE=1",
 					"PUBLIC_RELEASE=1",
 				);
-				GCC_VERSION = com.apple.compilers.clang.mp;
 				HEADER_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64/onscrlib/include",
 					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64/onscrlib/include/freetype2",
@@ -3186,188 +2206,6 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				OTHER_CFLAGS = "-m64";
 				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx64";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				WARNING_CFLAGS = (
-					"-Wall",
-					"-Wextra",
-					"-Wpedantic",
-					"-Wno-gnu-anonymous-struct",
-					"-Wno-zero-length-array",
-				);
-			};
-			name = Release;
-		};
-		CE9D810120E3CA9200670C17 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = "$(ARCHS_STANDARD_32_BIT)";
-				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-mac";
-				CLANG = /opt/clang/bin/clang;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_LINK_OBJC_RUNTIME = NO;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_X86_VECTOR_INSTRUCTIONS = ssse3;
-				CODE_SIGN_IDENTITY = "";
-				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"$(inherited)",
-					"OV_EXCLUDE_STATIC_CALLBACKS=1",
-					"USE_LUA=1",
-					"USE_OBJC=1",
-					"MACOSX=1",
-					"_THREAD_SAFE=1",
-				);
-				GCC_VERSION = com.apple.compilers.clang.mp;
-				HEADER_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib32/onscrlib/include",
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib32/onscrlib/include/freetype2",
-				);
-				INFOPLIST_FILE = "$(PROJECT_DIR)/Resources/Bundle/Info-mac.plist";
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib32/onscrlib/lib",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MTL_ENABLE_DEBUG_INFO = YES;
-				OTHER_CFLAGS = "-m32";
-				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx32";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				VALID_ARCHS = i386;
-				WARNING_CFLAGS = (
-					"-Wall",
-					"-Wextra",
-					"-Wpedantic",
-					"-Wno-gnu-anonymous-struct",
-					"-Wno-zero-length-array",
-				);
-			};
-			name = Debug;
-		};
-		CE9D810220E3CA9200670C17 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = "$(ARCHS_STANDARD_32_BIT)";
-				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-mac";
-				CLANG = /opt/clang/bin/clang;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_LINK_OBJC_RUNTIME = NO;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_X86_VECTOR_INSTRUCTIONS = ssse3;
-				CODE_SIGN_IDENTITY = "";
-				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"$(inherited)",
-					"OV_EXCLUDE_STATIC_CALLBACKS=1",
-					"USE_LUA=1",
-					"USE_OBJC=1",
-					"MACOSX=1",
-					"_THREAD_SAFE=1",
-					"PUBLIC_RELEASE=1",
-				);
-				GCC_VERSION = com.apple.compilers.clang.mp;
-				HEADER_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib32/onscrlib/include",
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib32/onscrlib/include/freetype2",
-				);
-				INFOPLIST_FILE = "$(PROJECT_DIR)/Resources/Bundle/Info-mac.plist";
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib32/onscrlib/lib",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				OTHER_CFLAGS = "-m32";
-				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx32";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				VALID_ARCHS = i386;
-				WARNING_CFLAGS = (
-					"-Wall",
-					"-Wextra",
-					"-Wpedantic",
-					"-Wno-gnu-anonymous-struct",
-					"-Wno-zero-length-array",
-				);
-			};
-			name = Release;
-		};
-		CE9D817B20E3ECCC00670C17 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-mac";
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CODE_SIGN_IDENTITY = "";
-				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				GCC_PREPROCESSOR_DEFINITIONS = "$(inherited)";
-				HEADER_SEARCH_PATHS = "";
-				INFOPLIST_FILE = "$(PROJECT_DIR)/Resources/Bundle/Info-mac.plist";
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(inherited)";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MTL_ENABLE_DEBUG_INFO = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				WARNING_CFLAGS = (
-					"-Wall",
-					"-Wextra",
-					"-Wpedantic",
-					"-Wno-gnu-anonymous-struct",
-					"-Wno-zero-length-array",
-				);
-			};
-			name = Debug;
-		};
-		CE9D817C20E3ECCC00670C17 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-mac";
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CODE_SIGN_IDENTITY = "";
-				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"$(inherited)",
-					"PUBLIC_RELEASE=1",
-				);
-				HEADER_SEARCH_PATHS = "";
-				INFOPLIST_FILE = "$(PROJECT_DIR)/Resources/Bundle/Info-mac.plist";
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(inherited)";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WARNING_CFLAGS = (
 					"-Wall",
@@ -3419,258 +2257,6 @@
 			};
 			name = Release;
 		};
-		CEE1269220E3708000C286AF /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-mac";
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_X86_VECTOR_INSTRUCTIONS = avx2;
-				CODE_SIGN_IDENTITY = "";
-				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"$(inherited)",
-					"OV_EXCLUDE_STATIC_CALLBACKS=1",
-					"USE_LUA=1",
-					"USE_OBJC=1",
-					"MACOSX=1",
-					"_THREAD_SAFE=1",
-				);
-				HEADER_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64h/onscrlib/include",
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64h/onscrlib/include/freetype2",
-				);
-				INFOPLIST_FILE = "$(PROJECT_DIR)/Resources/Bundle/Info-mac.plist";
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64h/onscrlib/lib",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MTL_ENABLE_DEBUG_INFO = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx64h";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				WARNING_CFLAGS = (
-					"-Wall",
-					"-Wextra",
-					"-Wpedantic",
-					"-Wno-gnu-anonymous-struct",
-					"-Wno-zero-length-array",
-				);
-			};
-			name = Debug;
-		};
-		CEE1269320E3708000C286AF /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-mac";
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_X86_VECTOR_INSTRUCTIONS = avx2;
-				CODE_SIGN_IDENTITY = "";
-				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"$(inherited)",
-					"OV_EXCLUDE_STATIC_CALLBACKS=1",
-					"USE_LUA=1",
-					"USE_OBJC=1",
-					"MACOSX=1",
-					"_THREAD_SAFE=1",
-					"PUBLIC_RELEASE=1",
-				);
-				HEADER_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64h/onscrlib/include",
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64h/onscrlib/include/freetype2",
-				);
-				INFOPLIST_FILE = "$(PROJECT_DIR)/Resources/Bundle/Info-mac.plist";
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/DerivedData/Xcode/onscrlib64h/onscrlib/lib",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				PRODUCT_BUNDLE_IDENTIFIER = "org.umineko-project.onscripter-ru-osx64h";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				WARNING_CFLAGS = (
-					"-Wall",
-					"-Wextra",
-					"-Wpedantic",
-					"-Wno-gnu-anonymous-struct",
-					"-Wno-zero-length-array",
-				);
-			};
-			name = Release;
-		};
-		CEF2085B21ADF36100D01AD8 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = armv7;
-				CFLAGS = "-L$(SDKROOT)/usr/lib/system/";
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				DEBUGGING_SYMBOLS = YES;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu99;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"DEBUG=1",
-					"$(inherited)",
-				);
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MTL_ENABLE_DEBUG_INFO = YES;
-				OTHER_CFLAGS = "";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = iphoneos;
-				TARGETED_DEVICE_FAMILY = 2;
-			};
-			name = Debug;
-		};
-		CEF2085C21ADF36100D01AD8 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = armv7;
-				CFLAGS = "-L$(SDKROOT)/usr/lib/system/";
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu99;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				OTHER_CFLAGS = "";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = iphoneos;
-				TARGETED_DEVICE_FAMILY = 2;
-			};
-			name = Release;
-		};
-		CEF8169A1EF01A550059103C /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				DEBUGGING_SYMBOLS = YES;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu99;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"DEBUG=1",
-					"$(inherited)",
-				);
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MTL_ENABLE_DEBUG_INFO = YES;
-				OTHER_CFLAGS = "";
-				OTHER_LDFLAGS = "";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-			};
-			name = Debug;
-		};
-		CEF8169B1EF01A550059103C /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu99;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				OTHER_CFLAGS = "";
-				OTHER_LDFLAGS = "";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -3701,29 +2287,11 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		1C9F26DA1ADB101C00138E84 /* Build configuration list for PBXLegacyTarget "onscrlib32" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				1C9F26DB1ADB101C00138E84 /* Debug */,
-				1C9F26DC1ADB101C00138E84 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		2F5351971D51FD980023D8F0 /* Build configuration list for PBXNativeTarget "onscripter-ru-ios" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				2F5351981D51FD980023D8F0 /* Debug */,
 				2F5351991D51FD980023D8F0 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		2F53519E1D51FEDA0023D8F0 /* Build configuration list for PBXLegacyTarget "onscrlib_armv7s" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				2F53519F1D51FEDA0023D8F0 /* Debug */,
-				2F5351A01D51FEDA0023D8F0 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -3746,24 +2314,6 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		CE9D810020E3CA9200670C17 /* Build configuration list for PBXNativeTarget "onscripter-ru-osx32" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				CE9D810120E3CA9200670C17 /* Debug */,
-				CE9D810220E3CA9200670C17 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		CE9D817A20E3ECCC00670C17 /* Build configuration list for PBXNativeTarget "onscripter-ru-osx" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				CE9D817B20E3ECCC00670C17 /* Debug */,
-				CE9D817C20E3ECCC00670C17 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		CE9D818D20E3FBDD00670C17 /* Build configuration list for PBXNativeTarget "nscmake" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -3778,33 +2328,6 @@
 			buildConfigurations = (
 				CE9D819820E3FBF100670C17 /* Debug */,
 				CE9D819920E3FBF100670C17 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		CEE1269120E3708000C286AF /* Build configuration list for PBXNativeTarget "onscripter-ru-osx64h" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				CEE1269220E3708000C286AF /* Debug */,
-				CEE1269320E3708000C286AF /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		CEF2085A21ADF36100D01AD8 /* Build configuration list for PBXLegacyTarget "onscrlib_armv7" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				CEF2085B21ADF36100D01AD8 /* Debug */,
-				CEF2085C21ADF36100D01AD8 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		CEF816991EF01A550059103C /* Build configuration list for PBXLegacyTarget "onscrlib64h" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				CEF8169A1EF01A550059103C /* Debug */,
-				CEF8169B1EF01A550059103C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

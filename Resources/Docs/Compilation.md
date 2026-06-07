@@ -459,6 +459,19 @@ target was already current each time; the current `onscripter-new.exe` and
 updated `en.file` were copied to `D:\Umineko Project`. Per project instruction,
 the executable was not booted.
 
+The 2026-06-07 Apple floor cleanup removed the old macOS/iOS Xcode targets,
+the Snow Leopard-era macOS reloader wrapper, ARMv7 helper wrappers, local
+static libc++/libc++abi archive links, and obsolete Apple package recipe
+branches. The UCRT64 release rebuild linked successfully, and the updated
+`onscripter-new.exe` was copied to `D:\Umineko Project\onscripter-new.exe`.
+Per project instruction, the executable was not booted.
+
+The follow-up 2026-06-07 dependency removal deleted the legacy libc++ and
+libc++abi package recipes plus the Snow Leopard libc++ patch. `make -j8`
+reported the binary target was already current; the current
+`onscripter-new.exe` was copied to `D:\Umineko Project\onscripter-new.exe`.
+Per project instruction, the executable was not booted.
+
 SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
 `ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,
 texture-upload, readback, native-draw, CPU-blit, CPU-shader-fallback, and
@@ -510,7 +523,7 @@ reference results.
 ```
 sudo port install automake autoconf yasm pkgconfig gmake cmake
 ```
-2. Legacy custom-clang, macOS 10.6, i386, armv7, and armv7s targets are no longer supported. A custom compiler is no longer required for the supported floor.
+2. Legacy custom-clang, macOS 10.6, the old macOS reloader wrapper, i386/x86_64h macOS, and armv7/armv7s iOS targets are no longer supported. A custom compiler is no longer required for the supported floor, and the Xcode project now keeps only the supported iOS arm64 and macOS x86_64 application/dependency targets.
 3. Run Xcode and select the project of your choice:
     - `onscripter-ru-ios` for native compilation for iOS 17+ arm64
     - `onscripter-ru-osx64` for macOS 14+ x86_64

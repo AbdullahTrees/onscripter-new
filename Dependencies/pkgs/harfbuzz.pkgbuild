@@ -37,10 +37,7 @@ mesonopts=(
 )
 
 ldflags="-L$outdir/lib -lfreetype -lpng16 -lz"
-# Xcode 10 does not have libstdc++
-if [ "$MMAC_VER_MIN" != "10.6" ]; then
-    ldflags_mac_extra="-stdlib=libc++"
-fi
+ldflags_mac_extra="-stdlib=libc++"
 
 prebuild() {
     pushd "$pkgname-$pkgver" &>/dev/null

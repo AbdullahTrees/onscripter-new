@@ -86,16 +86,12 @@ if [ ! -f "Engine/Core/Loader.cpp" ]; then
 	exit 1
 fi
 
-if [ -f "DerivedData/Xcode/onscrlib64h/onscrlib/include/SDL3/SDL.h" ]; then
-	ONSCRLIB="DerivedData/Xcode/onscrlib64h/onscrlib"
-elif [ -f "DerivedData/Xcode/onscrlib64/onscrlib/include/SDL3/SDL.h" ]; then
+if [ -f "DerivedData/Xcode/onscrlib64/onscrlib/include/SDL3/SDL.h" ]; then
 	ONSCRLIB="DerivedData/Xcode/onscrlib64/onscrlib"
-elif [ -f "DerivedData/Xcode/onscrlib32/onscrlib/include/SDL3/SDL.h" ]; then
-	ONSCRLIB="DerivedData/Xcode/onscrlib64/onscrlib"
+elif [ -f "DerivedData/Xcode/onscrlib-arm64/onscrlib/include/SDL3/SDL.h" ]; then
+	ONSCRLIB="DerivedData/Xcode/onscrlib-arm64/onscrlib"
 elif [ -f "DerivedData/MinGW-x86_64/Dependencies/onscrlib/include/SDL3/SDL.h" ]; then
 	ONSCRLIB="DerivedData/MinGW-x86_64/Dependencies/onscrlib"
-elif [ -f "DerivedData/MinGW-i686/Dependencies/onscrlib/include/SDL3/SDL.h" ]; then
-	ONSCRLIB="DerivedData/MinGW-i686/Dependencies/onscrlib"
 else
 	echo "No compiled onscrlib found!"
 	exit 1

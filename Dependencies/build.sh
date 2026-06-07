@@ -139,6 +139,33 @@ apple_version_lt() {
     [ "$(apple_version_order "$1")" -lt "$(apple_version_order "$2")" ]
 }
 
+find_apple_sdk() {
+    local sdk_path="$1"
+    local sdk_prefix="$2"
+    local floor="$3"
+    local sdk sdk_name version best
+
+    shopt -s nullglob
+    for sdk in "${sdk_path}/${sdk_prefix}"*.sdk; do
+        sdk_name="$(basename "$sdk")"
+        version="${sdk_name#${sdk_prefix}}"
+        version="${version%.sdk}"
+        if [ "$version" == "" ]; then
+            continue
+        fi
+        if ! apple_version_lt "$version" "$floor"; then
+            if [ "$best" == "" ] || apple_version_lt "$best" "$version"; then
+                best="$version"
+            fi
+        fi
+    done
+    shopt -u nullglob
+
+    if [ "$best" != "" ]; then
+        echo "$best"
+    fi
+}
+
 DEBUG=false
 MMAC_VER_MIN=$APPLE_MACOS_FLOOR
 MAC_SDK=
@@ -210,7 +237,7 @@ while getopts O:defphilm:a:o:r:b:c:g: o; do
         i)
             CROSS_BUILD=true
             CROSS_SHIM=false
-            CROSS_TRIPLE="arm-apple-darwin"
+            CROSS_TRIPLE="arm64-apple-darwin"
             CROSS_TARGET="darwin-iOS"
             PATH="$(pwd)/path:$PATH"
             CC=clang
@@ -695,22 +722,12 @@ getTargetCPU() {
         darwin-macOS)
             if [[ "${APPLE_ARCH[*]}" == *"-arch arm64"* ]]; then
                 echo "arm64"
-            elif [ "$APPLE_CPU_FLAG" == "-m32" ]; then
-                echo "i686"
             else
                 echo "x86_64"
             fi
         ;;
         darwin-iOS)
-            if [ "$APPLE_CPU_FLAG" == "-m32" ]; then
-                if in_array "$APPLE_ARCH" "-arch armv7s"; then
-                    echo "armv7s"
-                else
-                    echo "armv7"
-                fi
-            else
-                echo "arm64"
-            fi
+            echo "arm64"
         ;;
         win32)
             if [[ $CROSS_TRIPLE == *x86_64* ]] || [ "$(uname -m)" == "x86_64" ]; then
@@ -776,75 +793,31 @@ getArch() {
 # Find MacOSX SDK
 case $(getHost) in
     darwin-macOS)
-        # SDKs are in a stupid new place on Lion
-        if [ -d /Developer/SDKs ]; then
-            MAC_SDK_PATH=/Developer/SDKs
-            IOS_SDK_PATH=/Developer/SDKs
-        else
-            MAC_SDK_PATH="`xcode-select -print-path`/Platforms/MacOSX.platform/Developer/SDKs"
-            IOS_SDK_PATH="`xcode-select -print-path`/Platforms/iPhoneOS.platform/Developer/SDKs"
-        fi
+        MAC_SDK_PATH="`xcode-select -print-path`/Platforms/MacOSX.platform/Developer/SDKs"
+        IOS_SDK_PATH="`xcode-select -print-path`/Platforms/iPhoneOS.platform/Developer/SDKs"
 
         if [ ! -d "${MAC_SDK_PATH}/MacOSX${MAC_SDK}.sdk" ]; then
-            #warn "Failed to find a specified MacOSX SDK, performing a search"
-            MAC_SDK=""
-
             if [ -d "${MAC_SDK_PATH}/MacOSX.sdk" ]; then
                 MAC_SDK=""
+            else
+                MAC_SDK="$(find_apple_sdk "$MAC_SDK_PATH" "MacOSX" "$APPLE_MACOS_FLOOR")"
             fi
 
-            for i in {14..26}; do
-                if [ -d "${MAC_SDK_PATH}/MacOSX${i}.sdk" ]; then
-                    MAC_SDK="${i}"
-                fi
-                if [ -d "${MAC_SDK_PATH}/MacOSX${i}.0.sdk" ]; then
-                    MAC_SDK="${i}.0"
-                fi
-            done
-
-            for i in {6..15}; do
-                if [ -d "${MAC_SDK_PATH}/MacOSX10.${i}.sdk" ]; then
-                    MAC_SDK="10.${i}"
-                fi
-            done
-
-            if [ "${MAC_SDK}" == "" ]; then
-                error_out "No installed MacOSX SDK found, cannot continue"
+            if [ "${MAC_SDK}" == "" ] && [ ! -d "${MAC_SDK_PATH}/MacOSX.sdk" ]; then
+                error_out "No installed macOS %s+ SDK found, cannot continue" "$APPLE_MACOS_FLOOR"
             fi
-
-            #msg "Search succeeded with ${MAC_SDK} SDK"
         fi
 
         if [ ! -d "${IOS_SDK_PATH}/iPhoneOS${IOS_SDK}.sdk" ]; then
-            #warn "Failed to find a specified iOS SDK, performing a search"
-            IOS_SDK=""
-
             if [ -d "${IOS_SDK_PATH}/iPhoneOS.sdk" ]; then
                 IOS_SDK=""
+            else
+                IOS_SDK="$(find_apple_sdk "$IOS_SDK_PATH" "iPhoneOS" "$APPLE_IOS_FLOOR")"
             fi
 
-            for i in {17..26}; do
-                if [ -d "${IOS_SDK_PATH}/iPhoneOS${i}.sdk" ]; then
-                    IOS_SDK="${i}"
-                fi
-                if [ -d "${IOS_SDK_PATH}/iPhoneOS${i}.0.sdk" ]; then
-                    IOS_SDK="${i}.0"
-                fi
-            done
-
-            for i in {8..18}; do
-                for j in {0..6}; do
-                    if [ -d "${IOS_SDK_PATH}/iPhoneOS${i}.${j}.sdk" ]; then
-                        IOS_SDK="${i}.${j}"
-                    fi
-                done
-            done
-
-            if [ "${IOS_SDK}" == "" ]; then
-                error_out "No installed iOS SDK found, cannot continue"
+            if [ "${IOS_SDK}" == "" ] && [ ! -d "${IOS_SDK_PATH}/iPhoneOS.sdk" ]; then
+                error_out "No installed iOS %s+ SDK found, cannot continue" "$APPLE_IOS_FLOOR"
             fi
-
-            #msg "Search succeeded with ${MAC_SDK} SDK"
         fi
     ;;
 esac
@@ -854,17 +827,23 @@ case $(getTarget) in
         if apple_version_lt "$MMAC_VER_MIN" "$APPLE_MACOS_FLOOR"; then
             error_out "macOS deployment target %s is below the supported floor %s" "$MMAC_VER_MIN" "$APPLE_MACOS_FLOOR"
         fi
-        if [[ "${APPLE_ARCH[*]}" == *"-arch i386"* ]]; then
-            error_out "i386 macOS builds are no longer supported; use x86_64 or arm64"
-        fi
+        for apple_arch in "${APPLE_ARCH[@]}"; do
+            case "$apple_arch" in
+                "-arch x86_64"|"-arch arm64") ;;
+                *) error_out "%s macOS builds are no longer supported; use x86_64 or arm64" "${apple_arch#-arch }" ;;
+            esac
+        done
     ;;
     darwin-iOS)
         if apple_version_lt "$MIOS_VER_MIN" "$APPLE_IOS_FLOOR"; then
             error_out "iOS deployment target %s is below the supported floor %s" "$MIOS_VER_MIN" "$APPLE_IOS_FLOOR"
         fi
-        if [[ "${APPLE_ARCH[*]}" == *"-arch armv7"* ]]; then
-            error_out "armv7/armv7s iOS builds are no longer supported; use arm64"
-        fi
+        for apple_arch in "${APPLE_ARCH[@]}"; do
+            case "$apple_arch" in
+                "-arch arm64") ;;
+                *) error_out "%s iOS builds are no longer supported; use arm64" "${apple_arch#-arch }" ;;
+            esac
+        done
     ;;
 esac
 
@@ -921,14 +900,8 @@ ldflags_ios=(
 )
 
 if $SLIM_BUILD; then
-    if in_array "$APPLE_ARCH" "-arch i386"; then
-        export APPLE_CPU_FLAG="-m32"
-    elif in_array "$APPLE_ARCH" "-arch x86_64"; then
+    if in_array "$APPLE_ARCH" "-arch x86_64"; then
         export APPLE_CPU_FLAG="-m64"
-    elif in_array "$APPLE_ARCH" "-arch armv7"; then
-        export APPLE_CPU_FLAG="-m32"
-    elif in_array "$APPLE_ARCH" "-arch armv7s"; then
-        export APPLE_CPU_FLAG="-m32"
     elif in_array "$APPLE_ARCH" "-arch arm64"; then
         export APPLE_CPU_FLAG="-m64"
     fi
@@ -1074,11 +1047,6 @@ if $CROSS_BUILD; then
         # Makes sure the right strip is used (lua)
         echo "${CROSS_SYS_PREFIX}$(getHostPrefix)-strip \"\$@\"" > $outdir/bin/strip
         chmod a+x $outdir/bin/strip
-        # Additinally adds gas-preprocessor (ffmpeg)
-        cp -f "$(pwd)/path/gas-preprocessor.pl" $outdir/bin/
-        cp -f "$(pwd)/path/clang-as-armv7s" $outdir/bin/
-        cp -f "$(pwd)/path/clang-as-armv7" $outdir/bin/
-        chmod a+x "$outdir/bin/gas-preprocessor.pl" "$outdir/bin/clang-as-armv7s" "$outdir/bin/clang-as-armv7"
     fi
     # Also sets host for configure options
     if $addcrossopt; then

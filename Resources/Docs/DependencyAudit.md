@@ -1,7 +1,7 @@
 # Dependency Audit and Modernization Plan
 
 Date: 2026-05-31
-Updated: 2026-06-06
+Updated: 2026-06-07
 
 This document is the current dependency and renderer modernization status for
 `onscripter-new`. It is intentionally kept as a clean status record, not a
@@ -11,6 +11,12 @@ complete investigation log.
 
 - The supported platform floors have been raised and encoded in the build
   scripts, packaging scripts, and docs.
+- The old macOS/iOS floor cleanup is complete: unsupported Apple Xcode targets,
+  the Snow Leopard-era macOS reloader wrapper, custom MacPorts clang project
+  metadata, ARMv7 helper wrappers, and active local static libc++/libc++abi
+  archive links have been removed.
+- The legacy libc++/libc++abi package recipes and Snow Leopard patch have been
+  removed now that current Apple build paths use Xcode's SDK/runtime libc++.
 - The low-risk compression/media leaf libraries, text stack, FFmpeg, SDL3
   stack, Lua, libusb, and JPEG provider have been updated.
 - smpeg2 has been removed from package metadata, engine includes, configure
@@ -142,8 +148,8 @@ complete investigation log.
 | Platform | Support floor | Notes |
 | --- | --- | --- |
 | Windows | Windows 10 | Prefer x86_64 UCRT64 builds. `_WIN32_WINNT` and `WINVER` are set to `0x0A00`. |
-| macOS | macOS 14 | x86_64 remains supported; arm64 is the target for Apple Silicon work. Legacy i386/custom libc++ support is removed from the active floor. |
-| iOS | iOS 17 | arm64 devices and current simulator targets. armv7/armv7s are unsupported. |
+| macOS | macOS 14 | x86_64 remains supported; arm64 is the target for Apple Silicon work. Legacy i386, x86_64h, custom clang, and local static libc++ archive support is removed from the active floor. |
+| iOS | iOS 17 | arm64 devices and current simulator targets. armv7/armv7s Xcode targets and helper wrappers are removed. |
 | Android | Android 14/API 34 | arm64-v8a is the default target; x86_64 is available for emulator and development builds. APK packaging targets Android 16/API 36. |
 | Debian | Debian 11 | Conservative Linux ABI/build floor for generic Linux binaries. |
 | Ubuntu | Ubuntu 22.04 LTS | LTS baseline for generic Linux builds. |
@@ -175,7 +181,7 @@ complete investigation log.
 | Lua | 5.4.8 | Latest Lua 5.4 line; Windows recipe builds the static `liblua.a` archive instead of Lua's DLL-oriented MinGW target. |
 | libusb | 1.0.30 | Updated from the official release tarball. The old MinGW GUID patch is obsolete because current libusb uses `DEFINE_GUID()`. |
 | libunwind | removed | Android now relies on the modern NDK/runtime unwinder and the profiling code's header-gated fallback. |
-| libc++/libc++abi | legacy 8.0.0 packages | Pending removal with the old macOS/iOS floor cleanup. |
+| libc++/libc++abi | removed | Legacy 8.0.0 package recipes and the Snow Leopard patch were removed after the Apple floor cleanup. Current Apple builds use Xcode's SDK/runtime libc++. |
 
 ## Completed Work
 
@@ -187,12 +193,21 @@ Platform/build modernization:
 - `Dependencies/build.sh` defaults Apple deployment to macOS 14/iOS 17, rejects
   unsupported Apple 32-bit targets, defaults Android to modern arm64 toolchains,
   and recognizes Android x86_64.
+- The 2026-06-07 Apple floor cleanup narrowed onscrlib Apple SDK discovery to
+  macOS 14+/iOS 17+ SDKs, rejects unsupported macOS `i386`/`x86_64h` and iOS
+  `armv7`/`armv7s` selections, removes ARMv7 gas-preprocessor/compiler
+  wrappers, and removes the old 32-bit branches from FFmpeg/libass/HarfBuzz
+  package recipes.
 - `Scripts/ndktoolchain.sh` targets NDK r29/API 34 and creates arm64/x86_64
   wrapper toolchains.
 - Android packaging uses Gradle 9.4.1, Android Gradle Plugin 9.2.0, min SDK
   34, target SDK 36, AAPT2, D8, zipalign, apksigner, scoped app storage, and
   arm64-v8a/x86_64 packaging.
-- Xcode project deployment targets were raised to macOS 14 and iOS 17.
+- Xcode project deployment targets were raised to macOS 14 and iOS 17. The
+  follow-up floor cleanup removed unsupported osx32/osx64h, the
+  Snow Leopard-era `onscripter-ru-osx`/`mac_reloader` wrapper, onscrlib32,
+  onscrlib64h, armv7, and armv7s targets; the remaining Apple targets use
+  Xcode's default clang and SDK-relative iOS framework references.
 - Windows helper packaging now points at MSYS2 UCRT64. Old ANGLE, EGL/GLES, and
   d3dcompiler renderer DLL payloads are no longer part of the Windows package.
 
@@ -215,6 +230,9 @@ Dependency modernization:
 - SDL2_gpu and libepoxy were removed after the fallback window, along with the
   SDL2_gpu package patch, legacy GL/GLES renderer source files, and old
   ANGLE/d3dcompiler Windows package payload.
+- The legacy libc++/libc++abi 8.0.0 package recipes and Snow Leopard patch were
+  removed after the Apple floor cleanup confirmed no active build path depends
+  on local static libc++ archives.
 
 SDL3 source path:
 
@@ -729,6 +747,19 @@ SDL3 source-tagged runtime telemetry:
   current; the current `onscripter-new.exe` and updated `en.file` were copied
   to `D:\Umineko Project`. Benchmarks, runtime telemetry, and executable boot
   testing were intentionally not run for this packed-script UI update.
+- The 2026-06-07 Apple floor cleanup removed the old macOS/iOS Xcode targets,
+  Snow Leopard-era macOS reloader wrapper, ARMv7 helper wrappers, active local
+  static libc++/libc++abi archive links, and obsolete Apple package recipe
+  branches. The UCRT64 release rebuild linked successfully, then copied the
+  rebuilt `onscripter-new.exe` to `D:\Umineko Project\onscripter-new.exe`.
+  Benchmarks, runtime telemetry, and executable boot testing were intentionally
+  not run for this dependency/build cleanup.
+- The follow-up 2026-06-07 dependency removal deleted the legacy libc++ and
+  libc++abi package recipes plus the Snow Leopard libc++ patch. `make -j8`
+  reported the binary target was already current, then copied the current
+  `onscripter-new.exe` to `D:\Umineko Project\onscripter-new.exe`. Benchmarks,
+  runtime telemetry, and executable boot testing were intentionally not run for
+  this package-removal cleanup.
 
 ## Packaging Notes
 
@@ -772,7 +803,6 @@ SDL3 source-tagged runtime telemetry:
    triangle/shader draw batching impact outside the synthetic benchmark.
 9. Port or translate any non-trivial external OpenGL GLSL that falls outside the
    current simple SDL2_gpu-style translator.
-10. Evaluate removal of legacy custom libc++/libc++abi packages.
 
 ## References
 

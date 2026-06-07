@@ -26,7 +26,7 @@ fi
 
 rm -rf pvslog.txt pvslog compile_commands.json build
 
-xcodebuild -target onscripter-ru-osx64h -configuration Debug | xcpretty --report json-compilation-database --output compile_commands.json || exit 1
+xcodebuild -target onscripter-ru-osx64 -configuration Debug | xcpretty --report json-compilation-database --output compile_commands.json || exit 1
 
 pvs-studio-analyzer analyze -l ~/.config/PVS-Studio/PVS-Studio.lic  -o pvslog.txt -j8 || exit 1
 plog-converter -a "$ANALYZERS" -t fullhtml -d "$EXCLUDE" -o pvslog pvslog.txt || exit 1

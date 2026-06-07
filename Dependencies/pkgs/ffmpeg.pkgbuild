@@ -11,54 +11,28 @@ addcrossopt=false
 
 giturl=https://git.ffmpeg.org/ffmpeg.git
 
-if [ "$APPLE_CPU_FLAG" == "-m32" ]; then
-    cflags_mac_extra="-D__STDC_CONSTANT_MACROS -march=i686 -mmacosx-version-min=$MMAC_VER_MIN"
-    configopts_mac=(
-        '--arch=x86_32'
-        '--cpu=pentium4'
-        "--cc=$(getCC)"
-        '--enable-videotoolbox'
-        '--disable-decoders'
-    )
-    cflags_ios_extra="-D__STDC_CONSTANT_MACROS"
-    if in_array "$APPLE_ARCH" "-arch armv7s"; then
-        configopts_ios=(
-            '--cpu=cortex-a9'
-            '--cc=clang-armv7s'
-            '--as=as-armv7s'
-            '--enable-videotoolbox'
-            '--enable-pic'
-            '--enable-thumb'
-            '--disable-decoders'
-        )
-    else
-        configopts_ios=(
-            '--cpu=cortex-a9'
-            '--cc=clang-armv7'
-            '--as=as-armv7'
-            '--enable-videotoolbox'
-            '--enable-pic'
-            '--enable-thumb'
-            '--disable-decoders'
-        )
-    fi
-else
-    cflags_mac_extra="-D__STDC_CONSTANT_MACROS -mmacosx-version-min=$MMAC_VER_MIN"
-    configopts_mac=(
-        '--arch=x86_64'
-        '--cpu=core2'
-        "--cc=$(getCC)"
-        '--enable-videotoolbox'
-        '--disable-decoders'
-    )
-    cflags_ios_extra="-D__STDC_CONSTANT_MACROS"
-    configopts_ios=(
-        '--cc=clang-arm64'
-        '--enable-videotoolbox'
-        '--enable-pic'
-        '--disable-decoders'
-    )
+mac_ffmpeg_arch="x86_64"
+mac_ffmpeg_cpu="core2"
+if [[ "${APPLE_ARCH[*]}" == *"-arch arm64"* ]]; then
+    mac_ffmpeg_arch="aarch64"
+    mac_ffmpeg_cpu="armv8-a"
 fi
+
+cflags_mac_extra="-D__STDC_CONSTANT_MACROS -mmacosx-version-min=$MMAC_VER_MIN"
+configopts_mac=(
+    "--arch=$mac_ffmpeg_arch"
+    "--cpu=$mac_ffmpeg_cpu"
+    "--cc=$(getCC)"
+    '--enable-videotoolbox'
+    '--disable-decoders'
+)
+cflags_ios_extra="-D__STDC_CONSTANT_MACROS"
+configopts_ios=(
+    "--cc=$(getCC)"
+    '--enable-videotoolbox'
+    '--enable-pic'
+    '--disable-decoders'
+)
 
 cflags_droid="-D__STDC_CONSTANT_MACROS -fvisibility=hidden"
 configopts_droid=(

@@ -32,21 +32,17 @@ configopts_win32=(
 configopts_ios=( )
 configopts_mac=( )
 
-if [ "$APPLE_CPU_FLAG" == "-m32" ]; then
-    configopts_mac_extra=(
-        '--build=i386-apple-darwin'
-        '--host=i386-apple-darwin'
-        "CC=$(getCC)"
-        "CXX=$(getCXX)"
-    )
-else
-    configopts_mac_extra=(
-        '--build=x86_64-apple-darwin'
-        '--host=x86_64-apple-darwin'
-        "CC=$(getCC)"
-        "CXX=$(getCXX)"
-    )
+apple_darwin_host="x86_64-apple-darwin"
+if [ "$(getTargetCPU)" == "arm64" ]; then
+    apple_darwin_host="arm64-apple-darwin"
 fi
+
+configopts_mac_extra=(
+    "--build=$apple_darwin_host"
+    "--host=$apple_darwin_host"
+    "CC=$(getCC)"
+    "CXX=$(getCXX)"
+)
 
 cflags="-I$outdir/include/fribidi"
 ldflags="-L$outdir/lib -lfreetype -lharfbuzz -lfribidi -lpng16 -lz"
