@@ -532,6 +532,39 @@ with the normal automode timer/voice-wait behavior. The UCRT64 `make -j8`
 rebuild linked successfully, and the rebuilt `onscripter-new.exe` was copied to
 `D:\Umineko Project`. Per project instruction, the executable was not booted.
 
+The 2026-06-09 L1 automode correction removed the dedicated gamepad automode
+scancode entirely after the previous two attempts still left L1 advancing text
+like Cross without engaging automode. The custom out-of-range scancode never
+matched the engine's keyboard `a` automode handler, so the wait-arming side
+path ran without the script-visible toggle. L1 (both the SDL3 normalized
+gamepad map and the raw joystick fallback `KEYMAP`) now emits
+`SDL_SCANCODE_A`, the keyboard automode key, restoring the upstream
+ONScripter-RU binding so L1 goes through the exact `keyPressEvent` automode
+branch the Umineko Project script's `event_callback`/`jnauto` icon sync was
+built against. The `ONS_SCANCODE_AUTOMODE` constant and the special
+text-button arming branch were deleted. The UCRT64 `make -j8` rebuild linked
+successfully, and the rebuilt `onscripter-new.exe` was copied to
+`D:\Umineko Project`. Per project instruction, the executable was not booted.
+
+The same-date L1 automode root-cause fix corrected phantom keyboard events
+from suppressed joystick duplicates. SDL3 delivers both a normalized gamepad
+event and a raw joystick event for each physical button press; the joystick
+duplicate is intentionally ignored for gamepad-managed devices, but
+`translateKeyDownEvent`/`translateKeyUpEvent` rewrote the shared event's type
+to `SDL_KEYDOWN`/`SDL_KEYUP` before checking whether the translation produced
+a valid scancode. Because the event loop dispatches one event once per
+registered handler, later handler passes saw the mutated event as a real
+keyboard event with scancode `UNKNOWN`, and the "any keypress clears
+automode" rule cancelled automode immediately after the gamepad event enabled
+it (runtime logging confirmed `change to automode` followed by `automode
+cleared by input` from the joystick duplicate on every L1 press, while the
+keyboard `a` key worked). The translation functions now translate first and
+only mutate the event on a successful mapping, covering joystick button down,
+button up, and hat motion paths. A permanent `automode cleared by input` log
+line was kept in `checkClearAutomode`. The UCRT64 `make -j8` rebuild linked
+successfully, and the rebuilt `onscripter-new.exe` was copied to
+`D:\Umineko Project`. Per project instruction, the executable was not booted.
+
 SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
 `ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,
 texture-upload, readback, native-draw, CPU-blit, CPU-shader-fallback, and

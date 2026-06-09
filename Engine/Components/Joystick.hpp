@@ -105,7 +105,6 @@ struct libusb_context;
 static constexpr auto ONS_SCANCODE_MUTE   = static_cast<SDL_Scancode>(SDL_NUM_SCANCODES + 1);
 static constexpr auto ONS_SCANCODE_SKIP   = static_cast<SDL_Scancode>(SDL_NUM_SCANCODES + 2);
 static constexpr auto ONS_SCANCODE_SCREEN = static_cast<SDL_Scancode>(SDL_NUM_SCANCODES + 3);
-static constexpr auto ONS_SCANCODE_AUTOMODE = static_cast<SDL_Scancode>(SDL_NUM_SCANCODES + 4);
 
 class JoystickController : public BaseController {
 	enum class RumbleMethod {

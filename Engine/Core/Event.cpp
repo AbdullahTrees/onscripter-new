@@ -591,6 +591,7 @@ bool ONScripter::mouseButtonDecision(EventProcessingState &state, bool left, boo
 bool ONScripter::checkClearAutomode(EventProcessingState &state, bool up) {
 	//any mousepress clears automode, on the release
 	if (up) {
+		sendToLog(LogLevel::Info, "automode cleared by input\n");
 		addToPostponedEventChanges([this]() { eventCallbackRequired = true; automode_flag = false; });
 		if (getskipoff_flag && (event_mode & WAIT_BUTTON_MODE)) {
 			state.buttonState.set(-61);
@@ -1207,46 +1208,6 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 
 	if ((event_mode & (WAIT_INPUT_MODE | WAIT_TEXTBTN_MODE | WAIT_TEXTOUT_MODE)) &&
 	    !state.keyState.pressedFlag) {
-		auto startAutomode = [this, &state]() {
-			addToPostponedEventChanges("change to automode", [this]() { eventCallbackRequired = true; automode_flag = true; });
-			state.skipMode &= ~SKIP_NORMAL;
-			sendToLog(LogLevel::Info, "change to automode\n");
-			state.keyState.pressedFlag = true;
-			stopCursorAnimation(clickstr_state);
-		};
-		auto armAutomodeTextWait = [this]() {
-			bool armed{false};
-			bool voice_plays = wave_sample[0] && Mix_Playing(0) && !Mix_Paused(0);
-
-			for (const auto &a : fetchConstantRefreshActions<ButtonWaitAction>()) {
-				auto *bwa = dynamic_cast<ButtonWaitAction *>(a.get());
-				if (!bwa || !(bwa->eventMode() & WAIT_TEXTBTN_MODE))
-					continue;
-
-				bwa->event_mode |= WAIT_VOICE_MODE;
-				if (voice_plays) {
-					bwa->voiced_txtbtnwait = true;
-					if (textgosub_clickstr_state == CLICK_NEWPAGE)
-						bwa->final_voiced_txtbtnwait = true;
-					armed = true;
-					continue;
-				}
-
-				int timeToWait = automode_time;
-				if (automode_time < 0)
-					timeToWait = -automode_time * dlgCtrl.dialogueRenderState.clickPartCharacterCount();
-
-				bwa->event_mode |= WAIT_TIMER_MODE;
-				if (timeToWait > 0) {
-					bwa->clock.setCountdown(timeToWait);
-					bwa->timer_set = true;
-				}
-				armed = true;
-			}
-
-			return armed;
-		};
-
 		//'s' is for skip mode
 		if (((onsKeyboardScancode(event) == SDL_SCANCODE_S && state.keyState.opt) || onsKeyboardScancode(event) == ONS_SCANCODE_SKIP) &&
 		    !automode_flag && !state.keyState.ctrl && skipIsAllowed()) {
@@ -1273,17 +1234,15 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 
 			return true;
 		}
-		if (onsKeyboardScancode(event) == ONS_SCANCODE_AUTOMODE &&
-		    !state.keyState.ctrl && mode_ext_flag && !automode_flag) {
-			startAutomode();
-
-			return !armAutomodeTextWait();
-		}
-		//'a' is for automode
+		//'a' is for automode (gamepad L1 maps to this scancode as well)
 		if (onsKeyboardScancode(event) == SDL_SCANCODE_A &&
 		    !state.keyState.ctrl && mode_ext_flag && !automode_flag) {
-			startAutomode();
+			addToPostponedEventChanges("change to automode", [this]() { eventCallbackRequired = true; automode_flag = true; });
+			state.skipMode &= ~SKIP_NORMAL;
+			sendToLog(LogLevel::Info, "change to automode\n");
+			state.keyState.pressedFlag = true;
 			state.buttonState.set(0);
+			stopCursorAnimation(clickstr_state);
 
 			return true;
 		}
@@ -1335,10 +1294,14 @@ void ONScripter::translateKeyDownEvent(SDL_Event &event, EventProcessingState &s
 	if (state.skipMode & SKIP_SUPERSKIP)
 		return;
 	if (event.key.type == SDL_JOYBUTTONDOWN) {
-		event.key.type            = SDL_KEYDOWN;
-		onsKeyboardScancode(event.key) = joyCtrl.transButton(event.jbutton.button, event.jbutton.which);
-		if (onsKeyboardScancode(event.key) == SDL_SCANCODE_UNKNOWN)
+		// Translate before mutating: this event object is dispatched once per
+		// handler, and rewriting the type first turns an ignored joystick
+		// duplicate into a phantom keyboard event for the remaining handlers.
+		SDL_Scancode scancode = joyCtrl.transButton(event.jbutton.button, event.jbutton.which);
+		if (scancode == SDL_SCANCODE_UNKNOWN)
 			return;
+		event.key.type            = SDL_KEYDOWN;
+		onsKeyboardScancode(event.key) = scancode;
 	}
 
 	ret                  = keyDownEvent(event.key, state);
@@ -1360,15 +1323,20 @@ void ONScripter::translateKeyUpEvent(SDL_Event &event, EventProcessingState &sta
 	if (state.skipMode & SKIP_SUPERSKIP)
 		return;
 	if (event.key.type == SDL_JOYBUTTONUP) {
-		event.key.type            = SDL_KEYUP;
-		onsKeyboardScancode(event.key) = joyCtrl.transButton(event.jbutton.button, event.jbutton.which);
-		if (onsKeyboardScancode(event.key) == SDL_SCANCODE_UNKNOWN)
+		// Translate before mutating: this event object is dispatched once per
+		// handler, and rewriting the type first turns an ignored joystick
+		// duplicate into a phantom keyboard event for the remaining handlers.
+		SDL_Scancode scancode = joyCtrl.transButton(event.jbutton.button, event.jbutton.which);
+		if (scancode == SDL_SCANCODE_UNKNOWN)
 			return;
+		event.key.type            = SDL_KEYUP;
+		onsKeyboardScancode(event.key) = scancode;
 	} else if (event.key.type == SDL_JOYHATMOTION) {
-		event.key.type            = SDL_KEYUP;
-		onsKeyboardScancode(event.key) = joyCtrl.transHat(event.jhat.value, event.jhat.which);
-		if (onsKeyboardScancode(event.key) == SDL_SCANCODE_UNKNOWN)
+		SDL_Scancode scancode = joyCtrl.transHat(event.jhat.value, event.jhat.which);
+		if (scancode == SDL_SCANCODE_UNKNOWN)
 			return;
+		event.key.type            = SDL_KEYUP;
+		onsKeyboardScancode(event.key) = scancode;
 	}
 
 	keyUpEvent(event.key, state);

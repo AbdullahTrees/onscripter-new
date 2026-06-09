@@ -61,7 +61,7 @@ const std::array<SDL_Scancode, 22> KEYMAP{
         SDL_SCANCODE_RETURN,  /* CIRCLE   */
         SDL_SCANCODE_ESCAPE,  /* CROSS    */
         SDL_SCANCODE_Z,       /* SQUARE   */
-        ONS_SCANCODE_AUTOMODE, /* L1      */
+        SDL_SCANCODE_A,       /* L1       */
         ONS_SCANCODE_SKIP,    /* R1       */
         SDL_SCANCODE_DOWN,    /* DOWN     */
         SDL_SCANCODE_LEFT,    /* LEFT     */
@@ -1112,7 +1112,10 @@ SDL_Scancode JoystickController::transGamepadButton(uint8_t button, SDL_Joystick
 		case SDL_GAMEPAD_BUTTON_NORTH:
 			return SDL_SCANCODE_H;
 		case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
-			return ONS_SCANCODE_AUTOMODE;
+			// Automode must go through the same path as the keyboard 'a' key:
+			// the script toggles its auto state off this scancode via the engine
+			// 'a' handler, and a custom out-of-range scancode never reaches it.
+			return SDL_SCANCODE_A;
 		case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:
 			return ONS_SCANCODE_SKIP;
 		case SDL_GAMEPAD_BUTTON_BACK:
