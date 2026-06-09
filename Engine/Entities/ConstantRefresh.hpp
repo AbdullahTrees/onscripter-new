@@ -53,7 +53,14 @@ const std::unordered_set<int> inputEventList{
     SDL_JOYHATMOTION,
     SDL_JOYBUTTONDOWN,
     SDL_JOYBUTTONUP,
-    SDL_JOYAXISMOTION};
+    SDL_JOYAXISMOTION
+#if ONS_USE_SDL3
+    ,
+    SDL_EVENT_GAMEPAD_BUTTON_DOWN,
+    SDL_EVENT_GAMEPAD_BUTTON_UP,
+    SDL_EVENT_GAMEPAD_AXIS_MOTION
+#endif
+};
 
 extern std::deque<std::function<void()>> postponedEventChanges;     // contains fns to make changes to global state, put to while processing each event
 extern std::unordered_set<const char *> postponedEventChangeLabels; // contains unique labels to prevent multiple adding of events that should be run only once

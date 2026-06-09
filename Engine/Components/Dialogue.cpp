@@ -101,7 +101,7 @@ DialogueController::TEXT_STATE DialogueController::handleNextPart() {
 						else //skippable, delay
 							currentCommand = "delay";
 
-						if (!ons.ignored_inline_func_lut.empty() && ons.ignored_inline_func_lut.count(currentCommand.c_str())) {
+						if (!ons.ignored_inline_func_lut.empty() && ons.ignored_inline_func_lut.contains(currentCommand.c_str())) {
 							cmdIgnored = true;
 						} else {
 							ons.variableQueue.push(std::to_string(time));
@@ -117,7 +117,7 @@ DialogueController::TEXT_STATE DialogueController::handleNextPart() {
 						ons.errorAndExit("command overflow");
 					}
 
-					if (temp[0] != '!' && !ons.ignored_inline_func_lut.empty() && ons.ignored_inline_func_lut.count(currentCommand.c_str()))
+					if (temp[0] != '!' && !ons.ignored_inline_func_lut.empty() && ons.ignored_inline_func_lut.contains(currentCommand.c_str()))
 						cmdIgnored = true;
 
 					cmdSubmitted = true;

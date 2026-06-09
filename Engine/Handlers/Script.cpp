@@ -1649,10 +1649,11 @@ int ScriptHandler::findLabel(const char *label) {
 		return std::tolower(c);
 	});
 
-	if (labelsByName.count(name) == 0)
+	auto labelIt = labelsByName.find(name);
+	if (labelIt == labelsByName.end())
 		return -1;
 
-	return labelsByName[name];
+	return labelIt->second;
 }
 
 const char *ScriptHandler::checkComma(const char *buf) {

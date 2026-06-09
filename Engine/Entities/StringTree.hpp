@@ -45,10 +45,10 @@ public:
 	void prune(std::deque<std::string> &ss);
 	void clear();
 	bool has(const std::string &key) {
-		return branches.count(key);
+		return branches.contains(key);
 	}
 	bool has(long key) {
-		return branches.count(std::to_string(key));
+		return branches.contains(std::to_string(key));
 	}
 	StringTree &operator[](std::string &&key) {
 		auto it = branches.find(key);

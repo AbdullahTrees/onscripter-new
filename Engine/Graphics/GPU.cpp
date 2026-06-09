@@ -25,11 +25,11 @@ int GPUController::ownInit() {
 
 #ifdef WIN32
 	int swap_interval{1};
-	if (ons.ons_cfg_options.count("try-late-swap") > 0)
+	if (ons.ons_cfg_options.contains("try-late-swap"))
 		swap_interval = -1;
 #else
 	int swap_interval{-1};
-	if (ons.ons_cfg_options.count("force-vsync") > 0)
+	if (ons.ons_cfg_options.contains("force-vsync"))
 		swap_interval = 1;
 #endif
 

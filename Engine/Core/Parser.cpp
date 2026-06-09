@@ -374,7 +374,7 @@ void ScriptParser::errorAndExit(const char *str, const char *reason, const char 
 }
 
 bool ScriptParser::isBuiltInCommand(const char *cmd) {
-	return func_lut.count(cmd[0] == '_' ? cmd + 1 : cmd);
+	return func_lut.contains(cmd[0] == '_' ? cmd + 1 : cmd);
 }
 
 int ScriptParser::evaluateCommand(const char *cmd, bool builtin, bool textgosub_flag, bool no_error) {
@@ -432,7 +432,7 @@ int ScriptParser::parseLine() {
 
 	auto hash = HashedString(cmd[0] == '_' ? cmd + 1 : cmd);
 
-	if (ignored_func_lut.count(hash)) {
+	if (ignored_func_lut.contains(hash)) {
 		script_h.readToEol();
 		return RET_CONTINUE;
 	}

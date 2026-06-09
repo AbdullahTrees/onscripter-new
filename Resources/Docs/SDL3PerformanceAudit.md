@@ -1,7 +1,7 @@
 # SDL3 Performance Audit
 
 Date: 2026-06-02
-Updated: 2026-06-06
+Updated: 2026-06-09
 
 This audit covers the SDL3 default renderer path, with emphasis on
 `Engine/Graphics/SDL3GPUCompat.cpp` because that layer currently adapts the
@@ -1430,6 +1430,75 @@ Status: three local UCRT64 `make -j8` rebuilds after the engine changes linked
 successfully, and the rebuilt `onscripter-new.exe` was copied to
 `D:\Umineko Project`. No benchmark, runtime telemetry, or executable boot test
 was run for this source-level performance pass.
+
+### C++23 Source Cleanup Follow-Up
+
+The 2026-06-09 C++23 migration keeps renderer behavior unchanged while cleaning
+up a few low-risk hot-path helpers: manual clamp expressions in
+`SDL3GPUCompat.cpp` now use `std::clamp`, shader-program existence checks use
+associative-container `contains()`, and sprite z-order map checks use `find()`
+instead of `count()` followed by `operator[]`.
+
+Status: the local UCRT64 public-release rebuild with `--std=gnu++23` linked
+successfully with no warning output after the libusb enum-mask cleanup. No
+benchmark, runtime telemetry, or executable boot test was run for this
+language-level cleanup.
+
+### SDL3 Gamepad Input Follow-Up
+
+The 2026-06-09 controller support pass moves mapped controllers onto SDL3's
+normalized gamepad events, while raw SDL joystick input remains a fallback for
+unmapped devices. Hotplug is handled through SDL joystick/gamepad add/remove
+events, duplicate raw joystick events are ignored for devices opened as SDL
+gamepads, and known Sony DualShock 3/4 vendor/product IDs normalize the raw
+fallback GUID path when SDL does not supply a recognized GUID.
+
+The normalized map fixes the observed DualShock 4 fallback issue where Cross
+could arrive as button 0 and trigger the old generic mute binding. Cross now
+maps to confirm, Circle to cancel, Share/Back to mute, Options/Start to the
+tab/message-browser action, and stick clicks are left unmapped. Left and right
+sticks keep menu navigation but use a higher press threshold plus release
+hysteresis to avoid jitter-driven repeats.
+
+Status: the local UCRT64 `make -j8` rebuild linked successfully, and the rebuilt
+`onscripter-new.exe` was copied to `D:\Umineko Project\onscripter-new.exe`. No
+benchmark, runtime telemetry, or executable boot test was run for this
+input-routing pass.
+
+Follow-up: SDL3 gamepad button and axis events were added to the shared
+`inputEventList` used by dialogue rendering, wait actions, and button monitors.
+The first pass translated normalized gamepad events in the default event pass,
+which allowed global side effects such as Share/Back mute but did not wake the
+active script wait for text advance or button selection. The follow-up keeps
+normalized gamepad events on the same wait path as keyboard and raw joystick
+events. The UCRT64 rebuild linked successfully and the corrected executable was
+copied to `D:\Umineko Project\onscripter-new.exe`; no executable boot test was
+run.
+
+Config input-hints follow-up: the packed English script now treats the former
+`DualShock` selector as an input-hints selector, not a controller enable
+switch. The row is labeled `Input Hints`, the gamepad side is labeled
+`Gamepad`, and the Controls popup switches between keyboard/mouse and
+controller binding text based on `control_interface`. The script passed an
+exact `nscmake`/`nscdec` round-trip, the binary target was already current, and
+the updated `en.file` plus current executable were copied to
+`D:\Umineko Project`; no executable boot test was run.
+
+Binding correction: L1 now maps through a dedicated gamepad automode scancode
+instead of keyboard `A`, R2 trigger axes are ignored, and the raw generic
+gamepad R2 map no longer routes to right Ctrl. Triangle/Y remains the
+Message Browser/backlog binding, while Options/Start now shares the pause-menu
+binding used by Square/X. The gamepad Controls popup text was updated to match.
+The UCRT64 rebuild linked successfully, the packed script passed an exact
+round-trip, and the updated executable plus `en.file` were copied to
+`D:\Umineko Project`; no executable boot test was run.
+
+L1 automode follow-up: the dedicated gamepad automode scancode now takes a
+separate event path from Cross in `textbtnwait`. It enables automode and wakes
+the active text-button wait by arming its automode timer/voice wait instead of
+directly setting button result `0`, so L1 does not behave as a one-sentence
+advance. The UCRT64 rebuild linked successfully, the rebuilt executable was
+copied to `D:\Umineko Project`, and no executable boot test was run.
 
 ## Findings
 

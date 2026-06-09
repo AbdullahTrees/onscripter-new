@@ -12,10 +12,13 @@
 
 #include "Support/SDLCompat.hpp"
 
+#include <algorithm>
 #include <array>
 #include <unordered_map>
 #include <sstream>
 #include <cstdint>
+#include <cstring>
+#include <utility>
 
 JoystickController joyCtrl;
 
@@ -32,6 +35,12 @@ enum JoyId {
 	GenericXinputNouveau,
 	TotalControllers
 };
+
+constexpr uint8_t usbRequestType(libusb_request_type type, libusb_request_recipient recipient, libusb_endpoint_direction direction) {
+	return static_cast<uint8_t>(std::to_underlying(type) | std::to_underlying(recipient) | std::to_underlying(direction));
+}
+
+constexpr uint8_t UsbClassInterfaceOut = usbRequestType(LIBUSB_REQUEST_TYPE_CLASS, LIBUSB_RECIPIENT_INTERFACE, LIBUSB_ENDPOINT_OUT);
 
 const std::array<uint8_t, 16> JOYGUID[TotalControllers]{
     {{0x4C, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x68, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -52,7 +61,7 @@ const std::array<SDL_Scancode, 22> KEYMAP{
         SDL_SCANCODE_RETURN,  /* CIRCLE   */
         SDL_SCANCODE_ESCAPE,  /* CROSS    */
         SDL_SCANCODE_Z,       /* SQUARE   */
-        SDL_SCANCODE_A,       /* L1       */
+        ONS_SCANCODE_AUTOMODE, /* L1      */
         ONS_SCANCODE_SKIP,    /* R1       */
         SDL_SCANCODE_DOWN,    /* DOWN     */
         SDL_SCANCODE_LEFT,    /* LEFT     */
@@ -62,7 +71,7 @@ const std::array<SDL_Scancode, 22> KEYMAP{
         SDL_SCANCODE_TAB,     /* START    */
         ONS_SCANCODE_SCREEN,  /* HOME     */
         SDL_SCANCODE_UNKNOWN, /* L2       */
-        SDL_SCANCODE_RCTRL,   /* R2       */
+        SDL_SCANCODE_UNKNOWN, /* R2       */
         SDL_SCANCODE_UNKNOWN, /* L3       */
         SDL_SCANCODE_UNKNOWN, /* R3       */
         SDL_SCANCODE_UNKNOWN, /* EXTRA    */
@@ -80,6 +89,68 @@ const std::array<SDL_Scancode, 4> axisMap{
         KEYMAP[8], /* AL-UP    */
         KEYMAP[6]  /* AL-DOWN  */
     }};
+
+namespace {
+
+constexpr int StickPressThreshold{18000};
+constexpr int StickReleaseThreshold{12000};
+
+bool hasNullGuid(const std::array<uint8_t, 16> &guid) {
+	return std::all_of(guid.begin(), guid.end(), [](uint8_t j) { return j == 0; });
+}
+
+std::array<uint8_t, 16> joystickGuid(SDL_Joystick *joy) {
+	std::array<uint8_t, 16> guid{};
+	std::memcpy(&guid[0], SDL_JoystickGetGUID(joy).data, guid.size());
+	return guid;
+}
+
+std::array<uint8_t, 16> normalizedGuid(SDL_Joystick *joy) {
+	if (!joy)
+		return {};
+
+	auto guid    = joystickGuid(joy);
+	auto vendor  = SDL_JoystickGetVendor(joy);
+	auto product = SDL_JoystickGetProduct(joy);
+	if (vendor == 0x054C) {
+		switch (product) {
+			case 0x0268:
+				return JOYGUID[JoyId::DualShock3];
+			case 0x05C4:
+			case 0x09CC:
+			case 0x0BA0:
+				return JOYGUID[JoyId::DualShock4];
+			default:
+				break;
+		}
+	}
+
+	return guid;
+}
+
+int thumbstickAxis(uint8_t physicalAxis, int value, int previousAxis) {
+	if (physicalAxis > 1)
+		return -1;
+
+	auto magnitude = std::abs(value);
+	if (magnitude < StickReleaseThreshold)
+		return -1;
+	if (magnitude < StickPressThreshold && previousAxis >= 0 && previousAxis / 2 == physicalAxis)
+		return previousAxis;
+	if (magnitude < StickPressThreshold)
+		return -1;
+
+	return physicalAxis * 2 + (value > 0 ? 1 : 0);
+}
+
+void logGuid(const std::array<uint8_t, 16> &guid) {
+	sendToLog(LogLevel::Info, "Gamepad GUID:");
+	for (auto &b : guid)
+		sendToLog(LogLevel::Info, " 0x%.2X%s", b, &b == &guid[15] ? "" : ",");
+	sendToLog(LogLevel::Info, "\n");
+}
+
+} // namespace
 
 const std::pair<std::array<uint8_t, 16>, std::unordered_map<uint8_t, SDL_Scancode>> joyMap[]{
     {// PLAYSTATION(R)3 Controller (OS X, Windows MotioninJoy DirectInput)
@@ -361,7 +432,7 @@ bool SteamController::rumble(float strength, int length) {
 
 	auto submit = [&dataBlob, this]() {
 		auto packetData = new uint8_t[LIBUSB_CONTROL_SETUP_SIZE + sizeof(dataBlob)];
-		libusb_fill_control_setup(packetData, LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE | LIBUSB_ENDPOINT_OUT,
+		libusb_fill_control_setup(packetData, UsbClassInterfaceOut,
 		                          RequestSetReport, (ReportTypeOutput << 8) | 1, 2, sizeof(dataBlob));
 		std::memcpy(&packetData[LIBUSB_CONTROL_SETUP_SIZE], dataBlob, sizeof(dataBlob));
 
@@ -458,7 +529,7 @@ bool DS3Controller::configure() {
 	    0x42, 0x0C, 0x00, 0x00};
 
 	auto packetData = new uint8_t[LIBUSB_CONTROL_SETUP_SIZE + sizeof(dataBlob)];
-	libusb_fill_control_setup(packetData, LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE | LIBUSB_ENDPOINT_OUT,
+	libusb_fill_control_setup(packetData, UsbClassInterfaceOut,
 	                          RequestSetReport, (ReportTypeFeature << 8) | 0xF4, 0x0, sizeof(dataBlob));
 	std::memcpy(&packetData[LIBUSB_CONTROL_SETUP_SIZE], dataBlob, sizeof(dataBlob));
 
@@ -544,7 +615,7 @@ bool DS3Controller::rumble(float strength, int length) {
 	dataBlob[RumblePowerR]                            = strength > 0;
 
 	auto packetData = new uint8_t[LIBUSB_CONTROL_SETUP_SIZE + sizeof(dataBlob)];
-	libusb_fill_control_setup(packetData, LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE | LIBUSB_ENDPOINT_OUT,
+	libusb_fill_control_setup(packetData, UsbClassInterfaceOut,
 	                          RequestSetReport, (ReportTypeOutput << 8) | 1, 0x0, sizeof(dataBlob));
 	std::memcpy(&packetData[LIBUSB_CONTROL_SETUP_SIZE], dataBlob, sizeof(dataBlob));
 
@@ -635,7 +706,7 @@ bool DS4Controller::rumble(float strength, int length) {
 	dataBlob[RumblePowerSmall]                                = strength * 255;
 
 	auto packetData = new uint8_t[LIBUSB_CONTROL_SETUP_SIZE + sizeof(dataBlob)];
-	libusb_fill_control_setup(packetData, LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE | LIBUSB_ENDPOINT_OUT,
+	libusb_fill_control_setup(packetData, UsbClassInterfaceOut,
 	                          RequestSetReport, (ReportTypeOutput << 8) | 1, 0x0, sizeof(dataBlob));
 	std::memcpy(&packetData[LIBUSB_CONTROL_SETUP_SIZE], dataBlob, sizeof(dataBlob));
 
@@ -665,6 +736,134 @@ void DS4Controller::ping() {
 
 #endif
 
+bool JoystickController::openDevice(SDL_JoystickID deviceId) {
+#if ONS_USE_SDL3
+	if (deviceId == 0)
+		return false;
+
+	if (SDL_IsGamepad(deviceId)) {
+		if (gamepads.find(deviceId) != gamepads.end())
+			return true;
+
+		auto existing = joystick.find(deviceId);
+		if (existing != joystick.end())
+			closeDevice(deviceId);
+
+		SDL_Gamepad *gamepad = SDL_OpenGamepad(deviceId);
+		if (!gamepad) {
+			if (ons.debug_level > 0)
+				sendToLog(LogLevel::Error, "ERROR: SDL_OpenGamepad(%d) failed with %s\n", deviceId, SDL_GetError());
+			return false;
+		}
+
+		SDL_Joystick *joy = SDL_GetGamepadJoystick(gamepad);
+		if (!joy) {
+			if (ons.debug_level > 0)
+				sendToLog(LogLevel::Error, "ERROR: SDL_GetGamepadJoystick failed with %s\n", SDL_GetError());
+			SDL_CloseGamepad(gamepad);
+			return false;
+		}
+
+		auto id = SDL_JoystickInstanceID(joy);
+		if (id == 0) {
+			SDL_CloseGamepad(gamepad);
+			return false;
+		}
+
+		auto guid = normalizedGuid(joy);
+		sendToLog(LogLevel::Info, "Initialising gamepad(%d): %s\n", id, SDL_GetGamepadName(gamepad));
+
+		gamepads[id] = gamepad;
+		joystick[id] = Info{joy, guid, -1, -1, -1, -1, true};
+
+		SDL_Haptic *hapt = SDL_HapticOpenFromJoystick(joy);
+		if (hapt) {
+			haptic[id] = hapt;
+			sendToLog(LogLevel::Info, "Haptic status: maybe supported\n");
+		} else {
+			sendToLog(LogLevel::Info, "Haptic status: unsupported\n");
+		}
+
+		logGuid(guid);
+		return true;
+	}
+
+	if (joystick.find(deviceId) != joystick.end())
+		return true;
+
+	SDL_Joystick *joy = SDL_OpenJoystick(deviceId);
+#else
+	if (deviceId < 0)
+		return false;
+
+	SDL_Joystick *joy = onsJoystickOpenByIndex(deviceId);
+#endif
+
+	if (!joy) {
+		if (ons.debug_level > 0)
+			sendToLog(LogLevel::Error, "ERROR: SDL_OpenJoystick failed with %s\n", SDL_GetError());
+		return false;
+	}
+
+	SDL_JoystickID id = SDL_JoystickInstanceID(joy);
+#if defined(ONS_USE_SDL3)
+	if (id == 0) {
+#else
+	if (id < 0) {
+#endif
+		SDL_JoystickClose(joy);
+		return false;
+	}
+
+	if (joystick.find(id) != joystick.end()) {
+		SDL_JoystickClose(joy);
+		return true;
+	}
+
+	auto guid = normalizedGuid(joy);
+	sendToLog(LogLevel::Info, "Initialising joystick(%d): %s\n", id, SDL_JoystickName(joy));
+
+	joystick[id] = Info{joy, guid};
+
+	SDL_Haptic *hapt = SDL_HapticOpenFromJoystick(joy);
+	if (hapt) {
+		haptic[id] = hapt;
+		sendToLog(LogLevel::Info, "Haptic status: maybe supported\n");
+	} else {
+		sendToLog(LogLevel::Info, "Haptic status: unsupported\n");
+	}
+
+	logGuid(guid);
+	return true;
+}
+
+void JoystickController::closeDevice(SDL_JoystickID id) {
+	auto hapt = haptic.find(id);
+	if (hapt != haptic.end()) {
+		if (hapt->second)
+			SDL_HapticClose(hapt->second);
+		haptic.erase(hapt);
+	}
+
+#if ONS_USE_SDL3
+	auto gamepad = gamepads.find(id);
+	if (gamepad != gamepads.end()) {
+		if (gamepad->second)
+			SDL_CloseGamepad(gamepad->second);
+		gamepads.erase(gamepad);
+		joystick.erase(id);
+		return;
+	}
+#endif
+
+	auto joy = joystick.find(id);
+	if (joy != joystick.end()) {
+		if (joy->second.handler && SDL_JoystickGetAttached(joy->second.handler))
+			SDL_JoystickClose(joy->second.handler);
+		joystick.erase(joy);
+	}
+}
+
 int JoystickController::ownInit() {
 
 #ifdef USE_LIBUSB
@@ -684,42 +883,25 @@ int JoystickController::ownInit() {
 		nativeControllers.push_back(std::move(sc));
 #endif
 
-	if (onsSDLInitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC)) {
+	if (onsSDLInitSubSystem(
+#if ONS_USE_SDL3
+	        SDL_INIT_GAMEPAD |
+#else
+	        SDL_INIT_JOYSTICK |
+#endif
+	        SDL_INIT_HAPTIC)) {
 		bool undefinedFound{false};
 		for (int i = 0; i < onsNumJoysticks(); i++) {
-			SDL_Joystick *joy = onsJoystickOpenByIndex(i);
-			if (joy) {
-				SDL_JoystickID id = SDL_JoystickInstanceID(joy);
-#if defined(ONS_USE_SDL3)
-				if (id != 0) {
+#if ONS_USE_SDL3
+			openDevice(onsJoystickIdByIndex(i));
 #else
-				if (id >= 0) {
+			openDevice(i);
 #endif
-					std::array<uint8_t, 16> guid;
-					std::memcpy(&guid[0], SDL_JoystickGetGUID(joy).data, 16);
-
-					if (std::all_of(guid.begin(), guid.end(), [](uint8_t j) { return j == 0; })) {
-						undefinedFound = true;
-					}
-
-					sendToLog(LogLevel::Info, "Initialising joystick(%d -> %d): %s\n", i, id, onsJoystickNameForIndex(i));
-
-					joystick[id] = Info{joy, guid};
-
-					SDL_Haptic *hapt = SDL_HapticOpenFromJoystick(joy);
-
-					if (hapt) {
-						haptic[id] = hapt;
-						sendToLog(LogLevel::Info, "Haptic status: maybe supported\n");
-					} else {
-						sendToLog(LogLevel::Info, "Haptic status: unsupported\n");
-					}
-
-					sendToLog(LogLevel::Info, "Gamepad GUID:");
-					for (auto &b : guid)
-						sendToLog(LogLevel::Info, " 0x%.2X%s", b, &b == &guid[15] ? "" : ",");
-					sendToLog(LogLevel::Info, "\n");
-				}
+		}
+		for (auto &elem : joystick) {
+			if (hasNullGuid(elem.second.guid)) {
+				undefinedFound = true;
+				break;
 			}
 		}
 		if (undefinedFound) {
@@ -727,29 +909,31 @@ int JoystickController::ownInit() {
 #ifdef WIN32
 			// Time to write some hacks for Windows
 			uint8_t firstByte{0x00};
+			SDL_JoystickID directInputId{};
+			bool foundDirectInput{false};
 			for (auto &elem : joystick) {
+				if (elem.second.gamepadOwned)
+					continue;
 				if (elem.second.guid == JOYGUID[JoyId::Rumblepad2]) {
 					firstByte = 0x01;
+					directInputId = elem.first;
+					foundDirectInput = true;
 					sendToLog(LogLevel::Info, "Warning: Manually disabling DirectInput for Logitech Cordless RumblePad 2\n");
-					if (SDL_JoystickGetAttached(elem.second.handler)) {
-						SDL_JoystickClose(elem.second.handler);
-					}
-					joystick.erase(elem.first);
 					break;
 				} else if (elem.second.guid == JOYGUID[JoyId::DualShock4]) {
 					firstByte = 0x02;
+					directInputId = elem.first;
+					foundDirectInput = true;
 					sendToLog(LogLevel::Info, "Warning: Manually disabling DirectInput for Sony DualShock 4\n");
-					if (SDL_JoystickGetAttached(elem.second.handler)) {
-						SDL_JoystickClose(elem.second.handler);
-					}
-					joystick.erase(elem.first);
 					break;
 				}
 			}
 
 			if (firstByte != 0x00) {
+				if (foundDirectInput)
+					closeDevice(directInputId);
 				for (auto &elem : joystick) {
-					if (std::all_of(elem.second.guid.begin(), elem.second.guid.end(), [](uint8_t i) { return i == 0; })) {
+					if (hasNullGuid(elem.second.guid)) {
 						elem.second.guid[0] = firstByte;
 					}
 				}
@@ -764,14 +948,13 @@ int JoystickController::ownInit() {
 int JoystickController::ownDeinit() {
 	for (auto &ctrl : nativeControllers)
 		ctrl->deinit();
+	nativeControllers.clear();
 
-	for (auto &hapt : haptic)
-		if (hapt.second)
-			SDL_HapticClose(hapt.second);
-
+	std::vector<SDL_JoystickID> ids;
 	for (auto &joy : joystick)
-		if (SDL_JoystickGetAttached(joy.second.handler))
-			SDL_JoystickClose(joy.second.handler);
+		ids.push_back(joy.first);
+	for (auto id : ids)
+		closeDevice(id);
 
 #ifdef USE_LIBUSB
 	if (usbContext) {
@@ -781,6 +964,22 @@ int JoystickController::ownDeinit() {
 #endif
 
 	return 0;
+}
+
+void JoystickController::handleDeviceAdded(SDL_JoystickID id) {
+	openDevice(id);
+}
+
+void JoystickController::handleDeviceRemoved(SDL_JoystickID id) {
+	closeDevice(id);
+}
+
+bool JoystickController::isGamepadActive(SDL_JoystickID id) const {
+#if ONS_USE_SDL3
+	return gamepads.find(id) != gamepads.end();
+#else
+	return false;
+#endif
 }
 
 void JoystickController::provideCustomMapping(const char *mapping) {
@@ -805,12 +1004,16 @@ void JoystickController::provideCustomMapping(const char *mapping) {
 }
 
 SDL_Scancode JoystickController::transButton(uint8_t button, SDL_JoystickID id) {
-	auto &info = joystick[id];
-	if (info.handler == nullptr) {
+	if (isGamepadActive(id))
+		return SDL_SCANCODE_UNKNOWN;
+
+	auto joy = joystick.find(id);
+	if (joy == joystick.end() || joy->second.handler == nullptr) {
 		if (ons.debug_level > 0)
 			sendToLog(LogLevel::Info, "This joystick was not used\n");
 		return SDL_SCANCODE_UNKNOWN;
 	}
+	auto &info = joy->second;
 
 	if (ons.debug_level > 0)
 		sendToLog(LogLevel::Info, "Gamepad event, button: %d\n", button);
@@ -839,7 +1042,11 @@ SDL_Scancode JoystickController::transButton(uint8_t button, SDL_JoystickID id) 
 }
 
 SDL_Scancode JoystickController::transHat(uint8_t button, SDL_JoystickID id) {
-	if (joystick[id].handler == nullptr) {
+	if (isGamepadActive(id))
+		return SDL_SCANCODE_UNKNOWN;
+
+	auto joy = joystick.find(id);
+	if (joy == joystick.end() || joy->second.handler == nullptr) {
 		if (ons.debug_level > 0)
 			sendToLog(LogLevel::Info, "This joystick was not used\n");
 		return SDL_SCANCODE_UNKNOWN;
@@ -882,18 +1089,123 @@ SDL_Scancode JoystickController::transHat(uint8_t button, SDL_JoystickID id) {
 	return KEYMAP[k];
 }
 
+#if ONS_USE_SDL3
+SDL_Scancode JoystickController::transGamepadButton(uint8_t button, SDL_JoystickID id) {
+	if (!isGamepadActive(id))
+		return SDL_SCANCODE_UNKNOWN;
+
+	if (ons.debug_level > 0)
+		sendToLog(LogLevel::Info, "SDL gamepad event, button: %d\n", button);
+
+	if (usingCustomMapping) {
+		auto r = customMapping.find(button);
+		return r != customMapping.end() ? r->second : SDL_SCANCODE_UNKNOWN;
+	}
+
+	switch (static_cast<SDL_GamepadButton>(button)) {
+		case SDL_GAMEPAD_BUTTON_SOUTH:
+			return SDL_SCANCODE_RETURN;
+		case SDL_GAMEPAD_BUTTON_EAST:
+			return SDL_SCANCODE_ESCAPE;
+		case SDL_GAMEPAD_BUTTON_WEST:
+			return SDL_SCANCODE_Z;
+		case SDL_GAMEPAD_BUTTON_NORTH:
+			return SDL_SCANCODE_H;
+		case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
+			return ONS_SCANCODE_AUTOMODE;
+		case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:
+			return ONS_SCANCODE_SKIP;
+		case SDL_GAMEPAD_BUTTON_BACK:
+		case SDL_GAMEPAD_BUTTON_MISC1:
+			return ONS_SCANCODE_MUTE;
+		case SDL_GAMEPAD_BUTTON_START:
+			return SDL_SCANCODE_Z;
+		case SDL_GAMEPAD_BUTTON_TOUCHPAD:
+			return SDL_SCANCODE_H;
+		case SDL_GAMEPAD_BUTTON_GUIDE:
+			return ONS_SCANCODE_SCREEN;
+		case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
+			return SDL_SCANCODE_DOWN;
+		case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
+			return SDL_SCANCODE_LEFT;
+		case SDL_GAMEPAD_BUTTON_DPAD_UP:
+			return SDL_SCANCODE_UP;
+		case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
+			return SDL_SCANCODE_RIGHT;
+		default:
+			return SDL_SCANCODE_UNKNOWN;
+	}
+}
+
+SDL_Event JoystickController::transGamepadAxis(SDL_GamepadAxisEvent &axisEvent) {
+	SDL_Event eventbase{};
+	onsKeyboardScancode(eventbase.key) = SDL_SCANCODE_UNKNOWN;
+
+	auto joy = joystick.find(axisEvent.which);
+	if (joy == joystick.end() || joy->second.handler == nullptr) {
+		if (ons.debug_level > 0)
+			sendToLog(LogLevel::Info, "This gamepad was not used\n");
+		return eventbase;
+	}
+	auto &info = joy->second;
+
+	int *previousAxis{nullptr};
+	int axis{-1};
+	switch (static_cast<SDL_GamepadAxis>(axisEvent.axis)) {
+		case SDL_GAMEPAD_AXIS_LEFTX:
+			previousAxis = &info.prevLeftStickAxis;
+			axis = thumbstickAxis(0, axisEvent.value, *previousAxis);
+			break;
+		case SDL_GAMEPAD_AXIS_LEFTY:
+			previousAxis = &info.prevLeftStickAxis;
+			axis = thumbstickAxis(1, axisEvent.value, *previousAxis);
+			break;
+		case SDL_GAMEPAD_AXIS_RIGHTX:
+			previousAxis = &info.prevRightStickAxis;
+			axis = thumbstickAxis(0, axisEvent.value, *previousAxis);
+			break;
+		case SDL_GAMEPAD_AXIS_RIGHTY:
+			previousAxis = &info.prevRightStickAxis;
+			axis = thumbstickAxis(1, axisEvent.value, *previousAxis);
+			break;
+		default:
+			return eventbase;
+	}
+
+	if (!previousAxis || axis == *previousAxis)
+		return eventbase;
+
+	if (axis == -1) {
+		eventbase.type     = SDL_KEYUP;
+		eventbase.key.type = SDL_KEYUP;
+		onsKeyboardScancode(eventbase.key) = axisMap[*previousAxis];
+	} else {
+		eventbase.type     = SDL_KEYDOWN;
+		eventbase.key.type = SDL_KEYDOWN;
+		onsKeyboardScancode(eventbase.key) = axisMap[axis];
+	}
+
+	*previousAxis = axis;
+	return eventbase;
+}
+#endif
+
 SDL_Event JoystickController::transAxis(SDL_JoyAxisEvent &axisEvent) {
 	SDL_Event eventbase{};
 	SDL_KeyboardEvent &event = eventbase.key;
 
 	onsKeyboardScancode(event) = SDL_SCANCODE_UNKNOWN;
 
-	auto &info = joystick[axisEvent.which];
-	if (info.handler == nullptr) {
+	if (isGamepadActive(axisEvent.which))
+		return eventbase;
+
+	auto joy = joystick.find(axisEvent.which);
+	if (joy == joystick.end() || joy->second.handler == nullptr) {
 		if (ons.debug_level > 0)
 			sendToLog(LogLevel::Info, "This joystick was not used\n");
 		return eventbase;
 	}
+	auto &info = joy->second;
 
 	int axis = -1;
 	if (info.guid == JOYGUID[JoyId::GenericXinputNouveau] || info.guid == JOYGUID[JoyId::GenericXinput]) {
@@ -924,8 +1236,7 @@ SDL_Event JoystickController::transAxis(SDL_JoyAxisEvent &axisEvent) {
 		// rerofumi: Jan.15.2007
 		// DS3 pad has 0x1b axis (with analog button)
 		if (axisEvent.axis < 2)
-			axis = ((3200 > axisEvent.value) && (axisEvent.value > -3200) ? -1 :
-			                                                                (axisEvent.axis * 2 + (axisEvent.value > 0 ? 1 : 0)));
+			axis = thumbstickAxis(axisEvent.axis, axisEvent.value, info.prevAxis);
 
 		if (axis != info.prevAxis) {
 			if (axis == -1) {
@@ -959,8 +1270,26 @@ bool JoystickController::rumble(float strength, int length) {
 
 bool JoystickController::rumbleSDL(float strength, int length) {
 	bool success{false};
+#if ONS_USE_SDL3
+	Uint16 power = static_cast<Uint16>(cmp::clamp(strength, 0.0f, 1.0f) * 0xffff);
+	Uint32 duration = static_cast<Uint32>(std::max(length, 0));
+	for (auto &gamepad : joyCtrl.gamepads) {
+		if (!gamepad.second)
+			continue;
+
+		if (SDL_RumbleGamepad(gamepad.second, power, power, duration)) {
+			success = true;
+		} else if (ons.debug_level > 0) {
+			sendToLog(LogLevel::Error, "ERROR: SDL_RumbleGamepad(strength=%f, length=%d) failed with %s\n", strength, length, SDL_GetError());
+		}
+	}
+#endif
 	for (auto &hapt : joyCtrl.haptic) {
 		if (hapt.second) {
+#if ONS_USE_SDL3
+			if (isGamepadActive(hapt.first))
+				continue;
+#endif
 			if (SDL_HapticRumbleInit(hapt.second)) {
 				if (ons.debug_level > 0)
 					sendToLog(LogLevel::Error, "ERROR: SDL_HapticRumbleInit(haptic) failed with %s\n", SDL_GetError());

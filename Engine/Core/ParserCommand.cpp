@@ -1135,7 +1135,7 @@ void ScriptParser::gosubReal(const char *label, const char *next_script,
 
 	setCurrentLabel(label);
 
-	if (uninterruptibleLabels.count(script_h.getCurrent())) {
+	if (uninterruptibleLabels.contains(script_h.getCurrent())) {
 		callStackHasUninterruptible = true;
 		b.uninterruptible           = true;
 	}

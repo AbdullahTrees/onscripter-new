@@ -1699,7 +1699,7 @@ void ONScripter::commitVisualState() {
 void ONScripter::backupState(AnimationInfo *info) {
 	// Do not back up sprites with transitions disabled.
 	// This enables HUD elements etc to move independently on the scene using properties without caring about what is happening ingame.
-	if (nontransitioningSprites.count(info)) {
+	if (nontransitioningSprites.contains(info)) {
 		return;
 	}
 

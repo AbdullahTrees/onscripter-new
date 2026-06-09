@@ -34,13 +34,13 @@ int WindowController::ownInit() {
 	if (system_offset_y_str != ons.ons_cfg_options.end())
 		system_offset_y = std::stoi(system_offset_y_str->second);
 
-	if (ons.ons_cfg_options.count("scale"))
+	if (ons.ons_cfg_options.contains("scale"))
 		scaled_flag = true;
 
-	if (ons.ons_cfg_options.count("full-clip-limit"))
+	if (ons.ons_cfg_options.contains("full-clip-limit"))
 		fullscreen_reduce_clip = true;
 
-	if (ons.ons_cfg_options.count("fullscreen"))
+	if (ons.ons_cfg_options.contains("fullscreen"))
 		fullscreen_mode = true;
 
 	return 0;

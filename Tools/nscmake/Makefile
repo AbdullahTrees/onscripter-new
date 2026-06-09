@@ -1,7 +1,7 @@
 .PHONY: all clean
 
 CC = g++
-CFLAGS = -Wall -O3 -s -static-libgcc -static-libstdc++ -std=c++0x
+CFLAGS = -Wall -O3 -s -static-libgcc -static-libstdc++ -std=c++23
 TARGET = nscmake
 OBJS = nscmake.o
 

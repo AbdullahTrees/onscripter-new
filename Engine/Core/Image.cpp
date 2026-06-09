@@ -671,11 +671,14 @@ void ONScripter::dirtySpriteRect(int num, bool lsp2, bool before) {
 	if (num > z_order_hud) {
 		SpritesetInfo *cleanSet{nullptr};
 		// Sets 1+
-		if (z_order_spritesets.count(1) && num <= z_order_spritesets[1]) {
+		auto firstSpriteset = z_order_spritesets.find(1);
+		if (firstSpriteset != z_order_spritesets.end() && num <= firstSpriteset->second) {
 			//Belongs to a spriteset, we need to tell that spriteset about this
 			int spriteset = 1;
-			while (z_order_spritesets.count(spriteset + 1) && num <= z_order_spritesets[spriteset + 1]) {
+			auto nextSpriteset = z_order_spritesets.find(spriteset + 1);
+			while (nextSpriteset != z_order_spritesets.end() && num <= nextSpriteset->second) {
 				spriteset++;
+				nextSpriteset = z_order_spritesets.find(spriteset + 1);
 			}
 			cleanSet = &spritesets[spriteset];
 		}
@@ -846,7 +849,8 @@ void ONScripter::refreshSceneTo(RenderTarget *target, RenderRect *passed_script_
 	//Spritesets
 	for (int spritesetNo = 0;; spritesetNo++) {
 		int startZ = spritesetNo == 0 ? z_order_ld : z_order_spritesets[spritesetNo];
-		int endZ   = (z_order_spritesets.count(spritesetNo + 1) == 1) ? z_order_spritesets[spritesetNo + 1] : z_order_hud;
+		auto nextSpriteset = z_order_spritesets.find(spritesetNo + 1);
+		int endZ           = nextSpriteset != z_order_spritesets.end() ? nextSpriteset->second : z_order_hud;
 		//sendToLog(LogLevel::Info, "(in refresh:) spritesets[%i].enable=%i\n", spritesetNo, spritesets[spritesetNo].enable);
 		if (spritesetNo == 0 || spritesets[spritesetNo].isEnabled(rm & REFRESH_BEFORESCENE_MODE)) { // spriteset 0 is always active (?)
 			if (spritesets[spritesetNo].isNullTransform()) {

@@ -45,7 +45,7 @@ void ONScripter::buildBreakupCellforms() {
 }
 
 bool ONScripter::breakupInitRequired(BreakupID id) {
-	return breakupData.count(id) == 0;
+	return !breakupData.contains(id);
 }
 
 void ONScripter::initBreakup(BreakupID id, RenderImage *src, RenderRect *src_rect) {

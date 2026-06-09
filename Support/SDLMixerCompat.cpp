@@ -49,7 +49,7 @@ std::string musicCommand;
 float clampVolumeFloat(float volume) {
 	if (volume < 0.0f)
 		return volume;
-	return std::min(volume, static_cast<float>(MIX_MAX_VOLUME));
+	return std::clamp(volume, 0.0f, static_cast<float>(MIX_MAX_VOLUME));
 }
 
 float volumeToGain(float volume) {

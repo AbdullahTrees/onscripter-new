@@ -37,16 +37,16 @@ make -j8
 For packaged game distributions that ship compressed `.file` scripts, use a public release build. Development builds expect the plaintext script layout and can stop at startup with "No compatible game script found" when pointed at release game data.
 
 ```
-./configure --release-build --strip-binary --std=gnu++14
+./configure --release-build --strip-binary --std=gnu++23
 make -j8
 ```
 
-On current MSYS2/UCRT64 GCC 16 toolchains, `--std=gnu++14` is recommended for Windows release builds. It avoids strict `-std=c++14` parsing failures in current libstdc++ headers around `__float128` literal suffix declarations.
+On current MSYS2/UCRT64 GCC 16 toolchains, `--std=gnu++23` is recommended for Windows release builds. It keeps the project on the C++23 migration path while retaining GNU dialect compatibility for current libstdc++ headers.
 
 Current local Windows/UCRT64 build commands from PowerShell:
 
 ```
-C:\msys64\usr\bin\bash.exe -lc 'export MSYSTEM=UCRT64; export PATH=/ucrt64/bin:/usr/bin:$PATH; cd /d/onscripter-new && ./configure --release-build --strip-binary --std=gnu++14'
+C:\msys64\usr\bin\bash.exe -lc 'export MSYSTEM=UCRT64; export PATH=/ucrt64/bin:/usr/bin:$PATH; cd /d/onscripter-new && ./configure --release-build --strip-binary --std=gnu++23'
 C:\msys64\usr\bin\bash.exe -lc 'export MSYSTEM=UCRT64; export PATH=/ucrt64/bin:/usr/bin:$PATH; cd /d/onscripter-new && make -j8'
 ```
 
@@ -97,7 +97,7 @@ If `shaderc.pc` is available and `--sdl3-runtime-shaderc` is used, configure def
 The Windows release path links SDL3, SDL3_image, and SDL3_mixer statically, so
 a normal package does not need SDL, ANGLE, EGL, GLES, or d3dcompiler renderer
 DLLs beside the executable. Runtime validation on Windows reached the Umineko
-Project main menu with `--release-build --strip-binary --std=gnu++14`; the log
+Project main menu with `--release-build --strip-binary --std=gnu++23`; the log
 showed SDL3_GPU initialization, shader compilation, and SDL3_mixer audio
 startup without a new Windows application error during the 120 second
 validation run.
@@ -471,6 +471,66 @@ libc++abi package recipes plus the Snow Leopard libc++ patch. `make -j8`
 reported the binary target was already current; the current
 `onscripter-new.exe` was copied to `D:\Umineko Project\onscripter-new.exe`.
 Per project instruction, the executable was not booted.
+
+The 2026-06-09 C++23 migration changed the active configure default to C++23,
+updated the Windows release command to `--std=gnu++23`, moved Xcode, clang-tidy,
+and helper tool Makefiles to C++23, and applied low-risk C++17-C++23 source
+cleanups including `std::clamp`, associative-container `contains()`, single-pass
+`find()` lookups, and `std::to_underlying()` for libusb request masks. The
+UCRT64 release rebuild linked successfully with no warning output after the
+libusb enum-mask cleanup, `nscmake` and `nscdec` force-rebuilt with
+`-std=c++23`, and the updated `onscripter-new.exe` was copied to
+`D:\Umineko Project\onscripter-new.exe`. Per project instruction, the executable
+was not booted.
+
+The 2026-06-09 controller support pass moved SDL3 builds onto SDL's normalized
+gamepad subsystem for mapped controllers while preserving the raw joystick
+fallback. SDL joystick/gamepad add and remove events now open and close devices
+at runtime, so a DualShock 4 no longer has to be connected before process
+startup. The normalized gamepad map makes Cross confirm, Circle cancel,
+Share/Back mute, Options/Start open the tab/message-browser action, leaves
+stick clicks unmapped, and raises analog-stick thresholds with release
+hysteresis to prevent menu jitter. The Config screen's DualShock/Gamepad
+interface selector remains a script/UI prompt setting; controller detection and
+input routing are automatic and independent of that option. The UCRT64
+`make -j8` rebuild linked successfully, and the rebuilt `onscripter-new.exe`
+was copied to `D:\Umineko Project\onscripter-new.exe`. Per project instruction,
+the executable was not booted.
+
+The controller follow-up on the same date added SDL3 gamepad button and axis
+events to the engine's shared input-event list. Without this, the default event
+pass could handle global side effects such as Share/Back mute, but active
+dialogue/button wait actions did not see normalized gamepad events and would
+not advance text or select buttons. The UCRT64 `make -j8` rebuild linked
+successfully, and the corrected executable was copied to
+`D:\Umineko Project\onscripter-new.exe`. Per project instruction, the executable
+was not booted.
+
+The same-date Config input-hints pass renamed the misleading `DualShock` option
+to `Gamepad`, changed the setting label from `Interface` to `Input Hints`, and
+made the Controls popup switch between keyboard/mouse and gamepad binding text
+based on the saved `control_interface` value. The packed English script
+round-tripped exactly through `nscmake`/`nscdec`; `make -j8` reported the
+binary target was already current. The current executable and updated `en.file`
+were copied to `D:\Umineko Project`. Per project instruction, the executable
+was not booted.
+
+The controller binding correction on the same date added a dedicated gamepad
+automode scancode for L1, left Triangle/Y on the Message Browser/backlog
+binding, mapped Options/Start to the pause-menu binding used by Square/X, and
+removed R2 trigger handling from both SDL3 gamepad axes and the raw generic
+gamepad map. The gamepad Controls popup text was updated to match. The UCRT64
+`make -j8` rebuild linked successfully, the packed English script passed an
+exact decode round-trip, and both `onscripter-new.exe` and `en.file` were copied
+to `D:\Umineko Project`. Per project instruction, the executable was not
+booted.
+
+The L1 automode follow-up on the same date fixed the text-button wait path for
+the dedicated gamepad automode scancode. L1 no longer writes button result `0`
+directly like Cross; it starts automode and arms the active text-button wait
+with the normal automode timer/voice-wait behavior. The UCRT64 `make -j8`
+rebuild linked successfully, and the rebuilt `onscripter-new.exe` was copied to
+`D:\Umineko Project`. Per project instruction, the executable was not booted.
 
 SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
 `ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,

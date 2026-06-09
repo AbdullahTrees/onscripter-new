@@ -879,7 +879,7 @@ bool ONScripter::keyDownEvent(SDL_KeyboardEvent &event, EventProcessingState &st
 #ifdef MACOSX
 		case SDL_SCANCODE_LGUI:
 		case SDL_SCANCODE_RGUI:
-			if (!ons_cfg_options.count("skip-on-cmd"))
+			if (!ons_cfg_options.contains("skip-on-cmd"))
 				break;
 			if (onsKeyboardScancode(event) == SDL_SCANCODE_LGUI || onsKeyboardScancode(event) == SDL_SCANCODE_RGUI) {
 				state.keyState.apple |= 1;
@@ -948,7 +948,7 @@ void ONScripter::keyUpEvent(SDL_KeyboardEvent &event, EventProcessingState &stat
 #ifdef MACOSX
 		case SDL_SCANCODE_LGUI:
 		case SDL_SCANCODE_RGUI:
-			if (!ons_cfg_options.count("skip-on-cmd"))
+			if (!ons_cfg_options.contains("skip-on-cmd"))
 				break;
 			state.keyState.apple &= ~1;
 #endif
@@ -1207,6 +1207,46 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 
 	if ((event_mode & (WAIT_INPUT_MODE | WAIT_TEXTBTN_MODE | WAIT_TEXTOUT_MODE)) &&
 	    !state.keyState.pressedFlag) {
+		auto startAutomode = [this, &state]() {
+			addToPostponedEventChanges("change to automode", [this]() { eventCallbackRequired = true; automode_flag = true; });
+			state.skipMode &= ~SKIP_NORMAL;
+			sendToLog(LogLevel::Info, "change to automode\n");
+			state.keyState.pressedFlag = true;
+			stopCursorAnimation(clickstr_state);
+		};
+		auto armAutomodeTextWait = [this]() {
+			bool armed{false};
+			bool voice_plays = wave_sample[0] && Mix_Playing(0) && !Mix_Paused(0);
+
+			for (const auto &a : fetchConstantRefreshActions<ButtonWaitAction>()) {
+				auto *bwa = dynamic_cast<ButtonWaitAction *>(a.get());
+				if (!bwa || !(bwa->eventMode() & WAIT_TEXTBTN_MODE))
+					continue;
+
+				bwa->event_mode |= WAIT_VOICE_MODE;
+				if (voice_plays) {
+					bwa->voiced_txtbtnwait = true;
+					if (textgosub_clickstr_state == CLICK_NEWPAGE)
+						bwa->final_voiced_txtbtnwait = true;
+					armed = true;
+					continue;
+				}
+
+				int timeToWait = automode_time;
+				if (automode_time < 0)
+					timeToWait = -automode_time * dlgCtrl.dialogueRenderState.clickPartCharacterCount();
+
+				bwa->event_mode |= WAIT_TIMER_MODE;
+				if (timeToWait > 0) {
+					bwa->clock.setCountdown(timeToWait);
+					bwa->timer_set = true;
+				}
+				armed = true;
+			}
+
+			return armed;
+		};
+
 		//'s' is for skip mode
 		if (((onsKeyboardScancode(event) == SDL_SCANCODE_S && state.keyState.opt) || onsKeyboardScancode(event) == ONS_SCANCODE_SKIP) &&
 		    !automode_flag && !state.keyState.ctrl && skipIsAllowed()) {
@@ -1233,14 +1273,17 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 
 			return true;
 		}
+		if (onsKeyboardScancode(event) == ONS_SCANCODE_AUTOMODE &&
+		    !state.keyState.ctrl && mode_ext_flag && !automode_flag) {
+			startAutomode();
+
+			return !armAutomodeTextWait();
+		}
 		//'a' is for automode
-		if (onsKeyboardScancode(event) == SDL_SCANCODE_A && !state.keyState.ctrl && mode_ext_flag && !automode_flag) {
-			addToPostponedEventChanges([this]() { eventCallbackRequired = true; automode_flag = true; });
-			state.skipMode &= ~SKIP_NORMAL;
-			sendToLog(LogLevel::Info, "change to automode\n");
-			state.keyState.pressedFlag = true;
+		if (onsKeyboardScancode(event) == SDL_SCANCODE_A &&
+		    !state.keyState.ctrl && mode_ext_flag && !automode_flag) {
+			startAutomode();
 			state.buttonState.set(0);
-			stopCursorAnimation(clickstr_state);
 
 			return true;
 		}
@@ -1527,7 +1570,7 @@ void ONScripter::runEventLoop() {
 			} else {
 				const auto &action = registeredCRActions[handler];
 				event_mode         = action->eventMode();
-				if (!action->handledEvents().count(event->type)) {
+				if (!action->handledEvents().contains(event->type)) {
 					// this event type is not handled by this handler
 					continue;
 				}
@@ -1587,6 +1630,61 @@ void ONScripter::runEventLoop() {
 						ret = mouseScrollEvent(event->wheel, state);
 						addToPostponedEventChanges([this, state]() { current_button_state = state.buttonState; });
 						break;
+#endif
+
+					case SDL_JOYDEVICEADDED:
+						joyCtrl.handleDeviceAdded(event->jdevice.which);
+						ret = true;
+						break;
+
+					case SDL_JOYDEVICEREMOVED:
+						joyCtrl.handleDeviceRemoved(event->jdevice.which);
+						ret = true;
+						break;
+
+#if ONS_USE_SDL3
+					case SDL_EVENT_GAMEPAD_ADDED:
+						joyCtrl.handleDeviceAdded(event->gdevice.which);
+						ret = true;
+						break;
+
+					case SDL_EVENT_GAMEPAD_REMOVED:
+						joyCtrl.handleDeviceRemoved(event->gdevice.which);
+						ret = true;
+						break;
+
+					case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
+						SDL_Event keyEvent{};
+						keyEvent.type     = SDL_KEYDOWN;
+						keyEvent.key.type = SDL_KEYDOWN;
+						onsKeyboardScancode(keyEvent.key) = joyCtrl.transGamepadButton(event->gbutton.button, event->gbutton.which);
+						if (onsKeyboardScancode(keyEvent.key) != SDL_SCANCODE_UNKNOWN)
+							translateKeyDownEvent(keyEvent, state, ret, ctrl_toggle);
+						break;
+					}
+
+					case SDL_EVENT_GAMEPAD_BUTTON_UP: {
+						SDL_Event keyEvent{};
+						keyEvent.type     = SDL_KEYUP;
+						keyEvent.key.type = SDL_KEYUP;
+						onsKeyboardScancode(keyEvent.key) = joyCtrl.transGamepadButton(event->gbutton.button, event->gbutton.which);
+						if (onsKeyboardScancode(keyEvent.key) != SDL_SCANCODE_UNKNOWN)
+							translateKeyUpEvent(keyEvent, state, ret);
+						break;
+					}
+
+					case SDL_EVENT_GAMEPAD_AXIS_MOTION: {
+#if !defined(IOS) && !defined(DROID)
+						auto ke = joyCtrl.transGamepadAxis(event->gaxis);
+						if (onsKeyboardScancode(ke.key) != SDL_SCANCODE_UNKNOWN) {
+							if (ke.type == SDL_KEYDOWN)
+								translateKeyDownEvent(ke, state, ret, ctrl_toggle);
+							else
+								translateKeyUpEvent(ke, state, ret);
+						}
+#endif
+						break;
+					}
 #endif
 
 					case SDL_JOYBUTTONDOWN:

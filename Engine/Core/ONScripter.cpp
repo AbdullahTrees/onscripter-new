@@ -2025,7 +2025,7 @@ void ONScripter::runScript() {
 }
 
 bool ONScripter::isBuiltInCommand(const char *cmd) {
-	return ScriptParser::isBuiltInCommand(cmd) || func_lut.count(cmd[0] == '_' ? cmd + 1 : cmd);
+	return ScriptParser::isBuiltInCommand(cmd) || func_lut.contains(cmd[0] == '_' ? cmd + 1 : cmd);
 }
 
 int ONScripter::evaluateBuiltInCommand(const char *cmd) {

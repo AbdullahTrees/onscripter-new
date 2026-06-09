@@ -132,11 +132,11 @@ else
 	case `uname` in
 		Darwin*)
 			printf "\e[31mValidating MM files...\e[0m\n"
-			$TIDY $MMFILES -fix $CHECKS -- -std=c++14 $PREPROCESSOR $INCLUDES
+			$TIDY $MMFILES -fix $CHECKS -- -std=c++23 $PREPROCESSOR $INCLUDES
 		;;
 	esac
 	printf "\e[31mValidating C++ files...\e[0m\n"
-	$TIDY $CPPFILES -fix $CHECKS -- -xc++ -std=c++14 $PREPROCESSOR $INCLUDES
+	$TIDY $CPPFILES -fix $CHECKS -- -xc++ -std=c++23 $PREPROCESSOR $INCLUDES
 fi
 
 popd &>/dev/null

@@ -108,7 +108,7 @@
 	#define HAS_VECTOR_TYPES
 #endif
 
-// Until we have C++17
+// Shared C++ helpers
 #ifndef HAS_HANDYCPP
 	#include <algorithm>
 	#include <atomic>
@@ -120,7 +120,7 @@
 	namespace cmp {
 		template <typename T>
 		using unique_ptr_del =
-		std::unique_ptr<T, std::function<void (typename std::add_pointer<typename std::remove_extent<T>::type>::type)>>;
+		std::unique_ptr<T, std::function<void (std::add_pointer_t<std::remove_extent_t<T>>)>>;
 		
 		// Helper class for storing partially specified objects
 		template <typename T>
@@ -192,19 +192,19 @@
 		
 		template <typename T>
 		FORCE_INLINE constexpr const T clamp(const T &v, const T &lo, const T &hi) {
-			return std::max(lo, std::min(v, hi));
+			return std::clamp(v, lo, hi);
 		}
 		
 		// Fixed begin/end for multidimensial arrays
 		// Taken from http://stackoverflow.com/a/26950176
 		template <typename T>
-		FORCE_INLINE typename std::remove_all_extents<T>::type *arrbegin(T& arr) {
-			return reinterpret_cast<typename std::remove_all_extents<T>::type*>(&arr);
+		FORCE_INLINE std::remove_all_extents_t<T> *arrbegin(T& arr) {
+			return reinterpret_cast<std::remove_all_extents_t<T>*>(&arr);
 		}
 		template <typename T>
-		FORCE_INLINE typename std::remove_all_extents<T>::type *arrend(T& arr) {
-			return reinterpret_cast<typename std::remove_all_extents<T>::type*>(&arr)+
-			sizeof(T) / sizeof(typename std::remove_all_extents<T>::type);
+		FORCE_INLINE std::remove_all_extents_t<T> *arrend(T& arr) {
+			return reinterpret_cast<std::remove_all_extents_t<T>*>(&arr)+
+			sizeof(T) / sizeof(std::remove_all_extents_t<T>);
 		}
 
 		// For wrapping capturing lambdas in functions accepting void *user

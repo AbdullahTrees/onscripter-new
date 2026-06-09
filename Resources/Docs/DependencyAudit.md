@@ -1,7 +1,7 @@
 # Dependency Audit and Modernization Plan
 
 Date: 2026-05-31
-Updated: 2026-06-07
+Updated: 2026-06-09
 
 This document is the current dependency and renderer modernization status for
 `onscripter-new`. It is intentionally kept as a clean status record, not a
@@ -11,6 +11,8 @@ complete investigation log.
 
 - The supported platform floors have been raised and encoded in the build
   scripts, packaging scripts, and docs.
+- The active C++ language floor has been raised to C++23 for configure/make,
+  Xcode project settings, clang-tidy, and the packed-script helper tools.
 - The old macOS/iOS floor cleanup is complete: unsupported Apple Xcode targets,
   the Snow Leopard-era macOS reloader wrapper, custom MacPorts clang project
   metadata, ARMv7 helper wrappers, and active local static libc++/libc++abi
@@ -120,6 +122,11 @@ complete investigation log.
 - The emergency pause-menu input correction adds no new third-party
   dependencies. It restores the packed-script async button-wait loop after a
   failed script-side no-result rebuild attempt blocked button input.
+- The Config input-hints pass adds no new third-party dependencies. It changes
+  only the packed English script so the old `DualShock` option is labeled
+  `Gamepad`, the row is labeled `Input Hints`, and the Controls popup switches
+  between keyboard/mouse and gamepad binding text according to the saved
+  `control_interface` setting.
 - The pause-menu hover root-cause follow-up adds no new third-party
   dependencies. It changes only packed-script session-info sprite allocation
   and update logic so the live pause-menu polling loop no longer clears normal
@@ -193,6 +200,10 @@ Platform/build modernization:
 - `Dependencies/build.sh` defaults Apple deployment to macOS 14/iOS 17, rejects
   unsupported Apple 32-bit targets, defaults Android to modern arm64 toolchains,
   and recognizes Android x86_64.
+- The 2026-06-09 C++23 migration updates the default configure standard to
+  C++23, keeps Windows release builds on the GNU dialect through
+  `--std=gnu++23`, updates Xcode and tidy settings, and moves the standalone
+  `nscmake`/`nscdec` Makefiles from `c++0x` to `c++23`.
 - The 2026-06-07 Apple floor cleanup narrowed onscrlib Apple SDK discovery to
   macOS 14+/iOS 17+ SDKs, rejects unsupported macOS `i386`/`x86_64h` and iOS
   `armv7`/`armv7s` selections, removes ARMv7 gas-preprocessor/compiler
@@ -243,6 +254,11 @@ SDL3 source path:
   initialization returns, surface formats, palette setup, color keys, image
   loading/saving, mixer APIs, syswm access, events, window state, keyboard,
   mouse, touch, joystick, cursor, and text input.
+- The 2026-06-09 controller support pass uses SDL3's built-in gamepad subsystem
+  for mapped controllers, including live device add/remove handling, normalized
+  DualShock 4-style button mapping, SDL gamepad rumble fallback, and higher
+  analog-stick thresholds with hysteresis. No new dependency was added; raw
+  SDL joystick and existing libusb/native rumble paths remain fallbacks.
 - `Support/SDLMixerCompat.cpp` maps the engine's current SDL2_mixer-style calls
   onto SDL3_mixer's mixer/track/audio model for the call surface used by the
   engine.
@@ -760,6 +776,47 @@ SDL3 source-tagged runtime telemetry:
   `onscripter-new.exe` to `D:\Umineko Project\onscripter-new.exe`. Benchmarks,
   runtime telemetry, and executable boot testing were intentionally not run for
   this package-removal cleanup.
+- The 2026-06-09 C++23 migration rebuilt the local Windows/UCRT64 public
+  release with `--std=gnu++23`, linked successfully with no warning output
+  after replacing deprecated mixed-enum libusb request masks, and copied the
+  rebuilt `onscripter-new.exe` to `D:\Umineko Project\onscripter-new.exe`.
+  The helper `nscmake` and `nscdec` tools were force-rebuilt with `-std=c++23`.
+  Benchmarks, runtime telemetry, and executable boot testing were intentionally
+  not run for this language-level/source-cleanup pass.
+- The 2026-06-09 controller support pass rebuilt the local Windows/UCRT64
+  target after adding SDL3 gamepad hotplug/input routing, DualShock 4-style
+  normalized button mapping, known Sony vendor/product GUID normalization for
+  raw joystick fallback, and less sensitive analog-stick menu navigation. The
+  rebuilt `onscripter-new.exe` was copied to
+  `D:\Umineko Project\onscripter-new.exe`. No dependency changes were needed.
+  Benchmarks, runtime telemetry, and executable boot testing were intentionally
+  not run for this input-routing pass.
+- The same-date controller follow-up added SDL3 gamepad button and axis events
+  to the shared input-event list used by wait and button-monitor actions. This
+  keeps normalized gamepad input on the same script-wait path as keyboard and
+  raw joystick events, instead of only the default global-event pass. The
+  corrected executable was copied to `D:\Umineko Project\onscripter-new.exe`.
+  No dependency changes were needed, and executable boot testing was not run.
+- The same-date Config input-hints follow-up repacked the active English script
+  after renaming the misleading `DualShock` selector to `Gamepad`, changing the
+  setting label to `Input Hints`, and making the Controls popup show
+  controller-specific bindings when `control_interface=pad`. The packed script
+  passed an exact decode round-trip, and the updated `en.file` plus current
+  executable were copied to `D:\Umineko Project`. No dependency changes were
+  needed, and executable boot testing was not run.
+- The same-date controller binding correction added no dependencies. It changes
+  only the engine's gamepad scancode mapping plus the packed English Controls
+  hint text: L1 now uses a dedicated automode scancode, Triangle/Y remains the
+  Message Browser/backlog binding, Options/Start opens the pause menu like
+  Square/X, and R2 trigger input is ignored. The UCRT64 rebuild linked
+  successfully, the packed script passed an exact decode round-trip, and the
+  updated executable plus `en.file` were copied to `D:\Umineko Project`.
+- The same-date L1 automode follow-up added no dependencies. It changes only
+  the engine event path so the dedicated gamepad automode scancode starts
+  automode without storing the same button result used by Cross during
+  `textbtnwait`; active text-button waits are armed with the normal automode
+  timer/voice-wait behavior. The UCRT64 rebuild linked successfully, and the
+  corrected executable was copied to `D:\Umineko Project`.
 
 ## Packaging Notes
 
@@ -777,6 +834,27 @@ SDL3 source-tagged runtime telemetry:
 - The last known-good public SDL3 executable for Umineko Project was copied to
   both `D:\Umineko Project\onscripter-ru.exe` and
   `D:\Umineko Project\onscripter-ru-sdl3-public.exe`.
+
+## Asset Format Pilot
+
+- The 2026-06-07 PNG size pilot checked both verified PNG recompression and
+  lossless WebP/JXL conversion on active Umineko Project assets. PNG
+  recompression verified pixel-identical replacements but saved only about
+  10 MiB across the initial 151 optimized files, so it is not worth a full
+  in-place pass.
+- The representative WebP/JXL pilot sampled 30 PNGs from `backgrounds`,
+  `graphics`, and `sprites` with five largest plus five random files per
+  directory. WebP verified 25 of 30 sampled files with zero pixel mismatches
+  and saved 14.51 MiB from the 64.04 MiB it could encode, or 22.66%. The five
+  failures were tall ending/credits PNGs over WebP's dimension limit.
+- JXL verified all 30 sampled files with zero pixel mismatches and saved
+  27.75 MiB from 179.03 MiB, or 15.50%. Applying the directory-level pilot
+  rates to the full 5.53 GiB PNG corpus estimates roughly 1.1 GiB saved by a
+  universal JXL replacement.
+- The measured savings are not large enough to justify adding WebP/JXL runtime
+  dependencies, changing asset extensions/loading behavior, or splitting
+  oversized assets. The temporary PowerShell pilot scripts were removed, and no
+  WebP/JXL asset conversion work is planned for now.
 
 ## Remaining Work
 

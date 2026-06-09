@@ -38,7 +38,7 @@ void addToPostponedEventChanges(const std::function<void()> &f) {
 }
 
 void addToPostponedEventChanges(const char *str, const std::function<void()> &f) {
-	if (postponedEventChangeLabels.count(str))
+	if (postponedEventChangeLabels.contains(str))
 		return;
 	postponedEventChangeLabels.insert(str);
 	addToPostponedEventChanges(f);

@@ -1999,7 +1999,7 @@ void updateNativeUniformRegister(SDL3GPUProgramObject &program,
 	for (auto &word : reg.words)
 		word = 0;
 
-	const int components = std::max(1, std::min(uniform->components, value.components));
+	const int components = std::clamp(value.components, 1, std::max(1, uniform->components));
 	for (int i = 0; i < components; ++i) {
 		if (uniform->type == SDL3GPUUniformType::Int || uniform->type == SDL3GPUUniformType::Bool) {
 			const int intValue = value.type == SDL3GPUUniformType::Int ? value.intValue : static_cast<int>(value.values[i]);
@@ -2016,7 +2016,7 @@ std::string indexedUniformName(const char *base, int index) {
 }
 
 float clampFloat(float value, float low = 0.0f, float high = 1.0f) {
-	return std::max(low, std::min(high, value));
+	return std::clamp(value, low, high);
 }
 
 SDL3GPUColorF clampColor(SDL3GPUColorF color) {
@@ -2825,7 +2825,7 @@ bool ensureTargetBacking(GPU_Target *target) {
 }
 
 Uint8 clampByte(int value) {
-	return static_cast<Uint8>(std::max(0, std::min(255, value)));
+	return static_cast<Uint8>(std::clamp(value, 0, 255));
 }
 
 SDL_Color readImagePixel(const GPU_Image *image, int x, int y) {
@@ -3239,7 +3239,7 @@ SDL3GPUColorF evaluateShaderPixel(const SDL3GPUProgramObject &program,
 			const int i = static_cast<int>(u * w);
 			const int j = static_cast<int>(v * h);
 			int ii = i + static_cast<int>(amplitude * std::sin(pi * 2.0f * static_cast<float>(j) / wavelength));
-			ii = std::max(0, std::min(w - 1, ii));
+			ii = std::clamp(ii, 0, w - 1);
 			return sampleSlot(textures, 0, static_cast<float>(ii) / w, static_cast<float>(j) / h);
 		}
 
@@ -3349,7 +3349,7 @@ SDL3GPUColorF evaluateShaderPixel(const SDL3GPUProgramObject &program,
 
 		case SDL3GPUShaderKind::RenderSubtitles: {
 			SDL3GPUColorF result{};
-			const int ntextures = std::min(std::max(uniformInt(program, "ntextures"), 0), 8);
+			const int ntextures = std::clamp(uniformInt(program, "ntextures"), 0, 8);
 			const SDL3GPUColorF dstDims = uniformVec4(program, "dstDims", SDL3GPUColorF{textures[0].image ? static_cast<float>(textures[0].image->w) : 1.0f, textures[0].image ? static_cast<float>(textures[0].image->h) : 1.0f, 0.0f, 0.0f});
 			const float absX = dstDims.r * u;
 			const float absY = dstDims.g * v;
@@ -5494,11 +5494,11 @@ Uint32 SDLCALL GPU_LinkManyShaders(Uint32 *shader_objects, int count) {
 }
 
 GPU_bool SDLCALL GPU_LinkShaderProgram(Uint32 program_object) {
-	return program_object != 0 && programObjects.count(program_object) > 0;
+	return program_object != 0 && programObjects.contains(program_object);
 }
 
 void SDLCALL GPU_ActivateShaderProgram(Uint32 program_object, GPU_ShaderBlock *block) {
-	if (program_object != 0 && programObjects.count(program_object) == 0) {
+	if (program_object != 0 && !programObjects.contains(program_object)) {
 		setShaderMessage("Cannot activate unknown SDL3 compatibility shader program");
 		return;
 	}
@@ -5607,7 +5607,7 @@ void SDLCALL GPU_SetUniformfv(int location, int num_elements_per_value, int, flo
 
 	SDL3GPUUniformValue uniform{};
 	uniform.type = SDL3GPUUniformType::FloatVec;
-	uniform.components = std::max(1, std::min(4, num_elements_per_value));
+	uniform.components = std::clamp(num_elements_per_value, 1, 4);
 	for (int i = 0; i < uniform.components; ++i)
 		uniform.values[i] = values[i];
 	programIt->second.uniforms[nameIt->second] = uniform;

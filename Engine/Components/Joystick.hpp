@@ -105,6 +105,7 @@ struct libusb_context;
 static constexpr auto ONS_SCANCODE_MUTE   = static_cast<SDL_Scancode>(SDL_NUM_SCANCODES + 1);
 static constexpr auto ONS_SCANCODE_SKIP   = static_cast<SDL_Scancode>(SDL_NUM_SCANCODES + 2);
 static constexpr auto ONS_SCANCODE_SCREEN = static_cast<SDL_Scancode>(SDL_NUM_SCANCODES + 3);
+static constexpr auto ONS_SCANCODE_AUTOMODE = static_cast<SDL_Scancode>(SDL_NUM_SCANCODES + 4);
 
 class JoystickController : public BaseController {
 	enum class RumbleMethod {
@@ -116,18 +117,27 @@ class JoystickController : public BaseController {
 		SDL_Joystick *handler{};
 		std::array<uint8_t, 16> guid{};
 		int prevAxis{-1};
+		int prevLeftStickAxis{-1};
+		int prevRightStickAxis{-1};
+		int prevTriggerAxis{-1};
+		bool gamepadOwned{false};
 	};
 
 	libusb_context *usbContext{nullptr};
 	bool usingCustomMapping{false};
 	std::unordered_map<SDL_JoystickID, SDL_Haptic *> haptic;
 	std::unordered_map<SDL_JoystickID, Info> joystick;
+#if ONS_USE_SDL3
+	std::unordered_map<SDL_JoystickID, SDL_Gamepad *> gamepads;
+#endif
 	std::unordered_map<uint8_t, SDL_Scancode> customMapping;
 	std::vector<std::unique_ptr<NativeController>> nativeControllers;
 	RumbleMethod preferredRumbleMethod{RumbleMethod::SDL};
 
 	bool rumbleSDL(float strength, int length);
 	bool rumbleLibusb(float strength, int length);
+	bool openDevice(SDL_JoystickID id);
+	void closeDevice(SDL_JoystickID id);
 
 protected:
 	int ownInit() override;
@@ -144,9 +154,16 @@ public:
 			preferredRumbleMethod = RumbleMethod::SDL;
 	}
 	bool rumble(float strength, int length);
+	void handleDeviceAdded(SDL_JoystickID id);
+	void handleDeviceRemoved(SDL_JoystickID id);
+	bool isGamepadActive(SDL_JoystickID id) const;
 	SDL_Scancode transButton(uint8_t button, SDL_JoystickID id);
 	SDL_Scancode transHat(uint8_t button, SDL_JoystickID id);
 	SDL_Event transAxis(SDL_JoyAxisEvent &axisEvent);
+#if ONS_USE_SDL3
+	SDL_Scancode transGamepadButton(uint8_t button, SDL_JoystickID id);
+	SDL_Event transGamepadAxis(SDL_GamepadAxisEvent &axisEvent);
+#endif
 	libusb_context *getUsbContext();
 	void handleUsbEvents();
 };

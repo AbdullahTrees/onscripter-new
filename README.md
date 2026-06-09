@@ -39,7 +39,7 @@ For the current Windows public-release build used with packaged Umineko Project
 data:
 
 ```sh
-./configure --release-build --strip-binary --std=gnu++14
+./configure --release-build --strip-binary --std=gnu++23
 make -j8
 ```
 
