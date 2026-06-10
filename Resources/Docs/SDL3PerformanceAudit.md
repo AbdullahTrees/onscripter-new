@@ -1,7 +1,7 @@
 # SDL3 Performance Audit
 
 Date: 2026-06-02
-Updated: 2026-06-09
+Updated: 2026-06-10
 
 This audit covers the SDL3 default renderer path, with emphasis on
 `Engine/Graphics/SDL3GPUCompat.cpp` because that layer currently adapts the
@@ -1530,6 +1530,85 @@ the active text-button wait by arming its automode timer/voice wait instead of
 directly setting button result `0`, so L1 does not behave as a one-sentence
 advance. The UCRT64 rebuild linked successfully, the rebuilt executable was
 copied to `D:\Umineko Project`, and no executable boot test was run.
+
+Music Box/debug unlock script follow-up: this pass only changes the decoded
+English script. Music Box entries that play opening videos are now labeled with
+`(Video)` in every title language table, and a `debug_unlock_all` forced config
+key plus hidden title-screen `C` shortcut unlocks episodes, chapter read flags,
+character state, omake state, Music Box, CGs, and trophies without writing a
+numbered save slot. The script repacked and round-tripped exactly; `make -j8`
+reported the binary target was already current, and the current executable plus
+updated `en.file` were copied to `D:\Umineko Project`. No executable boot test,
+benchmark, or runtime telemetry was run.
+
+Debug unlock coverage correction: this script-only follow-up makes
+`debug_unlock_all` unlock the same Music Box IDs and Picture Box slots that the
+UIs enumerate, including Rondo BGM IDs 94 and 1011, display-only Rondo CG slots
+57 through 59, and Chiru-only Music Box entries. The script repacked and
+round-tripped exactly; `make -j8` reported the binary target was already
+current, and the current executable plus updated `en.file` were copied to
+`D:\Umineko Project`. No executable boot test, benchmark, or runtime telemetry
+was run.
+
+Music Box selection-display follow-up: this script-only pass stores localized
+BGM titles in the existing Music Box scrollable tree and shows the active normal
+BGM selection in a centered footer sprite using the existing BGM-title
+music-note styling and a short slide-in. Video entries clear the footer before
+launching playback because they stop looping Music Box BGM. The script repacked
+and round-tripped exactly; `make -j8` reported the binary target was already
+current, and the current executable plus updated `en.file` were copied to
+`D:\Umineko Project`. No executable boot test, benchmark, or runtime telemetry
+was run.
+
+Music Box footer visibility correction: this script-only pass moves the footer
+display from story-layer sprite `748` to Music Box-local sprite `304`, which
+draws above the menu overlay, scrollable list, and footer controls. It also
+forces an immediate repaint after creating or clearing the footer sprite. The
+script repacked and round-tripped exactly; `make -j8` reported the binary
+target was already current, and the current executable plus updated `en.file`
+were copied to `D:\Umineko Project`. No executable boot test, benchmark, or
+runtime telemetry was run.
+
+Picture Box variant-badge follow-up: this script-only pass overlays small
+outlined count sprites on unlocked Picture Box thumbnails that open multiple
+gallery images. The counts follow the actual Rondo/Chiru gallery jump targets,
+and the overlay sprite IDs are included in the existing thumbnail page-slide
+animation. The script repacked and round-tripped exactly; `make -j8` reported
+the binary target was already current, and the current executable plus updated
+`en.file` were copied to `D:\Umineko Project`. No executable boot test,
+benchmark, or runtime telemetry was run.
+
+Picture Box badge placement correction: this script-only follow-up widens the
+badge text sprite, adds explicit border padding around the outlined digit
+sprite to avoid right/bottom clipping, and moves the shared badge anchor almost
+flush with each thumbnail's bottom-right corner. The script repacked and
+round-tripped exactly; `make -j8` reported the binary target was already
+current, and the current executable plus updated `en.file` were copied to
+`D:\Umineko Project`. No executable boot test, benchmark, or runtime telemetry
+was run.
+
+Trophies text/color follow-up: this script-only pass removes the extra manual
+description-line breaks from the two long playtime/click-count trophy entries,
+updates the Platinum trophy description to the requested PERFECTO text, and
+changes the Platinum rarity text to a cooler PSN-style blue-white. The script
+repacked and round-tripped exactly; `make -j8` reported the binary target was
+already current, and the current executable plus updated `en.file` were copied
+to `D:\Umineko Project`. No executable boot test, benchmark, or runtime
+telemetry was run.
+
+Title loading/title caption follow-up: the title loading screen now queues its
+image prewarm work with `async_cache_img` and drains it with a new
+`cache_wait_img` command that pumps `waitEvent(0)` between async completions,
+so the visible loading sprite animation is no longer blocked by each
+synchronous cache load. The companion `cache_wait_snd` command shares the same
+queue-drain path for future script use. The engine caption hardening now maps
+recognized Rondo/Chiru caption requests to pinned titles, including
+`Umineko no Naku Koro ni: ~Nocturne of Truth and Illusions~` for Chiru, while
+the Platinum trophy description color-codes only `<IT'S PERFECTO>!` red. The
+script repacked and round-tripped exactly; the UCRT64 rebuild linked
+successfully, and the rebuilt executable plus updated `en.file` were copied to
+`D:\Umineko Project`. No executable boot test, benchmark, or runtime telemetry
+was run.
 
 ## Findings
 

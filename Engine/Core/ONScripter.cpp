@@ -220,6 +220,8 @@ static std::unordered_map<HashedString, CommandFunc> func_lut{
     {"cell2", &ONScripter::cellCommand},
     {"cache_slot_snd", &ONScripter::cacheSlotTypeCommand},
     {"cache_slot_img", &ONScripter::cacheSlotTypeCommand},
+    {"cache_wait_snd", &ONScripter::cacheWaitCommand},
+    {"cache_wait_img", &ONScripter::cacheWaitCommand},
     {"cache_snd", &ONScripter::loadCacheCommand},
     {"cache_img", &ONScripter::loadCacheCommand},
     {"border_padding", &ONScripter::borderPaddingCommand},

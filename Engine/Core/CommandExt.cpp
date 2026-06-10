@@ -3216,6 +3216,34 @@ int ONScripter::asyncLoadCacheCommand() {
 	return RET_CONTINUE;
 }
 
+int ONScripter::cacheWaitCommand() {
+	// Parameters: none. Drains pending async cache work while keeping timed UI animations alive.
+	AsyncInstructionQueue &queue = script_h.isName("cache_wait_img") ? async.imageCacheQueue : async.soundCacheQueue;
+
+	while (onsTryWaitSemaphore(queue.resultsWaiting)) {}
+
+	int old_event_mode = event_mode;
+	event_mode         = IDLE_EVENT_MODE;
+	preventExit(true);
+	while (true) {
+		SDL_AtomicLock(&queue.lock);
+		bool done = queue.q.empty() && !queue.thread;
+		SDL_AtomicUnlock(&queue.lock);
+		if (done)
+			break;
+
+		onsWaitSemaphoreTimeout(queue.resultsWaiting, 1);
+		waitEvent(0);
+		event_mode = IDLE_EVENT_MODE;
+	}
+	preventExit(false);
+	event_mode = old_event_mode;
+
+	while (onsTryWaitSemaphore(queue.resultsWaiting)) {}
+
+	return RET_CONTINUE;
+}
+
 int ONScripter::loadCacheCommand() {
 	// Parameters: ID, filename (no tags!), optional bool allow_rgb (true by default)
 

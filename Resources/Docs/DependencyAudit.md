@@ -1,7 +1,7 @@
 # Dependency Audit and Modernization Plan
 
 Date: 2026-05-31
-Updated: 2026-06-09
+Updated: 2026-06-10
 
 This document is the current dependency and renderer modernization status for
 `onscripter-new`. It is intentionally kept as a clean status record, not a
@@ -154,6 +154,22 @@ complete investigation log.
   foreground sprite range so the dim overlay does not occlude it, pins the
   fixed-width listing box to the canvas center, and scopes the width tag around
   the full popup body so every listing line uses that same centered wrap area.
+- The 2026-06-10 Trophies UI polish pass adds no new third-party dependencies.
+  It changes only packed-script trophy text aliases so unlocked entries show
+  the trophy name and colored rarity parenthetical on one line, followed by the
+  description.
+- The same-date Trophies scrollbar follow-up adds no third-party dependencies.
+  It changes only shared engine input handling for special scrollables so a
+  visible scrollbar thumb can be left-click dragged without producing a
+  script-visible button result. The corrected input path captures the raw
+  left mouse-down before normal `btndown` filtering so `btnwait2` menus can
+  start thumb drags without enabling script-visible button-down reporting.
+- The same-date title-loading/title-caption follow-up adds no third-party
+  dependencies. It uses the existing async cache queues, SDL semaphores, and
+  wait-event frame pump so the title loading animation remains active while
+  queued cache prewarm work drains. It also keeps the window-title hardening by
+  mapping recognized Rondo/Chiru captions to pinned titles instead of accepting
+  arbitrary script caption text.
 
 ## Support Floor
 
@@ -833,6 +849,86 @@ SDL3 source-tagged runtime telemetry:
   `D:\Umineko Project\onscripter-new.exe`. Benchmarks, runtime telemetry, and
   executable boot testing were intentionally not run for this source-level
   performance pass.
+- The 2026-06-10 Trophies UI polish pass repacked the active English script
+  after changing unlocked trophy entries from separate rarity/name/description
+  lines to name plus colored rarity parenthetical, then description. The packed
+  script passed an exact decode round-trip. `make -j8` reported the binary
+  target was already current, and the current `onscripter-new.exe` plus updated
+  `en.file` were copied to `D:\Umineko Project`. Per project instruction, the
+  executable was not booted.
+- The same-date Trophies scrollbar follow-up rebuilt the local Windows/UCRT64
+  target after adding shared special-scrollable thumb dragging and correcting
+  the capture path to run before the normal `btndown` mouse-down filter used
+  by `btnwait2` menus. The rebuilt `onscripter-new.exe` was copied to
+  `D:\Umineko Project`; no packed-script rebuild was needed, and per project
+  instruction the executable was not booted.
+- The same-date Music Box/debug unlock script pass added no dependencies. It
+  appends `(Video)` to the Music Box entries that dispatch to opening movies in
+  all title-language tables, and adds a `debug_unlock_all` forced config key
+  plus a hidden title-screen `C` shortcut that unlocks episodes, read flags,
+  character state, omake state, Music Box, CGs, and trophies without touching
+  numbered save slots. The packed English script passed an exact decode
+  round-trip. `make -j8` reported the binary target was already current, and
+  the current `onscripter-new.exe` plus updated `en.file` were copied to
+  `D:\Umineko Project`. Per project instruction, the executable was not booted.
+- The same-date debug unlock follow-up added no dependencies. It changes the
+  hidden unlock path to mark the exact Music Box IDs and Picture Box slots shown
+  by those UIs, including Rondo BGM IDs 94 and 1011, display-only Rondo CG slots
+  57 through 59, and Chiru-only Music Box entries. The packed English script
+  passed an exact decode round-trip. `make -j8` reported the binary target was
+  already current, and the current `onscripter-new.exe` plus updated `en.file`
+  were copied to `D:\Umineko Project`. Per project instruction, the executable
+  was not booted.
+- The same-date Music Box selection-display pass added no dependencies. It
+  stores each row's localized BGM title in the existing scrollable tree and
+  uses the existing BGM-title preset/music-note styling for a centered footer
+  now-playing display, clearing it before video entries launch. The packed
+  English script passed an exact decode round-trip. `make -j8` reported the
+  binary target was already current, and the current `onscripter-new.exe` plus
+  updated `en.file` were copied to `D:\Umineko Project`. Per project
+  instruction, the executable was not booted.
+- The immediate Music Box footer correction added no dependencies. It changes
+  the selection-display sprite from story-layer sprite `748` to Music Box-local
+  sprite `304` so the footer draws above the menu overlay and scrollable list,
+  and it repaints immediately after creating or clearing that sprite. The
+  packed English script passed an exact decode round-trip. `make -j8` reported
+  the binary target was already current, and the current `onscripter-new.exe`
+  plus updated `en.file` were copied to `D:\Umineko Project`. Per project
+  instruction, the executable was not booted.
+- The same-date Picture Box variant-badge pass added no dependencies. It uses
+  existing script text sprites, the existing Picture Box thumbnail grid, and
+  existing page-slide animation commands to display small variant counts on
+  unlocked thumbnails that open multiple full-image variants. The packed English
+  script passed an exact decode round-trip. `make -j8` reported the binary
+  target was already current, and the current `onscripter-new.exe` plus updated
+  `en.file` were copied to `D:\Umineko Project`. Per project instruction, the
+  executable was not booted.
+- The immediate Picture Box badge placement correction added no dependencies.
+  It only widens the existing badge text sprite, adds explicit border padding
+  around the outlined digit sprite, and adjusts the shared badge offset so the
+  count sits almost flush with each thumbnail's bottom-right corner. The packed
+  English script passed an exact decode round-trip. `make -j8` reported the
+  binary target was already current, and the current `onscripter-new.exe` plus
+  updated `en.file` were copied to `D:\Umineko Project`. Per project
+  instruction, the executable was not booted.
+- The same-date Trophies text follow-up added no dependencies. It only changes
+  packed-script trophy text aliases: removes the extra manual line breaks from
+  the long playtime/click-count descriptions, updates the Platinum description,
+  and changes the Platinum rarity color to a cooler PSN-style blue-white. The
+  packed English script passed an exact decode round-trip. `make -j8` reported
+  the binary target was already current, and the current `onscripter-new.exe`
+  plus updated `en.file` were copied to `D:\Umineko Project`. Per project
+  instruction, the executable was not booted.
+- The same-date title-loading/title-caption follow-up added no dependencies.
+  It introduces narrow `cache_wait_img`/`cache_wait_snd` script commands,
+  changes the title loading image prewarm from blocking `cache_img` calls to
+  queued `async_cache_img` plus a queue wait that pumps UI frames, maps Chiru's
+  caption to `Umineko no Naku Koro ni: ~Nocturne of Truth and Illusions~`, and
+  color-codes only `<IT'S PERFECTO>!` red in the Platinum trophy description.
+  The packed English script passed an exact decode round-trip. The UCRT64
+  rebuild linked successfully, and the rebuilt `onscripter-new.exe` plus
+  updated `en.file` were copied to `D:\Umineko Project`. Per project
+  instruction, the executable was not booted.
 
 ## Packaging Notes
 

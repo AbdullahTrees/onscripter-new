@@ -64,7 +64,9 @@ const int DEFAULT_AUDIO_RATE = 48000;
 const int DEFAULT_AUDIOBUF   = 2048;
 const int DEFAULT_FPS        = 30;
 
-static constexpr const char *DEFAULT_WM_TITLE = "Umineko no Naku Koro ni: ~Rondo of the Witch and Reasoning~";
+static constexpr const char *RONDO_WM_TITLE   = "Umineko no Naku Koro ni: ~Rondo of the Witch and Reasoning~";
+static constexpr const char *CHIRU_WM_TITLE   = "Umineko no Naku Koro ni: ~Nocturne of Truth and Illusions~";
+static constexpr const char *DEFAULT_WM_TITLE = RONDO_WM_TITLE;
 
 const int ONS_MIX_CHANNELS = 50;
 
@@ -330,6 +332,7 @@ public:
 	int childImageCommand();
 	int changeFontCommand();
 	int cacheSlotTypeCommand();
+	int cacheWaitCommand();
 	int borderPaddingCommand();
 	int blurCommand();
 	int blendModeCommand();
@@ -661,6 +664,9 @@ protected:
 	bool touchEvent(SDL_Event &event, EventProcessingState &state);
 	bool mouseScrollEvent(SDL_MouseWheelEvent &event, EventProcessingState &state);
 	bool mouseMoveEvent(SDL_MouseMotionEvent &event, EventProcessingState &state);
+	bool beginScrollableScrollbarDrag(int x, int y);
+	bool updateScrollableScrollbarDrag(int x, int y);
+	void endScrollableScrollbarDrag();
 	void flushEventSub(SDL_Event &event);
 	void flushEvent();
 	void handleSDLEvents();
@@ -861,6 +867,14 @@ private:
 	AnimationInfo btndef_info;
 
 	ButtonState current_button_state, last_mouse_state;
+	struct ScrollbarDragState {
+		int scrollableSprite{-1};
+		int grabOffsetY{0};
+
+		bool active() const {
+			return scrollableSprite >= 0;
+		}
+	} scrollbarDragState;
 
 	struct ButtonLink {
 		enum BUTTON_TYPE {

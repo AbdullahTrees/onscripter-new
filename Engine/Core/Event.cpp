@@ -494,6 +494,63 @@ void ONScripter::trapHandler() {
 /* **************************************** *
  * Event handlers
  * **************************************** */
+bool ONScripter::beginScrollableScrollbarDrag(int x, int y) {
+	for (int i = MAX_SPRITE_NUM - 1; i >= 0; --i) {
+		AnimationInfo &ai                 = sprite_info[i];
+		AnimationInfo::ScrollableInfo &si = ai.scrollableInfo;
+		if (!ai.visible || !ai.exists || !si.isSpecialScrollable || !si.respondsToMouseOver || !si.scrollbar)
+			continue;
+		if (si.totalHeight <= ai.scrollable.h || si.scrollbarHeight <= 0)
+			continue;
+
+		AnimationInfo *scrollbar = si.scrollbar;
+		if (!scrollbar->visible || !scrollbar->exists)
+			continue;
+		if (x < scrollbar->pos.x || x >= scrollbar->pos.x + scrollbar->pos.w ||
+		    y < scrollbar->pos.y || y >= scrollbar->pos.y + scrollbar->pos.h)
+			continue;
+
+		scrollbarDragState.scrollableSprite = i;
+		scrollbarDragState.grabOffsetY      = y - scrollbar->pos.y;
+		return true;
+	}
+
+	return false;
+}
+
+bool ONScripter::updateScrollableScrollbarDrag(int x, int y) {
+	if (!scrollbarDragState.active())
+		return false;
+
+	if (scrollbarDragState.scrollableSprite < 0 || scrollbarDragState.scrollableSprite >= MAX_SPRITE_NUM) {
+		endScrollableScrollbarDrag();
+		return false;
+	}
+
+	AnimationInfo &ai                 = sprite_info[scrollbarDragState.scrollableSprite];
+	AnimationInfo::ScrollableInfo &si = ai.scrollableInfo;
+	if (!ai.visible || !ai.exists || !si.isSpecialScrollable || !si.scrollbar ||
+	    si.totalHeight <= ai.scrollable.h || si.scrollbarHeight <= 0) {
+		endScrollableScrollbarDrag();
+		return false;
+	}
+
+	const int thumbY    = std::clamp(y - scrollbarDragState.grabOffsetY, si.scrollbarTop, si.scrollbarTop + si.scrollbarHeight);
+	const int maxScroll = si.totalHeight - ai.scrollable.h;
+	const int targetY   = ((thumbY - si.scrollbarTop) * maxScroll + si.scrollbarHeight / 2) / si.scrollbarHeight;
+
+	dynamicProperties.addSpriteProperty(&ai, scrollbarDragState.scrollableSprite, false, true,
+	                                    SPRITE_PROPERTY_SCROLLABLE_Y, targetY, 0, MOTION_EQUATION_LINEAR, true);
+	si.snapType = AnimationInfo::ScrollSnap::NONE;
+	mouseOverCheck(x, y, true);
+	flush(refreshMode());
+	return true;
+}
+
+void ONScripter::endScrollableScrollbarDrag() {
+	scrollbarDragState = ScrollbarDragState();
+}
+
 bool ONScripter::mouseMoveEvent(SDL_MouseMotionEvent &event, EventProcessingState &state) {
 	controlMode = ControlMode::Mouse;
 
@@ -502,6 +559,9 @@ bool ONScripter::mouseMoveEvent(SDL_MouseMotionEvent &event, EventProcessingStat
 	window.translateWindowToScriptCoords(state.buttonState.x, state.buttonState.y);
 
 	if (event_mode & WAIT_BUTTON_MODE) {
+		if (updateScrollableScrollbarDrag(state.buttonState.x, state.buttonState.y))
+			return false;
+
 		mouseOverCheck(state.buttonState.x, state.buttonState.y);
 		if (getmouseover_flag && hoveringButton &&
 		    (hoveredButtonNumber >= getmouseover_min) &&
@@ -660,6 +720,11 @@ bool ONScripter::mousePressEvent(SDL_MouseButtonEvent &event, EventProcessingSta
 	bool btn_right  = event.button == SDL_BUTTON_RIGHT;
 	bool btn_middle = event.button == SDL_BUTTON_MIDDLE;
 
+	if (btn_left && type_up && scrollbarDragState.active()) {
+		endScrollableScrollbarDrag();
+		return false;
+	}
+
 	if (automode_flag)
 		return checkClearAutomode(state, type_up);
 
@@ -674,6 +739,11 @@ bool ONScripter::mousePressEvent(SDL_MouseButtonEvent &event, EventProcessingSta
 
 	if (checkClearSkip(state))
 		return true;
+
+	if ((event_mode & WAIT_BUTTON_MODE) && btn_left) {
+		if (type_down && beginScrollableScrollbarDrag(state.buttonState.x, state.buttonState.y))
+			return false;
+	}
 
 	if (!mouseButtonDecision(state, btn_left, btn_right, btn_middle, type_up, type_down))
 		return false;
@@ -1584,6 +1654,15 @@ void ONScripter::runEventLoop() {
 #else
 
 					case SDL_MOUSEBUTTONDOWN:
+						if (state.skipMode & SKIP_SUPERSKIP)
+							break;
+						if ((event_mode & WAIT_BUTTON_MODE) && event->button.button == SDL_BUTTON_LEFT) {
+							int x = event->button.x;
+							int y = event->button.y;
+							window.translateWindowToScriptCoords(x, y);
+							if (beginScrollableScrollbarDrag(x, y))
+								break;
+						}
 						if (!btndown_flag)
 							break;
 						/* fall through */
