@@ -530,7 +530,9 @@ bool ensureImagePixelStorage(GPU_Image *image) {
 }
 
 void discardCleanImagePixels(GPU_Image *image) {
-	if (!image || image->pixels_dirty || image->pixels.empty())
+	if (!image || image->pixels.empty())
+		return;
+	if (image->pixels_dirty && !image->texture_initialized && !image->pixels_solid)
 		return;
 	std::vector<Uint8>().swap(image->pixels);
 }
@@ -2116,10 +2118,7 @@ void unregisterImageTexture(GPU_Image *image) {
 		liveTextureImages.erase(image);
 }
 
-bool createTexture(GPU_Image *image) {
-	if (!image || !rendererState.device)
-		return false;
-
+SDL_GPUTexture *createTextureObject(const GPU_Image *image, Uint32 mipLevels) {
 	SDL_GPUTextureCreateInfo textureInfo{};
 	textureInfo.type                 = SDL_GPU_TEXTURETYPE_2D;
 	textureInfo.format               = textureFormat(image->format);
@@ -2127,10 +2126,17 @@ bool createTexture(GPU_Image *image) {
 	textureInfo.width                = image->w;
 	textureInfo.height               = image->h;
 	textureInfo.layer_count_or_depth = 1;
-	textureInfo.num_levels           = std::max<Uint32>(1, image->mip_level_count);
+	textureInfo.num_levels           = std::max<Uint32>(1, mipLevels);
 	textureInfo.sample_count         = SDL_GPU_SAMPLECOUNT_1;
 
-	image->texture = SDL_CreateGPUTexture(rendererState.device, &textureInfo);
+	return SDL_CreateGPUTexture(rendererState.device, &textureInfo);
+}
+
+bool createTexture(GPU_Image *image) {
+	if (!image || !rendererState.device)
+		return false;
+
+	image->texture = createTextureObject(image, image->mip_level_count);
 	registerImageTexture(image);
 	return image->texture != nullptr;
 }
@@ -2717,6 +2723,24 @@ void releaseAllImageTextures() {
 	liveTextureImages.clear();
 }
 
+bool copyTextureBaseLevel(SDL_GPUTexture *sourceTexture, SDL_GPUTexture *destinationTexture, Uint16 width, Uint16 height) {
+	if (!sourceTexture || !destinationTexture || !rendererState.device)
+		return false;
+
+	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	if (!commands)
+		return false;
+
+	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
+	SDL_GPUTextureLocation source{};
+	source.texture = sourceTexture;
+	SDL_GPUTextureLocation destination{};
+	destination.texture = destinationTexture;
+	SDL_CopyGPUTextureToTexture(copyPass, &source, &destination, width, height, 1, true);
+	SDL_EndGPUCopyPass(copyPass);
+	return submitGPUCommandBuffer(commands);
+}
+
 bool recreateImageTextureForMipmaps(GPU_Image *image) {
 	if (!image || !rendererState.device)
 		return false;
@@ -2726,6 +2750,24 @@ bool recreateImageTextureForMipmaps(GPU_Image *image) {
 		return false;
 	if (image->texture && image->mip_level_count >= levels)
 		return true;
+
+	if (image->texture && image->texture_initialized) {
+		SDL_GPUTexture *oldTexture = image->texture;
+		SDL_GPUTexture *newTexture = createTextureObject(image, levels);
+		if (newTexture && copyTextureBaseLevel(oldTexture, newTexture, image->w, image->h)) {
+			SDL_ReleaseGPUTexture(rendererState.device, oldTexture);
+			image->texture = newTexture;
+			image->mip_level_count = levels;
+			image->texture_initialized = true;
+			image->has_mipmaps = false;
+			if (image->target)
+				image->target->texture = newTexture;
+			registerImageTexture(image);
+			return true;
+		}
+		if (newTexture)
+			SDL_ReleaseGPUTexture(rendererState.device, newTexture);
+	}
 
 	ensureImagePixelsCurrent(image);
 	releaseImageTexture(image);
@@ -4991,18 +5033,47 @@ void SDLCALL GPU_UpdateImage(GPU_Image *image, const GPU_Rect *image_rect, SDL_S
 	}
 
 	const SDL_Rect bounds{copyDstX, copyDstY, copyW, copyH};
-	if (!imageRectCoversImage(image, bounds)) {
+	const bool coversImage = imageRectCoversImage(image, bounds);
+	if (!coversImage) {
 		ensureImagePixelsCurrent(image);
-		if (image->pixels_dirty)
+		if (image->pixels_dirty) {
+			if (freeWorking)
+				SDL_FreeSurface(working);
 			return;
+		}
 	}
-	if (!ensureImagePixelStorage(image)) {
+
+	if (SDL_MUSTLOCK(working) && !SDL_LockSurface(working)) {
 		if (freeWorking)
 			SDL_FreeSurface(working);
 		return;
 	}
 
-	if (SDL_MUSTLOCK(working) && !SDL_LockSurface(working)) {
+	if (coversImage && srcBpp == image->bytes_per_pixel) {
+		const int rowBytes = copyW * image->bytes_per_pixel;
+		const auto *src = static_cast<const Uint8 *>(working->pixels) + copySrcY * working->pitch + copySrcX * srcBpp;
+		const bool uploaded = uploadImageRows(image,
+		                                      bounds,
+		                                      src,
+		                                      static_cast<Uint32>(rowBytes),
+		                                      static_cast<Uint32>(working->pitch),
+		                                      "update_image",
+		                                      true);
+		if (SDL_MUSTLOCK(working))
+			SDL_UnlockSurface(working);
+		if (freeWorking)
+			SDL_FreeSurface(working);
+		if (uploaded) {
+			std::vector<Uint8>().swap(image->pixels);
+			image->pixels_dirty = false;
+			image->pixels_solid = false;
+		}
+		return;
+	}
+
+	if (!ensureImagePixelStorage(image)) {
+		if (SDL_MUSTLOCK(working))
+			SDL_UnlockSurface(working);
 		if (freeWorking)
 			SDL_FreeSurface(working);
 		return;
@@ -5621,14 +5692,17 @@ GPU_bool SDLCALL GPU_MultiplyAlpha(GPU_Image *image, const GPU_Rect *dst_clip) {
 	GPU_Target *target = GPU_GetTarget(image);
 	if (!target)
 		return false;
-	ensureImagePixelsCurrent(image);
-	if (image->pixels.empty())
-		return false;
 
 	const GPU_Rect full{0.0f, 0.0f, static_cast<float>(image->w), static_cast<float>(image->h)};
 	const SDL_Rect bounds = imagePixelBounds(image, dst_clip ? *dst_clip : full);
 	if (bounds.w <= 0 || bounds.h <= 0)
 		return true;
+	if (!dst_clip && rendererState.device && image->texture)
+		return false;
+
+	ensureImagePixelsCurrent(image);
+	if (image->pixels.empty())
+		return false;
 
 	for (int y = bounds.y; y < bounds.y + bounds.h; ++y) {
 		auto *row = image->pixels.data() + y * image->pitch;

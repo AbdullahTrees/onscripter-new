@@ -47,6 +47,8 @@ class SubtitleLayer : public Layer {
 	const size_t frameQueueMaxSize{10};
 	std::deque<SubtitleFrame> frameQueue; //TODO: replace by a ring buffer
 	SDL_mutex *frameQueueMutex{nullptr};
+	SDL_semaphore *frameQueueDataSemaphore{nullptr};
+	SDL_semaphore *frameQueueSpaceSemaphore{nullptr};
 
 	SDL_semaphore *threadSemaphore{nullptr};
 	std::atomic<bool> should_finish{false};

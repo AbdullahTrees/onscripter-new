@@ -141,6 +141,11 @@ complete investigation log.
   native sampler bindings for triangle batches and `av_frame_clone()` for
   retained hardware-converted video frames, while keeping game timing and
   visual/audio output quality unchanged.
+- The 2026-06-09 medium whole-codebase performance pass adds no new third-party
+  dependencies. It uses existing SDL semaphores and SDL3_GPU texture-copy,
+  transfer-buffer, and native shader paths to reduce subtitle queue polling,
+  CPU image mirrors, full-image alpha premultiplication loops, and mipmap
+  readback/reupload work while leaving script timing math unchanged.
 - The Config controls layout and polish follow-ups add no new third-party
   dependencies. They change only packed-script Config button positioning, the
   restart action label, and the modal controls/keybind reference styling and
@@ -817,6 +822,17 @@ SDL3 source-tagged runtime telemetry:
   `textbtnwait`; active text-button waits are armed with the normal automode
   timer/voice-wait behavior. The UCRT64 rebuild linked successfully, and the
   corrected executable was copied to `D:\Umineko Project`.
+- The same-date medium whole-codebase performance pass added no dependencies.
+  It replaces subtitle decode/display queue spin-sleeps with semaphores,
+  streams full-surface `GPU_UpdateImage()` uploads directly to SDL3_GPU,
+  routes full-image alpha premultiplication through the existing native
+  `multiplyAlpha.frag` shader path, discards stale CPU mirrors when texture
+  data is authoritative, and recreates mipmapped textures with a GPU-to-GPU
+  base-level copy when possible. The UCRT64 rebuild linked successfully without
+  warning output, and the rebuilt `onscripter-new.exe` was copied to
+  `D:\Umineko Project\onscripter-new.exe`. Benchmarks, runtime telemetry, and
+  executable boot testing were intentionally not run for this source-level
+  performance pass.
 
 ## Packaging Notes
 
@@ -864,8 +880,9 @@ SDL3 source-tagged runtime telemetry:
    device changes, and pause/resume behavior under SDL3_mixer, including a
    fade-heavy listening pass after the high-resolution gain and shared
    `dwave`/`ach_prop` fade-priming changes.
-3. Add more source attribution for `ensure_pixels_current` callers so future
-   readbacks are not left in a generic bucket.
+3. Verify the GPU-to-GPU mipmap recreation path removes the previous
+   `generate_mipmaps`/`ensure_pixels_current` readback pair, then add more
+   source attribution for any remaining generic readback callers.
 4. Use source-tagged SDL3_GPU transfer telemetry from representative
    playthroughs to shrink the largest remaining readback/upload sources.
 5. Continue monitoring Vulkan validation output during longer SDL3_GPU

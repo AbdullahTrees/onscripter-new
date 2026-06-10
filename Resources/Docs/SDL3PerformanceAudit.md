@@ -1444,6 +1444,37 @@ successfully with no warning output after the libusb enum-mask cleanup. No
 benchmark, runtime telemetry, or executable boot test was run for this
 language-level cleanup.
 
+### Medium Whole-Codebase Performance Pass
+
+The same-date medium pass targets CPU, RAM, and upload/readback pressure while
+leaving frame pacing, wait timing, shader output, audio output, and script
+visible behavior unchanged:
+
+- Subtitle decode/display queues now use SDL semaphores for decoded-data and
+  freed-space wakeups instead of 1 ms producer/consumer spin-sleeps. The
+  subtitle timestamp state is updated under the queue mutex so the renderer and
+  decoder threads no longer race on `decoded_timestamp`.
+- Full-destination `GPU_UpdateImage()` calls with matching source/destination
+  pixel size now stream the SDL surface rows directly into the reusable
+  SDL3_GPU transfer buffer. The CPU mirror is not built for those full uploads;
+  partial updates and conversion-heavy updates keep the existing synchronized
+  CPU mirror path.
+- Full-image `GPU_MultiplyAlpha()` on SDL3 now falls through to the existing
+  `multiplyAlpha.frag` shader path, which has embedded native SPIR-V coverage,
+  instead of doing the premultiply loop on the CPU. Clipped premultiply keeps
+  the old CPU path because small rectangles can be cheaper than a full-image
+  temporary render pass.
+- `GPU_DiscardImagePixels()` now discards stale CPU mirrors when the GPU
+  texture is authoritative, reducing retained RAM after shader writes.
+- Mipmap texture recreation now creates the replacement mipmapped texture and
+  copies mip level 0 GPU-to-GPU before `SDL_GenerateMipmapsForGPUTexture()`.
+  The previous CPU synchronization/reupload path remains as fallback.
+
+Status: the local UCRT64 `make -j8` rebuild linked successfully without warning
+output, and the rebuilt `onscripter-new.exe` was copied to
+`D:\Umineko Project\onscripter-new.exe`. No benchmark, runtime telemetry, or
+executable boot test was run for this source-level performance pass.
+
 ### SDL3 Gamepad Input Follow-Up
 
 The 2026-06-09 controller support pass moves mapped controllers onto SDL3's
@@ -1521,12 +1552,16 @@ recorded four 1920x1080 readbacks totaling 33.18 MB, apparently paired with
 from `alphaOutsideTextures.frag` CPU fallback; the source now embeds native
 SPIR-V for the full built-in fragment shader inventory. The 2026-06-03
 post-triangle-batching startup/video telemetry run again recorded zero readbacks
-and zero CPU shader fallback in that path.
+and zero CPU shader fallback in that path. The 2026-06-09 medium performance
+pass changes mipmap texture recreation to copy the rendered base level
+GPU-to-GPU before generating mipmaps, which should remove the paired
+`generate_mipmaps` readback/reupload when the source texture is already current
+on the GPU.
 
-Next step: add direct source attribution for future `ensure_pixels_current`
-readbacks, starting with the `generate_mipmaps` path, then re-run representative
-shader telemetry points to verify the newly embedded built-in SPIR-V paths no
-longer create CPU fallback readbacks.
+Next step: re-run source-tagged telemetry through the screenshot/downscale path
+to verify `generate_mipmaps` no longer produces `ensure_pixels_current`
+readbacks, then keep adding direct attribution for any remaining generic
+readback sources.
 
 ### 2. Built-In Fragment Shader Bytecode Coverage Is Static-Complete
 
@@ -1659,8 +1694,8 @@ resolution changes.
 2. Run a fade-heavy audio listening pass to verify the SDL3_mixer high-resolution
    gain path, channel restart cleanup, and shared `dwave`/`ach_prop` fade
    priming behavior.
-3. Attribute the latest `generate_mipmaps`/`ensure_pixels_current` 1920x1080
-   readback pair so future readbacks are not left in a generic bucket.
+3. Verify the GPU-to-GPU mipmap recreation path removes the previous
+   `generate_mipmaps`/`ensure_pixels_current` 1920x1080 readback pair.
 4. Separate GPU-only transient images from readback-capable images.
 5. Run broader visual/audio regression across save/load UI, backlog, subtitles,
    videos, transitions, fullscreen/resolution changes, audio fades/loops, and

@@ -473,6 +473,9 @@ void GPUController::multiplyAlpha(RenderImage *image, RenderRect *dst_clip) {
 
 		gpu.freeImage(tmp);
 	}
+#if defined(ONS_USE_SDL3)
+	GPU_DiscardImagePixels(image);
+#endif
 }
 
 void GPUController::mergeAlpha(RenderImage *image, RenderRect *imageRect, RenderImage *mask, RenderRect *maskRect, SDL_Surface *src) {

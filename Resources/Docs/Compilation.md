@@ -565,6 +565,19 @@ line was kept in `checkClearAutomode`. The UCRT64 `make -j8` rebuild linked
 successfully, and the rebuilt `onscripter-new.exe` was copied to
 `D:\Umineko Project`. Per project instruction, the executable was not booted.
 
+The same-date medium whole-codebase performance pass reduced CPU/RAM work in
+renderer and subtitle hot paths without changing script timing math. Subtitle
+frame queues now use SDL semaphores instead of 1 ms producer/consumer
+spin-sleeps, full SDL surface uploads stream directly into SDL3_GPU transfer
+buffers when the destination image is fully covered, full-image alpha
+premultiplication falls through to the existing native `multiplyAlpha.frag`
+shader path on SDL3, stale CPU image mirrors are discarded when the GPU texture
+is authoritative, and mipmap texture recreation copies the base level
+GPU-to-GPU instead of downloading and reuploading GPU-rendered screenshot
+sources. The UCRT64 `make -j8` rebuild linked successfully without warning
+output, and the rebuilt `onscripter-new.exe` was copied to
+`D:\Umineko Project`. Per project instruction, the executable was not booted.
+
 SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
 `ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,
 texture-upload, readback, native-draw, CPU-blit, CPU-shader-fallback, and

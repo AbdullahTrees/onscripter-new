@@ -108,7 +108,7 @@ bool SubtitleLayer::update(bool /*old*/) {
 		if (frameQueue.size() == frameQueueMaxSize)
 			break;
 		SDL_UnlockMutex(frameQueueMutex);
-		SDL_Delay(1); //TODO: replace by semaphores
+		onsWaitSemaphoreTimeout(frameQueueDataSemaphore, 8);
 		SDL_LockMutex(frameQueueMutex);
 	}
 
@@ -147,8 +147,11 @@ bool SubtitleLayer::update(bool /*old*/) {
 		current_timestamp = it->start_timestamp;
 	}
 
-	if (it - frameQueue.begin() > 1)
+	const auto removableFrames = it - frameQueue.begin();
+	if (removableFrames > 1) {
 		frameQueue.erase(frameQueue.begin(), it - 1);
+		SDL_SemPost(frameQueueSpaceSemaphore);
+	}
 
 	SDL_UnlockMutex(frameQueueMutex);
 
@@ -225,7 +228,7 @@ void SubtitleLayer::doDecoding() {
 			SDL_mutexP(frameQueueMutex);
 			if (frameQueue.size() >= frameQueueMaxSize) {
 				SDL_mutexV(frameQueueMutex);
-				SDL_Delay(1); //TODO: replace by semaphores
+				onsWaitSemaphoreTimeout(frameQueueSpaceSemaphore, 50);
 			} else {
 				SDL_mutexV(frameQueueMutex);
 				break;
@@ -238,10 +241,13 @@ void SubtitleLayer::doDecoding() {
 
 		bool frameReady{false};
 		SubtitleFrame frame;
+		SDL_mutexP(frameQueueMutex);
 		frame.start_timestamp = decoded_timestamp;
+		SDL_mutexV(frameQueueMutex);
+		const uint64_t frameTimestamp = frame.start_timestamp;
 
 		ASS_Image *img;
-		int changed = subtitleDriver.extractFrame(frame.imgs, decoded_timestamp / 1000000, &img);
+		int changed = subtitleDriver.extractFrame(frame.imgs, frameTimestamp / 1000000, &img);
 		if (changed >= 0) {
 			frameReady = changed > 0;
 		} else {
@@ -254,18 +260,28 @@ void SubtitleLayer::doDecoding() {
 		if (frameReady) {
 			SDL_mutexP(frameQueueMutex);
 			frameQueue.emplace_back(std::move(frame));
+			decoded_timestamp += decode_rate;
+			SDL_mutexV(frameQueueMutex);
+		} else {
+			SDL_mutexP(frameQueueMutex);
+			decoded_timestamp += decode_rate;
 			SDL_mutexV(frameQueueMutex);
 		}
-
-		decoded_timestamp += decode_rate;
+		SDL_SemPost(frameQueueDataSemaphore);
 	}
 
+	SDL_SemPost(frameQueueDataSemaphore);
+	SDL_SemPost(frameQueueSpaceSemaphore);
 	SDL_SemPost(threadSemaphore);
 }
 
 bool SubtitleLayer::startDecoding() {
 	if (!frameQueueMutex)
 		frameQueueMutex = SDL_CreateMutex();
+	if (!frameQueueDataSemaphore)
+		frameQueueDataSemaphore = SDL_CreateSemaphore(0);
+	if (!frameQueueSpaceSemaphore)
+		frameQueueSpaceSemaphore = SDL_CreateSemaphore(0);
 	if (!threadSemaphore)
 		threadSemaphore = SDL_CreateSemaphore(0);
 
@@ -285,6 +301,10 @@ bool SubtitleLayer::startDecoding() {
 void SubtitleLayer::endDecoding() {
 	if (threadSemaphore) {
 		should_finish.store(true, std::memory_order_release);
+		if (frameQueueDataSemaphore)
+			SDL_SemPost(frameQueueDataSemaphore);
+		if (frameQueueSpaceSemaphore)
+			SDL_SemPost(frameQueueSpaceSemaphore);
 		SDL_SemWait(threadSemaphore);
 		SDL_DestroySemaphore(threadSemaphore);
 		threadSemaphore = nullptr;
@@ -296,6 +316,12 @@ void SubtitleLayer::endDecoding() {
 	if (frameQueueMutex)
 		SDL_DestroyMutex(frameQueueMutex);
 	frameQueueMutex = nullptr;
+	if (frameQueueDataSemaphore)
+		SDL_DestroySemaphore(frameQueueDataSemaphore);
+	frameQueueDataSemaphore = nullptr;
+	if (frameQueueSpaceSemaphore)
+		SDL_DestroySemaphore(frameQueueSpaceSemaphore);
+	frameQueueSpaceSemaphore = nullptr;
 }
 
 bool SubtitleLayer::clockProceed() {
