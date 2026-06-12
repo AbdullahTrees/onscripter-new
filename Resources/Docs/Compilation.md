@@ -676,6 +676,49 @@ script was repacked and passed an exact decode round-trip. The UCRT64
 updated `en.file` were copied to `D:\Umineko Project`. Per project
 instruction, the executable was not booted.
 
+The 2026-06-11 miscellaneous UI/text/title pass updates the two long playtime
+and text-advance trophy descriptions and changes the Chiru window title to the
+`Umineko no Naku Koro ni Chiru: ~Nocturne of Truth and Illusions~` string. The
+attempted Config alignment coordinate changes from that pass were removed in an
+immediate follow-up, restoring the prior Input Hints, Song Subtitles, and
+Textbox Window positions. The active English script was repacked and passed an
+exact decode round-trip. The UCRT64 `make -j8` command reported the binary
+target was already current; the current `onscripter-new.exe` and updated
+`en.file` were copied to `D:\Umineko Project`. Per project instruction, the
+executable was not booted.
+
+The 2026-06-12 release-audit cleanup pass updates the external IDE helper
+scripts to copy the current `onscripter-new` executable name, removes a stale
+`.gitignore` rule for the tracked `Resources/Docs/DependencyAudit.md` file,
+collapses two byte-identical macOS app-icon PNGs by reusing the existing
+`32x32.png` and `256x256.png` asset files for their matching scale slots,
+tightens Android APK packaging so it no longer accepts stale `onscripter-ru`
+engine outputs, removes misleading async queue comments, updates current
+benchmark/telemetry examples to `onscripter-new.exe`, removes unused sprite
+helper API surface, and removes ignored helper-tool object files. The broader
+verification follow-up also updates runtime-visible message-box/version/error
+labels to `onscripter-new`, changes the Apple bundle display names and Android
+loading text, and fixes Android cross-build issues found during verification:
+libusb-only joystick helpers are now gated with `USE_LIBUSB`, standard library
+headers are included where `std::set_new_handler`/`std::terminate` are used,
+the Droid profiler atomic stop path and 64-bit fallback symbol formatting are
+corrected, and SDL2-only touch action thresholds are no longer compiled for the
+SDL3 path.
+
+Verification covered JSON and XML/plist parsing, existing tracked PNG decoding,
+shell script syntax, quoted include checks, built-in shader SPIR-V coverage,
+exact packed-script decode round-trip, Windows release rebuild, Android
+arm64-v8a/x86_64 release rebuild, and APK signature/badging/permission/archive
+checks. The Android release APK verified with v2 signing, label
+`onscripter-new`, only the `android.permission.VIBRATE` permission, and SHA-256
+`F67275ECDC423CC83837713D3CCF0A4567B1D22C76AFB846A0323DB5D3EAFB4A`. The final
+UCRT64 executable SHA-256 is
+`0A1EE6E5E93F6448DF587525D0BC2B597D7224EE83B0306004102DB7A1D58978`, and the
+packed English script SHA-256 is
+`388C0434DE0CC25CAA1DCA9871517A79911F0EAC6C9A54A1CCDD2A3CB4404DB5`. Both were
+copied to `D:\Umineko Project` and hash-verified. Per project instruction, the
+executable was not booted.
+
 SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
 `ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,
 texture-upload, readback, native-draw, CPU-blit, CPU-shader-fallback, and
@@ -711,9 +754,9 @@ script initialization, which makes it useful for quick performance comparisons
 without unpacked development scripts:
 
 ```
-./onscripter-ru.exe --sdl3-benchmark
-./onscripter-ru.exe --sdl3-benchmark --sdl3-benchmark-iterations 300 --sdl3-benchmark-width 1280 --sdl3-benchmark-height 720
-./onscripter-ru.exe --sdl3-benchmark --sdl3-benchmark-output sdl3-benchmark.csv
+./onscripter-new.exe --sdl3-benchmark
+./onscripter-new.exe --sdl3-benchmark --sdl3-benchmark-iterations 300 --sdl3-benchmark-width 1280 --sdl3-benchmark-height 720
+./onscripter-new.exe --sdl3-benchmark --sdl3-benchmark-output sdl3-benchmark.csv
 ```
 
 See `Resources/Docs/SDL3PerformanceAudit.md` for benchmark cases and current

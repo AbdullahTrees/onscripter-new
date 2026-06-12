@@ -801,7 +801,7 @@ int ONScripter::shellCommand() {
 	std::string url(script_h.readStr());
 
 	if (!FileIO::shellOpen(url, FileType::URL)) {
-		window.showSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "ONScripter-RU", ("Visit " + url).c_str());
+		window.showSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, VERSION_STR1, ("Visit " + url).c_str());
 		sendToLog(LogLevel::Error, "[shell] %s\n", url.c_str());
 		sendToLog(LogLevel::Error, "[shell] command failed or unsupported on this OS\n");
 	}
@@ -2800,7 +2800,7 @@ int ONScripter::erasetextbtnCommand() {
 
 int ONScripter::endCommand() {
 #if defined(IOS) || defined(DROID)
-	window.showSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "ONScripter-RU", "The game will close now...");
+	window.showSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, VERSION_STR1, "The game will close now...");
 #endif
 	sendToLog(LogLevel::Info, "Quitting...\n");
 	requestQuit(ExitType::Normal);

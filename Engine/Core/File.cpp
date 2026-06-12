@@ -854,7 +854,7 @@ bool ONScripter::readSaveFileHeader(int no, SaveFileInfo *save_file_info) {
 
 	//sendToLog(LogLevel::Info, "Save file version is %d.%d\n", file_version/100, file_version%100);
 	if (file_version > SAVEFILE_VERSION_MAJOR * 100 + SAVEFILE_VERSION_MINOR) {
-		sendToLog(LogLevel::Error, "Save file is newer than %d.%d, please use the latest ONScripter-RU.\n", SAVEFILE_VERSION_MAJOR, SAVEFILE_VERSION_MINOR);
+		sendToLog(LogLevel::Error, "Save file is newer than %d.%d, please use the latest onscripter-new.\n", SAVEFILE_VERSION_MAJOR, SAVEFILE_VERSION_MINOR);
 		return false;
 	}
 

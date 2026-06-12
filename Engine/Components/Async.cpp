@@ -322,7 +322,6 @@ int loadImageThreadLoop(void *arg) {
 /* -------------- Load packet arrays instruction -------------- */
 
 void LoadPacketArraysInstruction::execute() {
-	//async.loadPacketArraysQueue.resultsLock is set inside
 	media.demultiplexStreams();
 }
 
@@ -342,7 +341,6 @@ int loadPacketArraysThreadLoop(void *arg) {
 /* -------------- Load video frame instruction -------------- */
 
 void LoadVideoFramesInstruction::execute() {
-	//async.loadVideoFramesQueue.resultsLock is set inside
 	media.decodeFrames(MediaProcController::VideoEntry);
 }
 
@@ -362,7 +360,6 @@ int loadVideoFramesThreadLoop(void *arg) {
 /* -------------- Load audio frame instruction -------------- */
 
 void LoadAudioFramesInstruction::execute() {
-	//async.loadAudioFramesQueue.resultsLock is set inside
 	media.decodeFrames(MediaProcController::AudioEntry);
 }
 
@@ -382,7 +379,6 @@ int loadAudioFramesThreadLoop(void *arg) {
 /* -------------- Load subtitle frame instruction -------------- */
 
 void LoadSubtitleFramesInstruction::execute() {
-	//async.loadAudioFramesQueue.resultsLock is unused
 	sl->doDecoding();
 }
 

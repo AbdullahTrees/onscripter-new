@@ -4749,7 +4749,7 @@ GPU_Target *SDLCALL GPU_InitRendererByID(GPU_RendererID renderer_request, Uint16
 	if (!rendererState.device)
 		return nullptr;
 
-	rendererState.window = SDL_CreateWindow("ONScripter-RU", w, h, SDL_flags);
+	rendererState.window = SDL_CreateWindow("onscripter-new", w, h, SDL_flags);
 	if (!rendererState.window) {
 		GPU_Quit();
 		return nullptr;

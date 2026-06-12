@@ -18,7 +18,7 @@
 #define ONS_CODENAME macro_xstr(Chamerion)
 #define NSC_VERSION 300
 
-#define VERSION_STR1 "ONScripter-RU"
+#define VERSION_STR1 "onscripter-new"
 #define VERSION_STR2 "Copyright (C) 2001-2011 Studio O.G.A. Portions copyright 2005-2006 insani, 2006-2009 Haeleth, 2007-2011 \"Uncle\" Mion Sonozaki, 2011-2019 Umineko Project. All Rights Reserved."
 
 /* 

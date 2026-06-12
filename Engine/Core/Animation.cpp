@@ -1103,7 +1103,7 @@ void ONScripter::snapScrollableToElement(AnimationInfo *info, long elementId, An
 	int dividerH  = si.divider ? si.divider->orig_pos.h : 0;
 	float dstYTop = snapType == AnimationInfo::ScrollSnap::TOP ? elemRect.y - dividerH - si.firstMargin : elemRect.y + elemRect.h - info->pos.h + si.lastMargin + dividerH;
 	bool lsp2;
-	int num = getAIno(info, false, lsp2);
+	int num = getAIno(info, lsp2);
 	if (!instant)
 		dynamicProperties.addSpriteProperty(info, num, lsp2, true, SPRITE_PROPERTY_SCROLLABLE_Y, dstYTop, 100, 1, true);
 	else

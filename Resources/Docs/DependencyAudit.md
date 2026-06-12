@@ -1,7 +1,7 @@
 # Dependency Audit and Modernization Plan
 
 Date: 2026-05-31
-Updated: 2026-06-10
+Updated: 2026-06-12
 
 This document is the current dependency and renderer modernization status for
 `onscripter-new`. It is intentionally kept as a clean status record, not a
@@ -170,6 +170,22 @@ complete investigation log.
   queued cache prewarm work drains. It also keeps the window-title hardening by
   mapping recognized Rondo/Chiru captions to pinned titles instead of accepting
   arbitrary script caption text.
+- The 2026-06-11 miscellaneous UI/text/title pass adds no third-party
+  dependencies. It changes only packed-script trophy/title text and the pinned
+  Chiru window title string; an immediate follow-up restores the prior Config
+  coordinate values.
+- The 2026-06-12 release-audit cleanup adds no third-party dependencies. It
+  fixes external IDE helper scripts to copy the current `onscripter-new`
+  executable name, removes the stale ignore rule for the tracked dependency
+  audit document, collapses two byte-identical macOS app-icon PNGs by reusing
+  the existing same-size asset files, tightens Android APK packaging to require
+  current `onscripter-new` engine outputs, removes stale async comments, and
+  updates current benchmark/telemetry examples to the renamed executable. It
+  also removes an unused sprite-helper method and trims a dead parameter from
+  the remaining sprite helper API. The broader verification follow-up keeps the
+  dependency set unchanged while fixing Android cross-build portability in the
+  joystick libusb guard, standard-library includes, Droid profiler atomic stop
+  path, and SDL2-only touch-threshold declarations.
 
 ## Support Floor
 
@@ -928,6 +944,42 @@ SDL3 source-tagged runtime telemetry:
   The packed English script passed an exact decode round-trip. The UCRT64
   rebuild linked successfully, and the rebuilt `onscripter-new.exe` plus
   updated `en.file` were copied to `D:\Umineko Project`. Per project
+  instruction, the executable was not booted.
+- The 2026-06-11 miscellaneous UI/text/title pass added no dependencies. It
+  updates the requested playtime and text-advance trophy descriptions and
+  changes the pinned Chiru title to the
+  `Umineko no Naku Koro ni Chiru: ~Nocturne of Truth and Illusions~` string.
+  The attempted Config alignment coordinate changes from that pass were removed
+  in an immediate follow-up, restoring the prior Input Hints, Song Subtitles,
+  and Textbox Window positions. The packed English script passed an exact
+  decode round-trip. The UCRT64 `make -j8` command reported the binary target
+  was already current, and the current `onscripter-new.exe` plus updated
+  `en.file` were copied to `D:\Umineko Project`. Per project instruction, the
+  executable was not booted.
+- The 2026-06-12 release-audit cleanup added no dependencies. It updates the
+  external IDE helper scripts to copy `onscripter-new`, removes the stale
+  `.gitignore` rule for the tracked dependency audit document, and removes two
+  byte-identical macOS app-icon PNG duplicates by reusing the existing
+  `32x32.png` and `256x256.png` files in the asset catalog. It also requires
+  current `onscripter-new` engine outputs for Android APK packaging, removes
+  misleading async queue comments, updates current benchmark/telemetry examples
+  to the renamed executable, removes an unused sprite-helper method, trims a
+  dead sprite-helper parameter, and removes ignored helper-tool object files.
+  The broader verification follow-up also updates runtime-visible labels to
+  `onscripter-new`, changes Apple bundle display names and Android loading
+  text, and fixes Android cross-build portability in libusb-gated joystick
+  helpers, explicit standard-library includes, the Droid profiler atomic stop
+  path, and SDL2-only touch-threshold declarations. JSON/XML/plist parsing,
+  existing PNG decoding, shell syntax, quoted includes, built-in shader
+  SPIR-V coverage, packed-script round-trip, Windows release build, Android
+  arm64-v8a/x86_64 release build, APK signature verification, APK badging, and
+  APK permission checks all passed. The Android APK SHA-256 was
+  `F67275ECDC423CC83837713D3CCF0A4567B1D22C76AFB846A0323DB5D3EAFB4A`. The
+  final UCRT64 `onscripter-new.exe` SHA-256 was
+  `0A1EE6E5E93F6448DF587525D0BC2B597D7224EE83B0306004102DB7A1D58978`; the
+  final `en.file` SHA-256 was
+  `388C0434DE0CC25CAA1DCA9871517A79911F0EAC6C9A54A1CCDD2A3CB4404DB5`. Both
+  were copied to `D:\Umineko Project` and hash-verified. Per project
   instruction, the executable was not booted.
 
 ## Packaging Notes

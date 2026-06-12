@@ -65,7 +65,7 @@ const int DEFAULT_AUDIOBUF   = 2048;
 const int DEFAULT_FPS        = 30;
 
 static constexpr const char *RONDO_WM_TITLE   = "Umineko no Naku Koro ni: ~Rondo of the Witch and Reasoning~";
-static constexpr const char *CHIRU_WM_TITLE   = "Umineko no Naku Koro ni: ~Nocturne of Truth and Illusions~";
+static constexpr const char *CHIRU_WM_TITLE   = "Umineko no Naku Koro ni Chiru: ~Nocturne of Truth and Illusions~";
 static constexpr const char *DEFAULT_WM_TITLE = RONDO_WM_TITLE;
 
 const int ONS_MIX_CHANNELS = 50;
@@ -1279,8 +1279,7 @@ private:
 	void dirtySpriteRect(AnimationInfo *ai, bool before = false);
 	void dirtySpriteRect(int num, bool lsp2, bool before = false);
 	void dirtyRectForZLevel(int num, RenderRect &rect);
-	int getAIno(AnimationInfo *info, bool old_ai, bool &lsp2);
-	bool isHudAI(AnimationInfo *info, bool before = false);
+	int getAIno(AnimationInfo *info, bool &lsp2);
 
 public:
 	void backupState(AnimationInfo *info);

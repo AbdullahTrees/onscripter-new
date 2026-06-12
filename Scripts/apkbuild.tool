@@ -87,12 +87,9 @@ copy_engine() {
   cp "$source" "$LIBPATH/$abi/libmain.so" || exit 1
 }
 
-if [ -f "$WORK/onscripter-new" ] || [ -f "$WORK/onscripter-ru" ]; then
+if [ -f "$WORK/onscripter-new" ]; then
   echo "Proceeding with single arch mode..."
   ENGINE="$WORK/onscripter-new"
-  if [ ! -f "$ENGINE" ]; then
-    ENGINE="$WORK/onscripter-ru"
-  fi
   ARCH="$(basename "$WORK")"
   case "$ARCH" in
     Droid-aarch64|Droid-arm64)
@@ -118,17 +115,10 @@ else
       copy_engine "$WORK/$dir/onscripter-new" "arm64-v8a"
       COPIED=true
       break
-    elif [ -f "$WORK/$dir/onscripter-ru" ]; then
-      copy_engine "$WORK/$dir/onscripter-ru" "arm64-v8a"
-      COPIED=true
-      break
     fi
   done
   if [ -f "$WORK/Droid-x86_64/onscripter-new" ]; then
     copy_engine "$WORK/Droid-x86_64/onscripter-new" "x86_64"
-    COPIED=true
-  elif [ -f "$WORK/Droid-x86_64/onscripter-ru" ]; then
-    copy_engine "$WORK/Droid-x86_64/onscripter-ru" "x86_64"
     COPIED=true
   fi
   if ! $COPIED ; then

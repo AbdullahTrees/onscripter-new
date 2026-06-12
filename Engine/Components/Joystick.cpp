@@ -36,11 +36,13 @@ enum JoyId {
 	TotalControllers
 };
 
+#ifdef USE_LIBUSB
 constexpr uint8_t usbRequestType(libusb_request_type type, libusb_request_recipient recipient, libusb_endpoint_direction direction) {
 	return static_cast<uint8_t>(std::to_underlying(type) | std::to_underlying(recipient) | std::to_underlying(direction));
 }
 
 constexpr uint8_t UsbClassInterfaceOut = usbRequestType(LIBUSB_REQUEST_TYPE_CLASS, LIBUSB_RECIPIENT_INTERFACE, LIBUSB_ENDPOINT_OUT);
+#endif
 
 const std::array<uint8_t, 16> JOYGUID[TotalControllers]{
     {{0x4C, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x68, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},

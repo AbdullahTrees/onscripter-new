@@ -31,6 +31,8 @@ void *__wrap_SDL_LoadObject(const char *sofile);
 
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
+#include <new>
 
 ControllerCollection ctrl;
 
@@ -65,7 +67,7 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 
 [[noreturn]] static void performTerminate(const char *message) {
 	sendToLog(LogLevel::Error, "%s\nExiting...\n", message);
-	SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ONScripter-RU", message, nullptr);
+	SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, VERSION_STR1, message, nullptr);
 	ctrl.quit(-1);
 }
 
@@ -730,7 +732,7 @@ CONSTRUCTOR setupCrashReporter() {
 
 	auto memoryAllocFailure = []() {
 		sendToLog(LogLevel::Error, "Memory allocation failure!\n");
-		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ONScripter-RU", "Memory allocation failure!", nullptr);
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, VERSION_STR1, "Memory allocation failure!", nullptr);
 #ifdef WIN32
 		asm("ud2"); // We want Dr.Mingw catch it
 #endif
@@ -846,7 +848,7 @@ int main(int argc, char **argv) {
 
 	if (!works) {
 #ifdef MACOSX
-		performTerminate("Invalid launch directory!\nTry executing xattr -cr /path/to/onscripter-ru-osx64.app");
+		performTerminate("Invalid launch directory!\nTry executing xattr -cr on the app bundle.");
 #else
 		performTerminate("Invalid launch directory!");
 #endif

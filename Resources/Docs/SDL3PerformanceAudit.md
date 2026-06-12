@@ -1,7 +1,7 @@
 # SDL3 Performance Audit
 
 Date: 2026-06-02
-Updated: 2026-06-10
+Updated: 2026-06-12
 
 This audit covers the SDL3 default renderer path, with emphasis on
 `Engine/Graphics/SDL3GPUCompat.cpp` because that layer currently adapts the
@@ -13,13 +13,13 @@ The SDL3 build now has an opt-in benchmark mode that exits before game script
 initialization:
 
 ```sh
-./onscripter-ru.exe --sdl3-benchmark
+./onscripter-new.exe --sdl3-benchmark
 ```
 
 Optional arguments:
 
 ```sh
-./onscripter-ru.exe --sdl3-benchmark \
+./onscripter-new.exe --sdl3-benchmark \
   --sdl3-benchmark-iterations 300 \
   --sdl3-benchmark-width 1280 \
   --sdl3-benchmark-height 720 \
@@ -63,6 +63,26 @@ full render target on each iteration, so it should be treated as a
 synchronization cost rather than a normal per-frame cost.
 
 ## Fixes Applied
+
+### Release-Audit Cleanup
+
+The 2026-06-12 release-audit cleanup made no renderer, mixer, or timing code
+changes and adds no new benchmark data. It fixes stale external IDE helper
+script output names after the `onscripter-new` rename, removes the stale
+`.gitignore` entry for the tracked dependency audit document, and removes two
+byte-identical macOS app-icon PNG duplicates by reusing the surviving same-size
+assets in the asset catalog. It also tightens Android APK packaging to require
+current `onscripter-new` engine outputs, removes stale async queue comments,
+updates current benchmark/telemetry examples to `onscripter-new.exe`, and
+removes unused sprite-helper API surface plus ignored helper-tool object files.
+The verification follow-up also fixes Android cross-build portability issues in
+non-renderer code and verifies the Android release APK. The active English
+script was repacked and passed an exact decode round-trip; the Windows release
+build relinked successfully, the Android arm64-v8a/x86_64 release build and APK
+packaging passed, and the rebuilt `onscripter-new.exe` plus updated `en.file`
+were copied to `D:\Umineko Project` with matching hashes. Per project
+instruction, no executable boot test, benchmark, or runtime telemetry pass was
+run.
 
 ### Reusable Upload Buffers
 
@@ -607,13 +627,13 @@ executable boot test was run for these UI corrections.
 The SDL3_GPU backend now has opt-in shutdown telemetry. Enable it with:
 
 ```sh
-./onscripter-ru.exe --sdl3-gpu-telemetry
+./onscripter-new.exe --sdl3-gpu-telemetry
 ```
 
 or:
 
 ```sh
-ONS_SDL3_GPU_TELEMETRY=1 ./onscripter-ru.exe
+ONS_SDL3_GPU_TELEMETRY=1 ./onscripter-new.exe
 ```
 
 The telemetry logs aggregate command-buffer submissions, texture uploads,
@@ -1609,6 +1629,36 @@ script repacked and round-tripped exactly; the UCRT64 rebuild linked
 successfully, and the rebuilt executable plus updated `en.file` were copied to
 `D:\Umineko Project`. No executable boot test, benchmark, or runtime telemetry
 was run.
+
+Miscellaneous UI/text/title follow-up: the 2026-06-11 pass updates the two
+requested long trophy descriptions and changes the pinned Chiru window title to
+the `Umineko no Naku Koro ni Chiru: ~Nocturne of Truth and Illusions~` string.
+The attempted Config alignment coordinate changes from that pass were removed
+in an immediate follow-up, restoring the prior Input Hints, Song Subtitles, and
+Textbox Window positions. The script repacked and round-tripped exactly; the
+UCRT64 `make -j8` command reported the binary target was already current, and
+the current executable plus updated `en.file` were copied to
+`D:\Umineko Project`. No executable boot test, benchmark, or runtime telemetry
+was run.
+
+Release-audit cleanup: the 2026-06-12 pass fixes stale external IDE helper
+script output names after the `onscripter-new` rename, removes the stale
+`.gitignore` entry for the tracked dependency audit document, and removes two
+byte-identical macOS app-icon PNG duplicates by reusing the existing same-size
+asset files. It also requires current `onscripter-new` engine outputs for
+Android APK packaging, removes misleading async queue comments, updates current
+benchmark/telemetry examples to the renamed executable, and removes ignored
+helper-tool object files. It also removes an unused sprite-helper method and
+trims a dead parameter from the remaining sprite helper API. The verification
+follow-up updates runtime-visible branding strings and fixes Android
+cross-build portability in libusb-gated joystick helpers, explicit standard
+library includes, the Droid profiler atomic stop path, and SDL2-only
+touch-threshold declarations. The script repacked and round-tripped exactly;
+the UCRT64 release build relinked successfully; the Android arm64-v8a/x86_64
+release build and APK packaging passed; APK signature, badging, permissions,
+archive contents, and native library hashes were verified; and the rebuilt
+Windows executable plus updated `en.file` were copied to `D:\Umineko Project`.
+No executable boot test, benchmark, or runtime telemetry was run.
 
 ## Findings
 

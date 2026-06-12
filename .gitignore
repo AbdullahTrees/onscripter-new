@@ -10,7 +10,6 @@ Tools/nscmake/nscmake
 CMakeLists.txt
 /Makefile
 /ciout
-Resources/Docs/DependencyAudit.md
 .gradle/
 local.properties
 *.apk

@@ -1676,7 +1676,7 @@ int ONScripter::relaunchCommand() {
 	newArgv.emplace_back(nullptr);
 
 	if (!FileIO::restartApp(newArgv)) {
-		window.showSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "ONScripter-RU", "Please open the application once it closes!");
+		window.showSimpleMessageBox(SDL_MESSAGEBOX_WARNING, VERSION_STR1, "Please open the application once it closes!");
 		sendToLog(LogLevel::Error, "Failed to run: %s\n", newArgv[0]);
 	}
 

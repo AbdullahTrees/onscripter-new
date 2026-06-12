@@ -10,11 +10,13 @@
 #
 
 # Usage:
-# ./idebuild.sh action build_dir msys_dir bin_dir
+# ./idebuild.sh action build_dir bin_dir
 # where actions include build, clean, debug
 
+B_OUTPUT_NAME="onscripter-new"
+
 if [ "$3" != "" ]; then
-  rm -f "$3/onscripter-ru"
+  rm -f "$3/$B_OUTPUT_NAME" "$3/onscripter-ru"
 fi
 
 B_DEBUG=""
@@ -42,7 +44,7 @@ else
 fi
 
 if [ "$3" != "" ]; then
-  cp "$B_PROJECT_PATH/onscripter-ru" "$3/onscripter-ru"
+  cp "$B_PROJECT_PATH/$B_OUTPUT_NAME" "$3/$B_OUTPUT_NAME"
 fi
 
 exit 0

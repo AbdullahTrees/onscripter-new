@@ -451,7 +451,7 @@ int ScriptParser::roffCommand() {
 }
 
 int ScriptParser::rmenuCommand() {
-	errorAndExit("rmenu: this command is no more supported in ONScripter-RU");
+	errorAndExit("rmenu: this command is no more supported in onscripter-new");
 
 	return RET_CONTINUE;
 }
@@ -734,7 +734,7 @@ int ScriptParser::midCommand() {
 }
 
 int ScriptParser::menusetwindowCommand() {
-	errorAndExit("menusetwindow: Gone with the wind in ONScripter-RU");
+	errorAndExit("menusetwindow: Gone with the wind in onscripter-new");
 
 	return RET_CONTINUE;
 }

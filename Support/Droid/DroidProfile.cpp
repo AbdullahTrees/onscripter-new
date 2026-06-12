@@ -39,6 +39,7 @@ using unw_context_t                   = void *;
 
 #include <array>
 #include <atomic>
+#include <exception>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -341,8 +342,6 @@ static void profileTimer(int) {
 }
 
 static bool resetTimers() {
-	auto threadid = getThreadIndex();
-
 	struct sigaction sigact {};
 	sigemptyset(&sigact.sa_mask);
 	sigact.sa_flags   = SA_RESTART;
@@ -369,12 +368,12 @@ static bool resetTimers() {
 
 template <typename T>
 void mergeUpdater(unw_context_t &uc, T &dst, CallStack<unw_word_t> &src, unw_word_t ip) {
-	unw_word_t off;
+	[[maybe_unused]] unw_word_t off;
 	char symname[MaxSymbolLength];
 
 	unw_get_proc_name_by_ip(unw_local_addr_space, ip, symname, sizeof(symname), &off, &uc);
 	if (symname[0] == '\0')
-		std::snprintf(symname, sizeof(symname), "unk:%x", ip);
+		std::snprintf(symname, sizeof(symname), "unk:%lx", static_cast<unsigned long>(ip));
 
 	auto &dsttop = dst[symname];
 	dsttop.counter += src.counter;
@@ -420,8 +419,8 @@ void profileStop() {
 		throw std::runtime_error("Profiling is not running");
 
 	// Stop profiling
-	profileEnabled.store(std::memory_order_acq_rel) = false;
-	auto totalTime                                  = SDL_GetTicks() - profileStartTime;
+	profileEnabled.store(false, std::memory_order_release);
+	auto totalTime = SDL_GetTicks() - profileStartTime;
 	sendToLog(LogLevel::Info, "Profiling finished after %0.2f seconds (%d ms)", totalTime / 1000.0, totalTime);
 
 	// Kill timers

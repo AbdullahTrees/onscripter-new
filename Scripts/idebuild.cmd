@@ -10,13 +10,14 @@ rem Consult LICENSE file for licensing terms and copyright holders.
 rem
 
 rem Usage:
-rem idebuild.cmd action build_dir bin_dir
+rem idebuild.cmd action build_dir msys_dir bin_dir
 rem where actions include build, clean, debug
 
-if not "%4"=="" del %4\ONScripter.exe
+if not "%4"=="" del "%4\ONScripter.exe"
 
 set B_DEBUG=
 set B_ACTION=build
+set B_OUTPUT_NAME=onscripter-new.exe
 
 if "%1"=="debug" set B_DEBUG=DEBUG=1
 if "%1"=="clean" set B_ACTION=clean
@@ -42,11 +43,11 @@ rem Fixing CLion "handy" -j 4 and other presents
 set MAKEFLAGS=""
 
 if "%B_ACTION%"=="clean" (
-	make -C %B_PROJECT_PATH% clean
+	make -C "%B_PROJECT_PATH%" clean
 ) else (
-	make -C %B_PROJECT_PATH% %B_DEBUG% -j 4
+	make -C "%B_PROJECT_PATH%" %B_DEBUG% -j 4
 )
 
-if not "%4"=="" cp %B_PROJECT_PATH%onscripter-ru.exe %4\ONScripter.exe
+if not "%4"=="" cp "%B_PROJECT_PATH%%B_OUTPUT_NAME%" "%4\ONScripter.exe"
 
 

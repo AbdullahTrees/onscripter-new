@@ -703,7 +703,7 @@ void ONScripter::dirtySpriteRect(int num, bool lsp2, bool before) {
 	}
 }
 
-int ONScripter::getAIno(AnimationInfo *info, bool /*unused*/, bool &lsp2) {
+int ONScripter::getAIno(AnimationInfo *info, bool &lsp2) {
 	if (info == nullptr)
 		return -1;
 
@@ -716,16 +716,6 @@ int ONScripter::getAIno(AnimationInfo *info, bool /*unused*/, bool &lsp2) {
 		return -1;
 
 	return info->id;
-}
-
-bool ONScripter::isHudAI(AnimationInfo *info, bool /*unused*/) {
-	if (!info)
-		return false;
-	if (info->type == SPRITE_CURSOR || info->type == SPRITE_SENTENCE_FONT)
-		return true;
-	if (info->type != SPRITE_LSP && info->type != SPRITE_LSP2)
-		return false;
-	return info->id <= z_order_hud;
 }
 
 void ONScripter::fillCanvas(bool after, bool before) {

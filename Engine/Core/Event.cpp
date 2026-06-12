@@ -27,8 +27,10 @@ const float MIN_AUTO_FPS{30.0f};
 const float MAX_AUTO_FPS{360.0f};
 const uint64_t NANOS_PER_MILLISECOND{1000000ULL};
 const uint64_t STALE_FRAME_BASELINE_NS{250ULL * NANOS_PER_MILLISECOND};
+#if !defined(ONS_USE_SDL3)
 const float TOUCH_ACTION_THRESHOLD_X = 0.1;
 const float TOUCH_ACTION_THRESHOLD_Y = 0.15;
+#endif
 
 enum {
 	ONS_MUSIC_EVENT,
