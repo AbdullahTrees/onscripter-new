@@ -1,6 +1,6 @@
 # onscripter-new Project Status
 
-Updated: 2026-06-12
+Updated: 2026-06-13
 
 This file consolidates the former compilation guide, dependency audit, and SDL3 performance audit into one maintenance document for the current `onscripter-new` release branch.
 
@@ -1075,7 +1075,7 @@ chmod +x configure Scripts/* Dependencies/build.sh
 # Dependency Audit and Modernization Plan
 
 Date: 2026-05-31
-Updated: 2026-06-12
+Updated: 2026-06-13
 
 This document is the current dependency and renderer modernization status for
 `onscripter-new`. It is intentionally kept as a clean status record, not a
@@ -2139,7 +2139,7 @@ SDL3 source-tagged runtime telemetry:
 # SDL3 Performance Audit
 
 Date: 2026-06-02
-Updated: 2026-06-12
+Updated: 2026-06-13
 
 This audit covers the SDL3 default renderer path, with emphasis on
 `Engine/Graphics/SDL3GPUCompat.cpp` because that layer currently adapts the
@@ -3797,6 +3797,42 @@ release build and APK packaging passed; APK signature, badging, permissions,
 archive contents, and native library hashes were verified; and the rebuilt
 Windows executable plus updated `en.file` were copied to `D:\Umineko Project`.
 No executable boot test, benchmark, or runtime telemetry was run.
+
+Verification-screen text follow-up: the 2026-06-13 script-only pass title-cases
+the file verification header and shortens the success-path copy to
+`Verifying files. This may take several minutes...` followed by
+`All good! Press right click to continue.` The follow-up alignment pass moves
+the header to center it over the gray verification panel and restores 15 px
+border padding when the final verification result text sprite is regenerated,
+preventing outlined descenders such as the `g` in `good` from being clipped.
+The active English script repacked and decode round-tripped exactly after each
+pass, then the updated `en.file` was copied to `D:\Umineko Project`. The game
+config was re-armed with `env[verify]=once` for the next manual verification
+test. No executable rebuild, boot test, benchmark, or runtime telemetry was
+run.
+
+Pause-menu and Message Browser follow-up: the 2026-06-13 script-only pass moves
+the right-click pause-menu chapter-title sprite up by 180 internal pixels so
+the white chapter art, such as `Episode 2`, no longer overlaps the live session
+statistics. The Message Browser line-jump confirmation now reads `Are you sure
+you want to jump to this line? This might take time.` and uses the centered
+message/button alignment helper. The active English script repacked and decode
+round-tripped exactly, then the updated `en.file` was copied to
+`D:\Umineko Project`; `ons.cfg` was re-armed with `env[verify]=once`. No
+right-click menu PNG assets, executable rebuild, boot test, benchmark, or
+runtime telemetry were changed/run. The next release package needs this updated
+`en.file` so fresh installs get the pause-menu and line-jump fixes.
+
+Release documentation/package follow-up: the README now includes a dedicated
+comparison of `onscripter-new` and ONScripter-RU, covering project scope,
+branding, renderer/media stack, target platform floors, release data, and
+runtime UX differences. Local `v2026.06.13` release artifacts were prepared
+under `DerivedData\Release\v2026.06.13`: the Windows x86_64 zip keeps the
+current `onscripter-new.exe`, includes the updated packed `en.file`, and
+preserves the existing install notes; the Android APK was carried forward
+unchanged because no native Android code changed; `SHA256SUMS.txt` was
+regenerated and validated. No executable rebuild, boot test, benchmark, or
+runtime telemetry was run for this docs/release-packaging pass.
 
 ## Findings
 

@@ -24,6 +24,28 @@ runtime behavior.
 - The consolidated maintenance document is
   [Resources/Docs/ProjectStatus.md](Resources/Docs/ProjectStatus.md).
 
+## Differences from ONScripter-RU
+
+`onscripter-new` is derived from ONScripter-RU, but it is no longer maintained
+as a generic upstream-compatible engine drop-in. The main differences are:
+
+| Area | ONScripter-RU | onscripter-new |
+| --- | --- | --- |
+| Project scope | General ONScripter-family runtime with broad legacy script and platform coverage. | Umineko Project-focused runtime, release packaging, defaults, and documentation. |
+| Branding | Uses `onscripter-ru` executable, app, and package names. | Uses `onscripter-new` executable names, window/app labels, Android package labels, and release artifact names. |
+| Renderer stack | Historically carried SDL2_gpu, libepoxy, and legacy GL/GLES paths. | Uses SDL3_GPU through the current configure flow; removed the old SDL2_gpu/libepoxy and legacy GL/GLES renderer paths from active builds. |
+| Media path | More legacy renderer/media compatibility code remains upstream. | Adds SDL3-oriented GPU upload/readback cleanup, embedded native shaders, and direct GPU-assisted video/color conversion work for the Umineko Project workload. |
+| Build targets | Supports older platform/toolchain combinations inherited from ONScripter-RU. | Targets current maintained floors: Windows 10 x86_64, modern Linux, macOS/iOS baselines, and Android 14/API 34 or newer. |
+| Windows builds | Often depends on the local runtime/dependency layout chosen by the builder. | Public Windows releases are MSYS2/UCRT64 x86_64 builds with the SDL3 dependency stack statically linked through `onscrlib`. |
+| Android builds | Uses ONScripter-RU Android naming and older target assumptions. | Packages `onscripter-new` APKs with current Android SDK/NDK targets and `arm64-v8a` plus `x86_64` native libraries. |
+| Release data | Does not ship this branch's Umineko Project-specific packed English script. | Windows releases include `onscripter-new.exe`, the current packed `en.file`, install notes, and SHA-256 checksums. |
+| Runtime UX | Upstream behavior and menus are kept closer to the original engine/project state. | Carries Umineko Project-specific UI/script maintenance, including file verification copy, pause-menu fixes, Message Browser line-jump confirmation, and modernized control text. |
+
+Compatibility is intentionally practical rather than universal: this branch
+preserves the ONScripter-RU behavior needed by compatible Umineko Project
+release data, while active maintenance favors the current Umineko Project
+desktop and Android packages.
+
 ## AI Disclosure
 
 AI models were used during this modernization effort for code review, cleanup,
