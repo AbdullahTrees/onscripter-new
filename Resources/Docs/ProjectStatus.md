@@ -1,6 +1,6 @@
 # onscripter-new Project Status
 
-Updated: 2026-06-13
+Updated: 2026-06-17
 
 This file consolidates the former compilation guide, dependency audit, and SDL3 performance audit into one maintenance document for the current `onscripter-new` release branch.
 
@@ -1075,7 +1075,7 @@ chmod +x configure Scripts/* Dependencies/build.sh
 # Dependency Audit and Modernization Plan
 
 Date: 2026-05-31
-Updated: 2026-06-13
+Updated: 2026-06-17
 
 This document is the current dependency and renderer modernization status for
 `onscripter-new`. It is intentionally kept as a clean status record, not a
@@ -2139,7 +2139,7 @@ SDL3 source-tagged runtime telemetry:
 # SDL3 Performance Audit
 
 Date: 2026-06-02
-Updated: 2026-06-13
+Updated: 2026-06-17
 
 This audit covers the SDL3 default renderer path, with emphasis on
 `Engine/Graphics/SDL3GPUCompat.cpp` because that layer currently adapts the
@@ -3833,6 +3833,41 @@ preserves the existing install notes; the Android APK was carried forward
 unchanged because no native Android code changed; `SHA256SUMS.txt` was
 regenerated and validated. No executable rebuild, boot test, benchmark, or
 runtime telemetry was run for this docs/release-packaging pass.
+
+Textbox preview asset repair: the 2026-06-17 active game-data pass regenerates
+the loose Config textbox preview PNGs under
+`D:\Umineko Project\graphics\system\wnd` from the existing `msgwnd` assets:
+`msgwnd_preview_en.png`, `msgwnd_preview_ep5_en.png`, `msgwnd_preview2.png`,
+`msgwnd_preview3.png`, and transparent `msgwnd_preview4.png`. The packed script
+was already current; `D:\Umineko Project\en.file` matched
+`DerivedData\decoded-script\en.file.new` by SHA-256, so no script repack,
+executable rebuild, boot test, benchmark, or runtime telemetry was run.
+The immediate crop correction regenerates those same preview PNGs right-aligned
+to the original 1648 px textbox assets, preserving the source right edge and
+border at the existing 1125x288 preview dimensions. No script repack,
+executable rebuild, boot test, benchmark, or runtime telemetry was run.
+
+FPS overlay keybind follow-up: the 2026-06-17 engine pass adds an `Alt+F`
+in-game FPS counter toggle while preserving plain `F` as the fullscreen toggle
+and keeping the existing `--show-fps` title-bar counter. The overlay draws as a
+small cached screen-target element after scene/HUD/cursor composition, forces
+refreshes while visible, and forces one cleanup refresh when disabled so stale
+counter pixels are cleared. The UCRT64 `make -j8` rebuild linked successfully,
+and the rebuilt `onscripter-new.exe` was copied to `D:\Umineko Project`. No
+script repack, executable boot test, benchmark, or runtime telemetry was run.
+
+Release packaging follow-up: local `v2026.06.17` artifacts were prepared under
+`DerivedData\Release\v2026.06.17`. The Windows x86_64 zip includes the rebuilt
+`onscripter-new.exe`, current packed `en.file`, refreshed install notes, and
+the fixed loose textbox preview assets at
+`graphics\system\wnd\msgwnd_preview_en.png`,
+`msgwnd_preview_ep5_en.png`, `msgwnd_preview2.png`,
+`msgwnd_preview3.png`, and transparent `msgwnd_preview4.png`. The staged and
+extracted preview PNGs hash-match and remain 1125x288. The Android APK was
+carried forward unchanged from `v2026.06.13` because current Android build
+outputs/signing environment were not present locally. `SHA256SUMS.txt` was
+regenerated for the Windows zip and carried-forward APK. No executable boot
+test, benchmark, or runtime telemetry was run for this release packaging pass.
 
 ## Findings
 

@@ -294,6 +294,90 @@ float ONScripter::effectiveRefreshRate() const {
 	return DEFAULT_FPS;
 }
 
+void ONScripter::toggleFpsOverlay() {
+	fps_overlay_visible          = !fps_overlay_visible;
+	fps_overlay_dirty            = true;
+	fps_overlay_refresh_required = true;
+
+	if (fps_overlay_text.empty())
+		fps_overlay_text = "FPS: --.-";
+
+	sendToLog(LogLevel::Info, "turned %s FPS overlay\n", fps_overlay_visible ? "on" : "off");
+}
+
+void ONScripter::updateFpsCounter(double frameMilliseconds) {
+	if (frameMilliseconds <= 0.0)
+		return;
+
+	displayed_fps = 1000.0 / frameMilliseconds;
+
+	char label[32];
+	std::snprintf(label, sizeof(label), "FPS: %.1f", displayed_fps);
+	if (fps_overlay_text != label) {
+		fps_overlay_text  = label;
+		fps_overlay_dirty = true;
+	}
+}
+
+void ONScripter::drawFpsOverlay() {
+	if (!fps_overlay_visible || !screen_target)
+		return;
+
+	constexpr uint16_t overlayWidth  = 170;
+	constexpr uint16_t overlayHeight = 44;
+	constexpr float overlayX         = 16.0f;
+	constexpr float overlayY         = 16.0f;
+
+	if (fps_overlay_text.empty())
+		fps_overlay_text = "FPS: --.-";
+
+	if (!fps_overlay_gpu || fps_overlay_gpu->w != overlayWidth || fps_overlay_gpu->h != overlayHeight) {
+		if (fps_overlay_gpu)
+			gpu.freeImage(fps_overlay_gpu);
+		fps_overlay_gpu = gpu.createImage(overlayWidth, overlayHeight, 4);
+		GPU_GetTarget(fps_overlay_gpu);
+		fps_overlay_dirty = true;
+	}
+
+	if (fps_overlay_dirty) {
+		auto *target = GPU_GetTarget(fps_overlay_gpu);
+		SDL_Color background{0, 0, 0, 180};
+		GPU_Rect backgroundRect{0, 0, static_cast<float>(overlayWidth), static_cast<float>(overlayHeight)};
+		GPU_RectangleFilled2(target, backgroundRect, background);
+
+		Fontinfo font = sentence_font;
+		font.reset();
+		font.top_xy[0]   = 10;
+		font.top_xy[1]   = 7;
+		font.borderPadding = 2;
+
+		auto &style              = font.changeStyle();
+		style.color              = {0xff, 0xff, 0xff};
+		style.is_gradient        = false;
+		style.is_centered        = false;
+		style.is_fitted          = false;
+		style.is_bold            = true;
+		style.is_italic          = false;
+		style.is_shadow          = false;
+		style.shadow_distance[0] = 0;
+		style.shadow_distance[1] = 0;
+		style.is_border          = true;
+		style.border_width       = 40;
+		style.border_color       = {0, 0, 0};
+		style.font_size          = 24;
+		style.character_spacing = 0;
+		style.line_height        = 30;
+		style.wrap_limit         = overlayWidth - 20;
+
+		RenderRect clip{0, 0, static_cast<float>(overlayWidth), static_cast<float>(overlayHeight)};
+		dlgCtrl.renderToTarget(target, &clip, const_cast<char *>(fps_overlay_text.c_str()), &font, false, FIT_MODE::FIT_BOTH);
+		fps_overlay_dirty = false;
+	}
+
+	gpu.copyGPUImage(fps_overlay_gpu, nullptr, nullptr, screen_target, overlayX, overlayY);
+	screenChanged = true;
+}
+
 void ONScripter::waitEvent(int count, bool nopPreferred) {
 	//sendToLog(LogLevel::Info, "----waitEventSub(%i)\n", count);
 	static unsigned int lastExitTime   = 0;
@@ -376,11 +460,18 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		}
 
 		if (allow_rendering && !(skip_mode & SKIP_SUPERSKIP) && !deferredLoadingEnabled) {
+			if ((fps_overlay_visible || fps_overlay_refresh_required) && !screenChanged) {
+				RenderRect fullRect = full_script_clip;
+				flushDirect(fullRect, fullRect, refreshMode() | CONSTANT_REFRESH_MODE | REFRESH_BEFORESCENE_MODE);
+			}
+
 			if (cursor_gpu) {
 				int x, y;
 				onsGetMouseState(&x, &y);
 				gpu.copyGPUImage(cursor_gpu, nullptr, nullptr, screen_target, x, y);
 			}
+
+			drawFpsOverlay();
 
 			GPU_FlushBlitBuffer();
 		}
@@ -415,6 +506,7 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 				GPU_Flip(screen_target);
 				screenChanged = false;
 				gpu.clearWholeTarget(screen_target);
+				fps_overlay_refresh_required = false;
 			} else {
 				// We didn't update, assume screenChanged to be false
 				screenChanged = false;
@@ -427,23 +519,28 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		SDL_PollEvent(nullptr);
 #endif
 
-		if (show_fps_counter && !(skip_mode & SKIP_SUPERSKIP)) {
-			static std::deque<uint32_t> ticksList;
-			// display fps counter in title bar averaged over 30 frames
-			uint32_t elapsedMillis = static_cast<uint32_t>((highResolutionTicksNanos() - lastFlipTimeNanos) / NANOS_PER_MILLISECOND);
-			ticksList.push_front(elapsedMillis);
-			if (ticksList.size() == 31)
-				ticksList.pop_back();
-			// calculate average
-			double av = std::accumulate(ticksList.begin(), ticksList.end(), 0) / 30.0;
-			// put it in a string
-			size_t len        = 128 + std::strlen(wm_title_string);
-			char *titlestring = new char[len];
-			std::snprintf(titlestring, len, "[Renderer: %s / TPF: %.3f ms / FPS: %.3f] %s%s",
-			              gpu.current_renderer->name, av, 1000.0 / av, volume_on_flag ? "" : "[Sound: Off] ", wm_title_string);
-			// set the title
-			window.setTitle(titlestring);
-			freearr(&titlestring);
+		if ((show_fps_counter || fps_overlay_visible) && !(skip_mode & SKIP_SUPERSKIP)) {
+			static std::deque<double> ticksList;
+			// display fps counter averaged over 30 frames
+			double elapsedMillis = static_cast<double>(highResolutionTicksNanos() - lastFlipTimeNanos) / NANOS_PER_MILLISECOND;
+			if (elapsedMillis > 0.0) {
+				ticksList.push_front(elapsedMillis);
+				if (ticksList.size() > 30)
+					ticksList.pop_back();
+				double av = std::accumulate(ticksList.begin(), ticksList.end(), 0.0) / ticksList.size();
+				if (fps_overlay_visible)
+					updateFpsCounter(av);
+				if (show_fps_counter) {
+					// put it in a string
+					size_t len        = 128 + std::strlen(wm_title_string);
+					char *titlestring = new char[len];
+					std::snprintf(titlestring, len, "[Renderer: %s / TPF: %.3f ms / FPS: %.3f] %s%s",
+					              gpu.current_renderer->name, av, 1000.0 / av, volume_on_flag ? "" : "[Sound: Off] ", wm_title_string);
+					// set the title
+					window.setTitle(titlestring);
+					freearr(&titlestring);
+				}
+			}
 		}
 
 		//sendToLog(LogLevel::Info,"  flipped -- aimed for %i ms, took %i ms\n", constant_refresh_interval, ticksNow - lastFlipTime);
@@ -1077,6 +1174,14 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 		    onsKeyboardScancode(event) == ONS_SCANCODE_SCREEN) {
 			needs_screenshot = true;
 		}
+
+#if !defined(IOS) && !defined(DROID)
+		if (onsKeyboardScancode(event) == SDL_SCANCODE_F && state.keyState.opt && !state.keyState.ctrl) {
+			addToPostponedEventChanges("toggle fps overlay", [this]() { toggleFpsOverlay(); });
+			state.keyState.pressedFlag = true;
+			return false;
+		}
+#endif
 	}
 
 	// 's', Return, Enter, or Space will clear (regular) skip mode
@@ -1322,7 +1427,7 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 
 #if !defined(IOS) && !defined(DROID)
 	//'f' is for fullscreen toggle
-	if (onsKeyboardScancode(event) == SDL_SCANCODE_F && !state.keyState.ctrl) {
+	if (onsKeyboardScancode(event) == SDL_SCANCODE_F && !state.keyState.ctrl && !state.keyState.opt) {
 		addToPostponedEventChanges("change window mode", []() {
 			window.changeMode(true, false, !window.getFullscreen());
 		});

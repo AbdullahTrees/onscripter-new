@@ -38,7 +38,7 @@ as a generic upstream-compatible engine drop-in. The main differences are:
 | Build targets | Supports older platform/toolchain combinations inherited from ONScripter-RU. | Targets current maintained floors: Windows 10 x86_64, modern Linux, macOS/iOS baselines, and Android 14/API 34 or newer. |
 | Windows builds | Often depends on the local runtime/dependency layout chosen by the builder. | Public Windows releases are MSYS2/UCRT64 x86_64 builds with the SDL3 dependency stack statically linked through `onscrlib`. |
 | Android builds | Uses ONScripter-RU Android naming and older target assumptions. | Packages `onscripter-new` APKs with current Android SDK/NDK targets and `arm64-v8a` plus `x86_64` native libraries. |
-| Release data | Does not ship this branch's Umineko Project-specific packed English script. | Windows releases include `onscripter-new.exe`, the current packed `en.file`, install notes, and SHA-256 checksums. |
+| Release data | Does not ship this branch's Umineko Project-specific packed English script. | Windows releases include `onscripter-new.exe`, the current packed `en.file`, maintained loose replacement assets when needed, install notes, and SHA-256 checksums. |
 | Runtime UX | Upstream behavior and menus are kept closer to the original engine/project state. | Carries Umineko Project-specific UI/script maintenance, including file verification copy, pause-menu fixes, Message Browser line-jump confirmation, and modernized control text. |
 
 Compatibility is intentionally practical rather than universal: this branch
@@ -62,9 +62,9 @@ an existing legal Umineko Project installation or compatible release data.
 
 1. Download `onscripter-new-windows-x86_64.zip` from the latest GitHub release.
 2. Extract the archive.
-3. Copy `onscripter-new.exe` and `en.file` into the Umineko Project game
-   directory, replacing the existing engine executable and packed English
-   script as needed.
+3. Copy the archive contents into the Umineko Project game directory,
+   replacing the existing engine executable, packed English script, and any
+   included replacement loose assets as needed.
 4. Launch `onscripter-new.exe` from the game directory.
 
 The Windows package is intentionally small because the release executable is

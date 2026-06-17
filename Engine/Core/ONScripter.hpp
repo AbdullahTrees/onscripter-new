@@ -673,6 +673,9 @@ protected:
 	void waitEvent(int count, bool nopPreferred = false);
 	void trapHandler();
 	void initSDL();
+	void toggleFpsOverlay();
+	void updateFpsCounter(double frameMilliseconds);
+	void drawFpsOverlay();
 	void reopenAudioOnMismatch(const SDL_AudioSpec &match);
 	void openAudio(const SDL_AudioSpec &spec);
 	double readChunk(int channel, uint32_t no);
@@ -726,6 +729,12 @@ private:
 	bool enable_wheeldown_advance_flag{false};
 	bool enable_custom_cursors{false};
 	bool show_fps_counter{false};
+	bool fps_overlay_visible{false};
+	bool fps_overlay_dirty{true};
+	bool fps_overlay_refresh_required{false};
+	RenderImage *fps_overlay_gpu{nullptr};
+	std::string fps_overlay_text;
+	double displayed_fps{0.0};
 
 	void UpdateAnimPosXY(AnimationInfo *animp) {
 		animp->pos.x = animp->orig_pos.x;

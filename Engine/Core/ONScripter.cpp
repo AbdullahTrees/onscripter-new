@@ -2587,7 +2587,7 @@ void ONScripter::cleanImages() {
 	for (RenderImage **varPtr : {&accumulation_gpu, &hud_gpu,
 	                           &text_gpu, &window_gpu, &screenshot_gpu, &draw_gpu, &draw_screen_gpu,
 	                           // and some extras put into here for conciseness
-	                           &breakup_cellforms_gpu, &breakup_cellform_index_grid, &cursor_gpu, &tmp_image}) {
+	                           &breakup_cellforms_gpu, &breakup_cellform_index_grid, &cursor_gpu, &fps_overlay_gpu, &tmp_image}) {
 		RenderImage *imagePtr = *varPtr;
 		if (imagePtr) {
 			gpu.freeImage(imagePtr);
