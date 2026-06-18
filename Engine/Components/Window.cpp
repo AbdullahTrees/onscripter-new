@@ -85,6 +85,8 @@ void WindowController::setActiveState(bool activate) {
 void WindowController::setMainTarget(RenderTarget *target) {
 	window    = SDL_GetWindowFromID(target->context->windowID);
 	glcontext = SDL_GL_GetCurrentContext();
+	if (window && !current_title.empty())
+		SDL_SetWindowTitle(window, current_title.c_str());
 }
 
 void WindowController::setTitle(const char *title) {
@@ -92,7 +94,8 @@ void WindowController::setTitle(const char *title) {
 	if (current_title == safeTitle)
 		return;
 	current_title = safeTitle;
-	SDL_SetWindowTitle(window, current_title.c_str());
+	if (window)
+		SDL_SetWindowTitle(window, current_title.c_str());
 }
 
 void WindowController::setIcon(SDL_Surface *icon) {

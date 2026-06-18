@@ -1638,10 +1638,12 @@ void GPUBigImage::create(SDL_Surface *surface) {
 				gpu.updateImage(chunk, nullptr, surface, &tmp);
 			}
 			gpu.multiplyAlpha(chunk);
+			GPU_SetImageFilter(chunk, GPU_FILTER_LINEAR);
 			GPU_DiscardImagePixels(chunk);
 		} else {
 			chunk = gpu.createImage(tmp.w, tmp.h, channels);
 			GPU_GetTarget(chunk);
+			GPU_SetImageFilter(chunk, GPU_FILTER_LINEAR);
 		}
 		images.emplace_back(chunk);
 

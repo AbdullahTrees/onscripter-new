@@ -4216,6 +4216,134 @@ release executable was build-verified with UCRT64 `make -j8`; SDL3 synthetic
 and Music Box benchmark outputs from the final FreeType face-size fix are
 recorded above.
 
+Characters-menu polish follow-up: the 2026-06-18 packed-script UI pass swaps
+the Characters action row to show `Resurrect` before `Execute`, renames the
+outfit toggle to `Change Outfit`, centers that outfit action under the right
+description panel both when it appears beside the death-state actions and when
+it appears by itself, and title-cases the visible `Human Side`, `Witch Side`,
+and `Ange Side` side selectors. The English script was repacked and decode
+round-trip verified exactly. UCRT64 `make -j8` relinked successfully, and the
+rebuilt `onscripter-new.exe` plus updated `en.file` were copied to
+`D:\Umineko Project`. The Characters caption PNG was left unchanged after the
+follow-up request to skip PNG edits. No executable boot test, benchmark, or
+runtime telemetry was run.
+
+Tips Controls text follow-up: the 2026-06-18 packed-script UI pass changes the
+Tips `Controls` popup to read `If arrows are present, you can scroll text using
+the mouse wheel or two-finger swipe gesture.` followed by the same explicit
+close instruction used by the Config controls popup. The popup no longer closes
+on a seven-second timer; it now waits for click, Enter/Space, right-click, or
+Esc using a local button result so dismissing the popup does not exit the Tips
+menu. The English script was repacked and decode round-trip verified exactly.
+UCRT64 `make -j8` reported the binary target was already current, and the
+current executable plus updated `en.file` were copied to `D:\Umineko Project`.
+No executable boot test, benchmark, or runtime telemetry was run.
+
+Tips Controls centering follow-up: the 2026-06-18 packed-script UI pass wraps
+the Tips `Controls` popup copy in the same fixed-width centered text block used
+by the Config controls popup, so both visible lines are centered within the
+overlay instead of left-aligned inside the string sprite. The English script
+was repacked and decode round-trip verified exactly. UCRT64 `make -j8`
+reported the binary target was already current, and the current executable plus
+updated `en.file` were copied to `D:\Umineko Project`. No executable boot test,
+benchmark, or runtime telemetry was run.
+
+Tips text arrow-gutter follow-up: the 2026-06-18 packed-script UI pass reduces
+the English Tips/Grimoire description preset wrap width from 830 to 760 pixels.
+Those right-panel descriptions still render from `x=930`, while the 90-pixel
+scroll arrows are centered at `x=1740`; the narrower wrap leaves a right-side
+gutter so long text lines cannot run under the top scroll arrow. The English
+script was repacked and decode round-trip verified exactly. UCRT64 `make -j8`
+reported the binary target was already current, and the current executable plus
+updated `en.file` were copied to `D:\Umineko Project`. No executable boot test,
+benchmark, or runtime telemetry was run.
+
+Config Reset Progress confirmation follow-up: the 2026-06-18 packed-script UI
+pass leaves the footer `Reset Progress` label unchanged but updates the
+confirmation overlay that appears after selecting it. The reset prompt now uses
+an exact-width text sprite instead of the old 1600-pixel centered wrapper, and
+the prompt/buttons are positioned through the same shared centered-message
+helper used by the jump confirmation dialog. The English script was repacked
+and decode round-trip verified exactly. UCRT64 `make -j8` reported the binary
+target was already current, and the current executable plus updated `en.file`
+were copied to `D:\Umineko Project`. No executable boot test, benchmark, or
+runtime telemetry was run.
+
+Config Reset Progress confirmation spacing follow-up: the 2026-06-18
+packed-script UI pass keeps the reset prompt centered through the shared modal
+helper, then reapplies a reset-specific 75-pixel gap between `Yes, I'm sure`
+and `No!` so the options no longer sit too close together. The English script
+was repacked and decode round-trip verified exactly. UCRT64 `make -j8` reported
+the binary target was already current, and the current executable plus updated
+`en.file` were copied to `D:\Umineko Project`. No executable boot test,
+benchmark, or runtime telemetry was run.
+
+Jump-forward UI unknown-time follow-up: the 2026-06-18 packed-script UI pass
+replaces the empty jump-date solid line with `??? --:--`. The jump-menu clock
+now keeps a bright face at sprite `606` and a darkened face copy at sprite
+`605`; handless/default entries leave the darkened copy visible, while all
+timed clock aliases hide it before showing the hour and minute hands. The
+English script was repacked and decode round-trip verified exactly. UCRT64
+`make -j8` reported the binary target was already current, and the current
+executable plus updated `en.file` were copied to `D:\Umineko Project`. No
+executable boot test, benchmark, or runtime telemetry was run.
+
+Jump-forward UI audio/portrait follow-up: the 2026-06-18 script pass expands
+the unknown jump-date label to `?????? --:--`. The static jump-menu clock now
+uses the existing clock ME branch in `display_clock3`; the current menu call
+uses `umilse_011.ogg` through ME number 11 for the slow static clock tick, while
+the animated story clock routines keep their existing 1050/1051 behavior.
+Direct Ogg/Vorbis header inspection showed `umilse_011.ogg` is about 32.091
+seconds, compared with about 9.503 seconds for `umilse_1050.ogg`, 34.088
+seconds for `umilse_1051.ogg`, and 30.061 seconds for the rejected
+`umilse_1053.ogg` chime candidate. The menu tick is stopped with `E_M5` on
+title/back exits, at the selected-jump `perform_magic_jump` entry, and in the
+common `scenario_jump_exit_efe1` effect path. The renderer now explicitly keeps
+big-image chunks and the pooled transformed big-image canvas on linear
+filtering, which gives the jump portraits the best no-asset scaling path
+available. The episode portrait sheets are still 640x360 cells displayed at
+175%, so this can smooth scaling but cannot restore detail that is not in the
+source assets. The English script was repacked and decode round-trip verified
+exactly. UCRT64 `make -j8` rebuilt and relinked `onscripter-new.exe`, and the
+rebuilt executable plus updated `en.file` were copied to `D:\Umineko Project`
+with matching SHA-256 hashes. A later script-only follow-up repacked the
+English script after the 011 swap and copied the updated `en.file` to
+`D:\Umineko Project` with matching SHA-256 hashes. No executable boot test,
+benchmark, or runtime visual/audio pass was run.
+
+Message Browser Controls hint follow-up: the 2026-06-18 packed-script UI pass
+wraps `log_hint_text` in the same fixed-width centered text block style used by
+Tips, adds the explicit close instruction, and replaces the seven-second
+`wait 7000` timer in `*log_hint` with an input-dismiss `btnwait2`. The overlay
+now remains visible until click/keyboard dismissal while preserving the Message
+Browser button setup underneath. The English script was repacked and decode
+round-trip verified exactly. UCRT64 `make -j8` reported the binary target was
+already current, and the updated `en.file` was copied to `D:\Umineko Project`
+with matching SHA-256 hashes. No executable boot test, benchmark, or runtime
+visual pass was run.
+
+Message Browser Controls hint centering follow-up: the 2026-06-18 packed-script
+UI pass applies a local 71-pixel left adjustment after `align_message_l` in
+`*log_hint`, correcting the measured rightward visual offset in the multi-line
+Message Browser controls overlay without changing the shared alignment helper
+or the Tips controls overlay. The English script was repacked and decode
+round-trip verified exactly. UCRT64 `make -j8` reported the binary target was
+already current, and the updated `en.file` was copied to `D:\Umineko Project`
+with matching SHA-256 hashes. No executable boot test, benchmark, or runtime
+visual pass was run.
+
+Message Browser chapter-label/window-title follow-up: the 2026-06-18 UI pass
+title-cases the Message Browser footer labels to `Previous Chapter` and
+`Next Chapter`. The window controller now preserves a title set before renderer
+creation and reapplies it when binding to the real renderer window, fixing the
+SDL3 GPU launch path where the created window stayed on the fallback
+`onscripter-new` title. The English script was repacked and decode round-trip
+verified exactly. UCRT64 `make -j8` rebuilt and relinked
+`onscripter-new.exe`; the rebuilt executable plus updated `en.file` were copied
+to `D:\Umineko Project` with matching SHA-256 hashes. A short launch probe saw
+the fallback title at 0.5 seconds and the expected Rondo title at 1.0 seconds.
+No broader runtime visual/audio pass was run.
+
 ## Findings
 
 ### 1. Readback and Upload Traffic Dominate the Measured Boot/Video Path

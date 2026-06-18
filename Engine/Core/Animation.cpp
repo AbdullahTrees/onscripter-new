@@ -1506,8 +1506,10 @@ void ONScripter::drawBigImage(RenderTarget *target, AnimationInfo *info, int /*r
 		return;
 	}
 
-	if (needs_sprite_transformation_image)
+	if (needs_sprite_transformation_image) {
 		sprite_transformation_image = gpu.getCanvasImage();
+		GPU_SetImageFilter(sprite_transformation_image, GPU_FILTER_LINEAR);
+	}
 
 	// Switch to canvas (dst) coords
 	targetClip.x += camera.center_pos.x;
