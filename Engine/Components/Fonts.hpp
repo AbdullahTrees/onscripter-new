@@ -32,13 +32,27 @@ private:
 	// These functions update the "face" variable to the internal ttf bold/italic/bolditalic face if that exists, otherwise to an alias.
 	// They should be called before each render.
 	void setBold() {
-		face = (hasInternalBoldFace) ? bold_face : (bold_alias != nullptr) ? bold_alias : face;
+		face = hasInternalBoldFace ? bold_face : bold_alias ? bold_alias : normal_face;
 	}
 	void setItalic() {
-		face = (hasInternalItalicFace) ? italic_face : (italic_alias != nullptr) ? italic_alias : face;
+		face = hasInternalItalicFace ? italic_face : italic_alias ? italic_alias : normal_face;
 	}
 	void setBoldItalic() {
-		face = (hasInternalBoldItalicFace) ? bold_italic_face : (bold_italic_alias != nullptr) ? bold_italic_alias : face;
+		if (hasInternalBoldItalicFace) {
+			face = bold_italic_face;
+		} else if (bold_italic_alias) {
+			face = bold_italic_alias;
+		} else if (hasInternalBoldFace) {
+			face = bold_face;
+		} else if (bold_alias) {
+			face = bold_alias;
+		} else if (hasInternalItalicFace) {
+			face = italic_face;
+		} else if (italic_alias) {
+			face = italic_alias;
+		} else {
+			face = normal_face;
+		}
 	}
 	void setReset() {
 		face = normal_face;

@@ -63,6 +63,7 @@ SDL_Rect *GlyphAtlasNode::insert(int w, int h) {
 int GlyphAtlasController::ownInit() {
 	atlas = gpu.createImage(width, height, 4);
 	GPU_GetTarget(atlas);
+	reset();
 	return 0;
 }
 

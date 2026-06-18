@@ -14,6 +14,7 @@
 
 #include "Engine/Graphics/RendererBackend.hpp"
 
+#include <string>
 #include <vector>
 
 class WindowController : public BaseController {
@@ -51,6 +52,7 @@ class WindowController : public BaseController {
 	SDL_GLContext glcontext{nullptr};
 	// Current window.
 	SDL_Window *window{nullptr};
+	std::string current_title;
 	// Current window position.
 	int window_x{0}, window_y{0};
 	// Actual size of the window when in windowed mode. (Constant.)

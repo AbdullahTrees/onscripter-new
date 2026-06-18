@@ -16,6 +16,7 @@
 #include <deque>
 #include <vector>
 #include <tuple>
+#include <cstdint>
 
 class StringTree {
 public:
@@ -38,6 +39,10 @@ public:
 	std::string value;
 	std::unordered_map<std::string, cmp::any<StringTree>> branches;
 	std::vector<std::string> insertionOrder;
+	// Bumped by setValue/prune/clear so dependent caches (e.g. the scrollable
+	// geometry cache in AnimationInfo::ScrollableInfo) can detect that a
+	// script-facing mutation changed element data without re-reading the tree.
+	uint64_t modificationVersion = 0;
 
 	void accept(const std::shared_ptr<IStringTreeVisitor> &visitor);
 	std::string getValue(std::deque<std::string> &ss);

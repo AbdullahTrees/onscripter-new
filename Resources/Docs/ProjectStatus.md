@@ -1,6 +1,6 @@
 # onscripter-new Project Status
 
-Updated: 2026-06-17
+Updated: 2026-06-18
 
 This file consolidates the former compilation guide, dependency audit, and SDL3 performance audit into one maintenance document for the current `onscripter-new` release branch.
 
@@ -727,6 +727,324 @@ packed English script SHA-256 is
 copied to `D:\Umineko Project` and hash-verified. Per project instruction, the
 executable was not booted.
 
+The 2026-06-17 Music Box performance pass adds an opt-in `--musicbox-benchmark`
+benchmark (with `--musicbox-benchmark-output <path>`) that replicates the
+in-game Music Box scrollable draw workload, reports per-stage CSV timings, and
+prints a bottleneck analysis identifying the hot paths in
+`drawSpecialScrollable()`. The pass then optimizes `drawSpecialScrollable()`
+without changing script timing, draw order, or visual output, and without
+adding any new dependency. It (1) caches each element's decoded geometry,
+text margins, and bg sprite index in `AnimationInfo::ScrollableInfo` and
+rebuilds the cache only when the layout generation or `StringTree`
+modification version changes, eliminating the per-frame `std::stoi` and
+`unordered_map` hash lookups for every visible element; (2) precomputes a
+sorted y-end int array so `getScrollableElementsVisibleAt()` lower-bounds over
+ints instead of hashing and parsing StringTree branches on every comparison;
+(3) splits the draw loop into two passes - all background plates and dividers
+first, then all element text - so the SDL3_GPU native blit batch keeps one
+source texture per pass instead of flushing a command buffer on every
+background/text texture switch (cuts flushes from ~48 to ~2 per frame;
+scrollable elements never overlap, so text still composites on top of its own
+background identically); and (4) renders each visible element's text once to a
+cached GPU texture (the same render-to-texture pattern used for lsp string
+sprites) and blits it on subsequent frames, re-rendering only on a tree
+mutation or hover-style change, removing the per-frame
+`decodeUTF8String` + `layoutSegment` + `layoutLines` + per-glyph blit cost.
+`StringTree` gained a `modificationVersion` bumped by `setValue`/`prune`/
+`clear` so the caches invalidate on script-facing `tree_set`/`tree_clear`
+mutations, and `AnimationInfo::freeScrollableCaches()` releases the cached
+text textures on sprite teardown. The synthetic benchmark's full-frame
+scrollable draw case improved from ~1468 us/frame to ~57 us/frame (a ~26x
+reduction), well within the 144 Hz frame budget of 6944 us. The UCRT64 release
+rebuild linked successfully with no warning output, and the updated
+`onscripter-new.exe` was copied to `D:\Umineko Project\onscripter-new.exe`
+and hash-verified. Per project instruction, the executable was not booted.
+
+The immediate Music Box cache regression follow-up keeps the performance pass
+but fixes the two reported regressions. Cached scrollable text textures now
+include explicit border/shadow padding, clear their reused render targets
+before drawing, and blit back with the inverse padding offset so outlined Music
+Box titles are no longer clipped. The cached text key now includes the
+effective text/font/style inputs, `scrollable_cfg` invalidates the relevant
+geometry/text caches, and the geometry lower-bound cache is limited to the
+currently laid-out element range. Cached text textures are no longer copied
+into `old_ai` backup sprites, preventing current/backup scrollable states from
+sharing and double-freeing the same raw `RenderImage*` on Music Box teardown.
+The pass also fixes an older `AnimationInfo::performCopyNonImageFields()` bug
+that copied `image_name` from the destination instead of the source object.
+The UCRT64 `make -j8` rebuild linked successfully, the
+`--musicbox-benchmark --sdl3-benchmark-iterations 20` smoke run completed and
+wrote `DerivedData\MinGW-x86_64\musicbox-benchmark-after-cache-fix.txt`, and
+the rebuilt `onscripter-new.exe` was copied to `D:\Umineko Project`. A 12
+second hidden startup smoke kept the process alive until it was intentionally
+terminated. The exact interactive Music Box exit path was not automated, and
+no longer runtime telemetry pass was run.
+
+The immediate text/sprite hot-path follow-up keeps the Music Box cache fixes
+and removes additional broad per-frame overhead in the engine renderer. Text
+piece rendering now walks each glyph buffer once, queues shadow-border,
+shadow-glyph, regular-border, and regular-glyph commands into reusable
+vectors, and then replays those vectors in the original visual pass order.
+This avoids the previous four repeated glyph-buffer scans, skips glyph lookup
+work for fully transparent fade frames, and reuses layout-time regular glyph
+pointers when the buffer was built with renderable glyphs. Sprite rendering now
+stores rebuilt z-order buckets in fixed vectors instead of an
+`unordered_map<int, set<...>>`, sorting only buckets with multiple sprites.
+Animation timing now scans the tachi/LSP/LSP2 arrays directly instead of
+constructing a temporary `std::set<AnimationInfo *>`, and clock advancement
+uses a pointer-based helper to avoid per-sprite indexed dispatch overhead while
+preserving old-ai recursion, camera motion updates, warp clocks, dirty rects,
+and Lua animation timing. No new dependency was added. The UCRT64 `make -j8`
+rebuild linked successfully, `git diff --check` reported only the existing
+LF/CRLF working-copy warnings, and the 40-iteration Music Box benchmark wrote
+`DerivedData\MinGW-x86_64\musicbox-benchmark-after-text-sprite-pass.txt`;
+the optimized synthetic full-frame case measured 83.168 us/frame on this
+local run. The rebuilt executable was copied to
+`D:\Umineko Project\onscripter-new.exe` and hash-verified at SHA-256
+`3AC52E68517AC393EEE654CC6773A6B02B6AB8E89D5B31410DCA4D76B10D328B`. A 12
+second hidden startup smoke kept the process alive until intentionally
+terminated. The interactive Music Box exit path and longer runtime telemetry
+were left for manual testing.
+
+The next text/sprite animation continuation further reduces per-frame overhead
+outside the Music Box-specific cache. Plain text pieces now carry a
+layout-time `needsLayeredRenderPasses` flag; pieces without border or shadow
+render through a direct single-pass path instead of filling and replaying the
+four command queues. Repeated dialogue piece walks in the text-rendering
+monitor, line layout, render preparation, untime path, scrollable text-cache
+padding, and string-sprite colour-cell updates now traverse the existing
+segment/run/piece containers directly rather than allocating temporary
+`std::vector<DialoguePiece *>` lists. Dynamic sprite/spriteset property
+animation now erases empty property queues, wait commands re-find queues by
+key so erasure is safe, scheduled property application batches sprite and
+spriteset flushes to the controller-level flush, cubic slowdown/speedup
+equations use direct multiplication instead of `std::pow`, and animated sprite
+properties only call `UpdateAnimPosXY()` for x/y motion. Instant properties
+still flush immediately. The UCRT64 `make -j8` rebuild linked successfully,
+`git diff --check` reported only the existing LF/CRLF working-copy warnings,
+the 40-iteration Music Box benchmark wrote
+`DerivedData\MinGW-x86_64\musicbox-benchmark-after-dynamic-text-pass.txt`
+with `musicbox_full_frame_reordered` at 74.273 us/frame, and the 60-iteration
+SDL3 benchmark wrote
+`DerivedData\MinGW-x86_64\sdl3-benchmark-after-dynamic-text-pass.csv`. The
+rebuilt executable was copied to `D:\Umineko Project\onscripter-new.exe` and
+hash-verified at SHA-256
+`AF2727810C286AAD08433F4218F55B496781BF7C228D5A784C2BC794C49B75DC`. A 12
+second hidden startup smoke kept the process alive until intentionally
+terminated. The exact interactive Music Box exit path and longer runtime
+telemetry were left for manual testing.
+
+The follow-up shared blit/z-order pass keeps the text and dynamic-property
+changes and removes two lower-level costs hit by both text and sprite-heavy
+frames. SDL3_GPU native blits now skip the sine/cosine transform path for the
+common zero-rotation case used by glyphs, cached text, UI plates, and most
+normal sprites; rotated blits still use the previous transform math. Repeated
+`GPU_SetRGBA()` calls now no-op when the requested modulation is already set.
+Sprite z-order rebuilds now clear only previously populated buckets, record the
+currently populated z levels, sort only those buckets, and have
+`drawSpritesBetween()` iterate the populated level list instead of scanning all
+1000 possible z levels for each scene/HUD/spriteset range. The UCRT64
+`make -j8` rebuild linked successfully. The 40-iteration Music Box benchmark
+wrote `DerivedData\MinGW-x86_64\musicbox-benchmark-after-blit-zpass.txt` with
+`musicbox_full_frame_reordered` at 62.835 us/frame, and the 60-iteration SDL3
+benchmark wrote `DerivedData\MinGW-x86_64\sdl3-benchmark-after-blit-zpass.csv`.
+The rebuilt executable was copied to
+`D:\Umineko Project\onscripter-new.exe` and hash-verified at SHA-256
+`3EAF8EB29E94A800846ACE5197DB0E692495B3ED548F386F116D9AF854EA0FF6`. A 12
+second hidden startup smoke kept the process alive until intentionally
+terminated. The exact interactive Music Box exit path and longer runtime
+telemetry were left for manual testing.
+
+The next text/sprite continuation keeps the Music Box crash and clipping fixes
+and trims two more hot paths. Dialogue glyph rendering can now defer restoring
+glyph image modulation to white until the current text render finishes, avoiding
+the previous set/reset color-state pair around every fading glyph while still
+restoring touched glyph images before returning from `DialogueController::render`.
+Lipsync cell updates now scan the LSP and LSP2 sprite arrays directly instead of
+building a temporary `sprites(SPRITE_LSP | SPRITE_LSP2, true)` set for every
+character mouth-frame update; old-ai dirty-rect handling is preserved. The
+UCRT64 `make -j8` rebuild linked successfully, `git diff --check` reported only
+the existing LF/CRLF working-copy warnings, the 300-iteration Music Box benchmark
+wrote `DerivedData\MinGW-x86_64\musicbox-benchmark-after-alpha-lips-pass.txt`
+with `musicbox_full_frame_reordered` at 59.859 us/frame, and the 300-iteration
+SDL3 benchmark wrote
+`DerivedData\MinGW-x86_64\sdl3-benchmark-after-alpha-lips-pass.csv`. The rebuilt
+executable was copied to `D:\Umineko Project\onscripter-new.exe` and
+hash-verified at SHA-256
+`C99A1CC7D09ED55FC5E62F98CB3D660561360909ED4A08ABF6D04B189B6016FD`. A 12 second
+hidden startup smoke kept the process alive and then exited cleanly after the
+scripted close. The exact interactive Music Box exit path and longer runtime
+telemetry were left for manual testing.
+
+The follow-up prepared-text/sparse-animation pass keeps the prior fixes and
+moves more repeated work out of the frame loop. Persistent dialogue and speaker
+name states now prepare per-piece glyph draw commands at layout time, including
+shadow, border, regular-glyph, relative-position, and glyph-index data, so live
+text rendering no longer rebuilds those command streams or re-walks font-style
+markers every draw; one-shot and bounds-only text states skip eager preparation
+and use the lazy fallback only if they actually render. Sprite animation
+advancement now skips empty LSP/LSP2/tachi slots before entering the recursive
+clock helper, `proceedAnimation()` performs the same sparse existence gate
+before estimating current/old animation frames, and `estimateNextDuration()`
+caches same-branch duration/remaining values instead of querying them twice.
+The UCRT64 `make -j8` rebuild linked successfully, `git diff --check` reported
+only the existing LF/CRLF working-copy warnings, the 300-iteration Music Box
+benchmark wrote
+`DerivedData\MinGW-x86_64\musicbox-benchmark-after-prepared-text-sparse-anim-pass-final.txt`
+with `musicbox_full_frame_reordered` at 56.991 us/frame, and the 300-iteration
+SDL3 benchmark wrote
+`DerivedData\MinGW-x86_64\sdl3-benchmark-after-prepared-text-sparse-anim-pass-final.csv`.
+The rebuilt executable was copied to `D:\Umineko Project\onscripter-new.exe`
+and hash-verified at SHA-256
+`DC76C7408426E0F79D6E476BAFE388BCFEE5C5C27103D84042B12FFF2F907CE7`. A 12 second
+hidden startup smoke kept the process alive and then exited cleanly after the
+scripted close. The exact interactive Music Box exit path and longer runtime
+telemetry were left for manual testing.
+
+The next timed-glyph/visible-z pass further trims text and sprite-frame work.
+Dialogue segments now keep a prepared list of timed render glyphs populated when
+the segment is timed; `advanceDialogueRendering()`, the final-glyph-start
+monitor, and segment-completion checks use that list instead of walking every
+piece and every glyph in all visible segments. Expired glyphs are compacted out
+of the list as the fade finishes. Layered text pieces also compute each glyph's
+per-frame fade alpha once and reuse it across shadow, border, and regular glyph
+commands. Sprite z-level setup now filters out invisible selected before/after
+sprite states before filling z buckets, and repeated scrollable/input/tree/all
+sprite command paths now scan LSP/LSP2 arrays directly instead of constructing
+temporary ordered `sprites(...)` sets. The UCRT64 `make -j8` rebuild linked
+successfully, `git diff --check` reported only the existing LF/CRLF working-copy
+warnings, the 300-iteration Music Box benchmark wrote
+`DerivedData\MinGW-x86_64\musicbox-benchmark-after-timed-glyph-visible-zpass.txt`
+with `musicbox_full_frame_reordered` at 49.519 us/frame, and the 300-iteration
+SDL3 benchmark wrote
+`DerivedData\MinGW-x86_64\sdl3-benchmark-after-timed-glyph-visible-zpass.csv`.
+The rebuilt executable was copied to `D:\Umineko Project\onscripter-new.exe`
+and hash-verified at SHA-256
+`D0E23A9238099613E12328DD56C321F575D40909AC69C41D85356006B1557E09`. A 12 second
+hidden startup smoke kept the process alive and then exited cleanly after the
+scripted close. The exact interactive Music Box exit path and longer runtime
+telemetry were left for manual testing.
+
+The follow-up cached-alpha/z-range pass removes additional repeated render-time
+work. Dialogue glyph fade alpha is now computed when a segment is timed and
+updated during `advanceDialogueRendering()`, so `renderPiece()` reads a cached
+integer instead of querying `Clock` state for every glyph command; untimed glyphs
+reset to full opacity. Sprite z setup now also excludes parent-owned child
+sprites and globally hidden LSP/LSP2 groups before filling z buckets, and
+`drawSpritesBetween()` lower-bounds into the descending populated z-level list
+instead of scanning irrelevant higher levels for each scene/HUD/spriteset range.
+The UCRT64 `make -j8` rebuild linked successfully, `git diff --check` reported
+only the existing LF/CRLF working-copy warnings, the isolated 300-iteration
+Music Box benchmark wrote
+`DerivedData\MinGW-x86_64\musicbox-benchmark-after-cached-alpha-zrange-pass-rerun.txt`
+with `musicbox_full_frame_reordered` at 51.117 us/frame, and the 300-iteration
+SDL3 benchmark wrote
+`DerivedData\MinGW-x86_64\sdl3-benchmark-after-cached-alpha-zrange-pass.csv`.
+The rebuilt executable was copied to `D:\Umineko Project\onscripter-new.exe`
+and hash-verified at SHA-256
+`E462F100830E276279F4F7AA58C6266062C3634114ADF515556B0202EFBEC0C6`. A 12 second
+hidden startup smoke kept the process alive and then exited cleanly after the
+scripted close. The exact interactive Music Box exit path and longer runtime
+telemetry were left for manual testing.
+
+The next render-specialization/animation-candidate pass keeps the cached-alpha
+and z-range work and removes another layer of repeated branching. Text command
+replay now uses separate opaque/static and live-dialogue render paths, so
+one-shot/static text rendering does not branch on dialogue state or read glyph
+fade fields for every prepared command. The sprite animation clock pass now
+builds a compact list of animation candidates while it scans/ticks sprite
+clocks, and the following `proceedAnimation()` pass consumes that list instead
+of scanning tachi/LSP/LSP2 arrays a second time; it falls back to the full scan
+if no candidate list is available. The per-sprite draw path also drops a
+canvas-size validation log branch from every `drawToGPUTarget()` call while
+keeping the null-target guard. The UCRT64 `make -j8` rebuild linked
+successfully, `git diff --check` reported only the existing LF/CRLF working-copy
+warnings, the isolated 300-iteration Music Box benchmark wrote
+`DerivedData\MinGW-x86_64\musicbox-benchmark-after-render-specialize-anim-candidates-pass-rerun2.txt`
+with `musicbox_full_frame_reordered` at 57.239 us/frame, and the 300-iteration
+SDL3 benchmark wrote
+`DerivedData\MinGW-x86_64\sdl3-benchmark-after-render-specialize-anim-candidates-pass.csv`.
+The rebuilt executable was copied to `D:\Umineko Project\onscripter-new.exe`
+and hash-verified at SHA-256
+`BD04CB6ED52BAC52341997BED4500FE02F62957B14B398F23A9C353681239F27`. A 12 second
+hidden startup smoke kept the process alive and then exited cleanly after the
+scripted close. The exact interactive Music Box exit path and longer runtime
+telemetry were left for manual testing.
+
+The immediate Music Box benchmark regression correction keeps the prior text,
+z-range, and animation-candidate work while reducing SDL3_GPU native blit
+submission overhead. Compatible native blits targeting the same render target,
+pipeline, blend mode, viewport, and scissor now stay in one command buffer even
+when the sampled source texture changes; the batch records ordered source
+texture/sampler draw groups and rebinds them inside one render pass. The common
+zero-rotation blit path also appends quad vertices directly into the native
+batch instead of first building and copying a temporary vertex array. Visual draw
+order is preserved because draw groups are emitted in queue order. The UCRT64
+`make -j8` rebuild linked successfully, the 300-iteration Music Box benchmark
+wrote
+`DerivedData\MinGW-x86_64\musicbox-benchmark-after-multisource-blit-batch-final.txt`
+with `musicbox_full_frame_reordered` at 37.685 us/frame, improving the fresh
+pre-fix rerun's 58.797 us/frame and the previous recorded 57.239 us/frame
+regression. The same final run measured the formerly alternating single-pass
+paths at 57.231 us/frame uncached and 54.395 us/frame cached because source
+switches no longer force immediate command-buffer flushes. The 300-iteration
+SDL3 renderer benchmark wrote
+`DerivedData\MinGW-x86_64\sdl3-benchmark-after-multisource-blit-batch-final.csv`
+with `blit_256_batched_submit` at 0.453 us, `triangle_batch_1024_quads_submit`
+at 36.229 us, and `readback_full_completed` at 1644.705 us. The rebuilt
+executable was copied to `D:\Umineko Project\onscripter-new.exe` and
+hash-verified at SHA-256
+`DB4B782B5C9323D7F1F50C5A287A9B73AD1E992D70FB2F805081FB1994143E2F`. No
+executable boot test or longer runtime telemetry pass was run for this
+benchmark-focused fix.
+
+The immediate string-button hover correction fixes a visual regression from the
+prepared text-command optimization. Multi-cell text sprites such as the Config
+`Controls` button render each cell by reusing one laid-out `TextRenderingState`
+and changing `Fontinfo::buttonMultiplyColor` between cells. Prepared glyph draw
+commands were still marked valid after that color change, so later hover cells
+could reuse the normal-cell glyph pointers and remain white instead of rendering
+the red `#FF0000` cell. The cell-rendering loop now invalidates each
+`DialoguePiece`'s prepared render commands after applying a new cell multiply
+color, forcing the existing lazy preparation path to rebuild glyph commands for
+that cell. The UCRT64 `make -j8` rebuild linked successfully, the 300-iteration
+Music Box benchmark wrote
+`DerivedData\MinGW-x86_64\musicbox-benchmark-after-string-hover-cell-fix.txt`
+with `musicbox_full_frame_reordered` at 32.973 us/frame, and the 300-iteration
+SDL3 benchmark wrote
+`DerivedData\MinGW-x86_64\sdl3-benchmark-after-string-hover-cell-fix.csv` with
+`blit_256_batched_submit` at 0.247 us, `triangle_batch_1024_quads_submit` at
+39.345 us, and `readback_full_completed` at 1640.318 us. The rebuilt executable
+was copied to `D:\Umineko Project\onscripter-new.exe` and hash-verified at
+SHA-256 `3466753895003BB9987C1F2C54BC0821D1C8963B363A17A23A13ECF00623F019`.
+No script repack, executable boot test, interactive Config hover pass, or
+longer runtime telemetry pass was run for this engine-only correction.
+
+The 144 Hz follow-up looked outside text rendering and sprite animation work at
+frame pacing and measurement overhead. SDL3_GPU present-mode selection now maps
+the renderer's late-swap/default path to `SDL_GPU_PRESENTMODE_MAILBOX` when the
+driver supports it, falls back to classic vsync otherwise, and still honors
+explicit disabled-vsync benchmark runs with immediate present mode. On SDL3
+Windows builds the default swap interval is now late-swap/mailbox rather than
+classic vsync; `--force-vsync` restores classic vsync, and the command-line
+help text reflects that behavior. The FPS title counter and in-game overlay now
+refresh their displayed label at 4 Hz instead of rebuilding text and calling
+`SDL_SetWindowTitle()` every frame, and the window controller skips duplicate
+title updates. The UCRT64 `make -j8` rebuild linked successfully. A short
+`--current-user-appdata --use-logfile` boot from `D:\Umineko Project` confirmed
+`SDL3_GPU present mode: mailbox`. The final waited 300-iteration Music Box
+rerun wrote
+`DerivedData\MinGW-x86_64\musicbox-benchmark-after-fps-present-final-rerun.txt`
+with `musicbox_full_frame_reordered` at 33.800 us/frame; the 300-iteration SDL3
+benchmark wrote
+`DerivedData\MinGW-x86_64\sdl3-benchmark-after-fps-present-final.csv` with
+`blit_256_batched_submit` at 0.228 us, `triangle_batch_1024_quads_submit` at
+33.625 us, and `readback_full_completed` at 1754.654 us. The rebuilt executable
+was copied to `D:\Umineko Project\onscripter-new.exe` and hash-verified at
+SHA-256 `3EB3A6EE7F57B939E63E2EEEEDB8AF0C42D5DB4AFA4372315707FF064F0BD776`.
+No script repack, long interactive FPS pass, or longer renderer telemetry pass
+was run for this pacing/measurement optimization.
+
 SDL3_GPU telemetry can be enabled at runtime with `--sdl3-gpu-telemetry` or
 `ONS_SDL3_GPU_TELEMETRY=1`. The renderer logs aggregate command-buffer,
 texture-upload, readback, native-draw, CPU-blit, CPU-shader-fallback, and
@@ -1260,6 +1578,14 @@ complete investigation log.
   dependency set unchanged while fixing Android cross-build portability in the
   joystick libusb guard, standard-library includes, Droid profiler atomic stop
   path, and SDL2-only touch-threshold declarations.
+- The 2026-06-17 Music Box cache regression follow-up adds no third-party
+  dependencies. It only hardens the existing special-scrollable geometry/text
+  caches, cache invalidation, and `AnimationInfo` copy semantics, while keeping
+  the SDL3_GPU benchmark and renderer stack unchanged.
+- The 2026-06-17 Music Box text/sprite optimization follow-ups add no
+  third-party dependencies. They only change existing dialogue rendering,
+  dynamic-property scheduling, sprite animation/z-order traversal, SDL3_GPU
+  state guards, and lipsync sprite scans.
 
 ## Support Floor
 
@@ -2055,6 +2381,14 @@ SDL3 source-tagged runtime telemetry:
   `388C0434DE0CC25CAA1DCA9871517A79911F0EAC6C9A54A1CCDD2A3CB4404DB5`. Both
   were copied to `D:\Umineko Project` and hash-verified. Per project
   instruction, the executable was not booted.
+- The 2026-06-17 Music Box cache regression follow-up added no dependencies.
+  It only hardens existing special-scrollable geometry/text caches, cache
+  invalidation, and `AnimationInfo` copy semantics while keeping the SDL3_GPU
+  benchmark and renderer stack unchanged.
+- The 2026-06-17 Music Box text/sprite optimization follow-ups added no
+  dependencies. They only change existing dialogue rendering, dynamic-property
+  scheduling, sprite animation/z-order traversal, SDL3_GPU state guards, and
+  lipsync sprite scans.
 
 ## Packaging Notes
 
@@ -3869,6 +4203,19 @@ outputs/signing environment were not present locally. `SHA256SUMS.txt` was
 regenerated for the Windows zip and carried-forward APK. No executable boot
 test, benchmark, or runtime telemetry was run for this release packaging pass.
 
+Release packaging follow-up: local `v2026.06.18` artifacts were prepared under
+`DerivedData\Release\v2026.06.18`. The Windows x86_64 zip includes the rebuilt
+144 Hz frame-pacing/text-rendering executable, current packed `en.file`,
+install notes, and the maintained loose textbox preview assets at
+`graphics\system\wnd\msgwnd_preview_en.png`,
+`msgwnd_preview_ep5_en.png`, `msgwnd_preview2.png`,
+`msgwnd_preview3.png`, and transparent `msgwnd_preview4.png`. The Android APK
+was carried forward unchanged from `v2026.06.17`. `SHA256SUMS.txt` was
+regenerated and validated for the Windows zip and carried-forward APK. The
+release executable was build-verified with UCRT64 `make -j8`; SDL3 synthetic
+and Music Box benchmark outputs from the final FreeType face-size fix are
+recorded above.
+
 ## Findings
 
 ### 1. Readback and Upload Traffic Dominate the Measured Boot/Video Path
@@ -4022,6 +4369,74 @@ unreleased `VkImage` or `VkImageView` children in this scenario.
 Next step: keep monitoring validation output during longer in-game SDL3_GPU
 passes, especially after exercising save/load, backlog, subtitles, video, and
 resolution changes.
+
+### 8. 144 Hz Frame Pacing and Glyph Cache Correctness
+
+Current status: build-verified on 2026-06-18. `waitEvent()` now compensates
+the pre-flip wait by a smoothed estimate of the post-wait frame tail. This
+targets the observed 137-138 FPS ceiling on 144 Hz displays, where the old loop
+waited a full refresh interval and then added flip/clear/title work on top.
+
+The glyph cache key now keeps the real font preset id, initializes
+`GlyphParams`, and uses matching hash/equality rules for colored versus
+uncolored glyphs. Glyph measurements also normalize away color state. This
+prevents preset menu text from reusing cached ruby-sized glyphs, which caused
+some Grimoire letters to render smaller than their neighbors.
+
+A follow-up 2026-06-18 pass fixed remaining Grimoire corruption after the first
+cache-key change. The cache key could be correct while the shared FreeType
+`Font` object was still left at the previous ruby-size face state when a cache
+miss filled a glyph. `Fontinfo::my_font()` now reapplies the current style and
+size before returning the font for kerning/layout, and glyph render/measure
+cache misses reapply the key's style, size, and border immediately before
+calling FreeType.
+
+A second follow-up 2026-06-18 pass addressed Grimoire sections that still
+showed lowercase-looking remnants in title entries. The glyph atlas is now
+cleared when initialized, string-sprite render targets are explicitly cleared
+before blended glyph draws, bold/italic face selection falls back to
+`normal_face` instead of preserving a stale previous face, and copied colored
+glyph values preserve their FreeType char index metadata for kerning.
+
+A third follow-up 2026-06-18 pass fixed the remaining systemic Grimoire glyph
+corruption risk introduced by the optimized batched text renderer. Prepared
+glyph draw commands now record the glyph-cache generation, and a command batch
+is rebuilt if the text atlas resets while commands are being prepared or before
+the batch is rendered. This prevents queued draw commands from retaining
+stale `GlyphValues` pointers after an atlas reset, which could show ruby-sized
+or otherwise wrong glyph images in later Grimoire title sprites.
+
+A fourth follow-up 2026-06-18 pass addressed the lower-level FreeType state
+leak that could still create ruby-sized glyph cache entries with full-size
+keys. `Font::setSize()` now validates the active `FT_Face`'s real pixel size
+before skipping `FT_Set_Char_Size()`, so a face resized through another font
+wrapper or style alias cannot leave later title rendering at the previous ruby
+size.
+
+Line-ending warnings were addressed by adding `.gitattributes` text/binary
+classification and normalizing the currently modified text files to the local
+Windows checkout convention. `git diff --check` is clean.
+
+Verification: UCRT64 `make -j8` succeeded. SDL3 synthetic benchmark output was
+written to `DerivedData/MinGW-x86_64/sdl3-benchmark-after-glyph-pacing-fix.csv`;
+Music Box benchmark output was written to
+`DerivedData/MinGW-x86_64/musicbox-benchmark-after-glyph-pacing-fix.txt`.
+The follow-up font-state fix also passed UCRT64 `make -j8`; benchmark outputs
+were written to `sdl3-benchmark-after-font-state-fix.csv` and
+`musicbox-benchmark-after-font-state-fix.txt`. The second Grimoire cleanup
+passed UCRT64 `make -j8`; benchmark outputs were written to
+`sdl3-benchmark-after-grimoire-glyph-cleanup.csv` and
+`musicbox-benchmark-after-grimoire-glyph-cleanup.txt`. The third Grimoire
+generation fix passed UCRT64 `make -j8`; benchmark outputs were written to
+`sdl3-benchmark-after-grimoire-generation-fix.csv` and
+`musicbox-benchmark-after-grimoire-generation-fix.txt`. The FreeType face-size
+fix passed UCRT64 `make -j8`; benchmark outputs were written to
+`sdl3-benchmark-after-freetype-face-size-fix.csv` and
+`musicbox-benchmark-after-freetype-face-size-fix.txt`.
+
+Next step: perform an in-game visual pass through Config hover states and the
+Grimoire list, then check the FPS overlay on the target 144 Hz display with the
+rebuilt executable.
 
 ## Current Priority Order
 

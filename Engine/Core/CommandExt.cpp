@@ -404,8 +404,9 @@ int ONScripter::treeSetCommand() {
 	if (returnVal)
 		script_h.setInt(&script_h.pushed_variable, result);
 
-	for (auto sp : sprites(SPRITE_LSP)) {
-		if (sp->scrollableInfo.isSpecialScrollable)
+	for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+		AnimationInfo *sp = &sprite_info[i];
+		if (sp->exists && sp->scrollableInfo.isSpecialScrollable)
 			dirtySpriteRect(sp->id, false);
 	}
 
@@ -476,8 +477,9 @@ int ONScripter::treeClearCommand() {
 
 	dataTrees[tree].clear();
 
-	for (auto sptr : sprites(SPRITE_LSP)) {
-		if (sptr->scrollableInfo.isSpecialScrollable)
+	for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+		AnimationInfo *sptr = &sprite_info[i];
+		if (sptr->exists && sptr->scrollableInfo.isSpecialScrollable)
 			dirtySpriteRect(sptr);
 	}
 
@@ -1009,7 +1011,19 @@ int ONScripter::scrollableConfigCommand() {
 
 	// Get scrollable spriteID
 	int sprNo                         = validSprite(script_h.readInt());
-	AnimationInfo::ScrollableInfo &si = sprite_info[sprNo].scrollableInfo;
+	AnimationInfo &scrollable         = sprite_info[sprNo];
+	AnimationInfo::ScrollableInfo &si = scrollable.scrollableInfo;
+	const bool relayout =
+	    divider || firstmargin || lastmargin || cols || colgap ||
+	    elemwidth || elemheight || textmarginwidth || textmarginleft ||
+	    textmarginright || textmargintop || tightfit;
+	if (match) {
+		scrollable.freeScrollableCaches();
+		if (relayout) {
+			si.layoutedElements = 0;
+			si.totalHeight      = 0;
+		}
+	}
 
 	if (divider || elembg || scrollbar) { // Specify another spriteID to be used within the scrollable
 		int sprite = validSprite(script_h.readInt());
@@ -1185,8 +1199,9 @@ int ONScripter::superSkipCommand() {
 int ONScripter::superSkipUnsetCommand() {
 	skip_mode &= ~(SKIP_SUPERSKIP | SKIP_NORMAL);
 
-	for (AnimationInfo *s : sprites(SPRITE_LSP2)) {
-		if (s->deferredLoading) {
+	for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+		AnimationInfo *s = &sprite2_info[i];
+		if (s->exists && s->deferredLoading) {
 			setupAnimationInfo(s);
 			postSetupAnimationInfo(s);
 		}

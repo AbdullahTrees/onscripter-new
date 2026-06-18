@@ -25,6 +25,16 @@
 
 DialogueController dlgCtrl;
 
+namespace {
+int computeDialogueGlyphRenderAlpha(RenderBufferGlyph &glyph) {
+	if (!glyph.fadeStart.expired())
+		return 0;
+	if (!glyph.fadeStop.expired() && glyph.fadeDuration)
+		return 255 - (255 * glyph.fadeStop.remaining() / glyph.fadeDuration);
+	return 255;
+}
+} // namespace
+
 // ---------------------------------------------------------
 // Class functions
 // ---------------------------------------------------------
@@ -411,17 +421,11 @@ void DialogueController::TextRenderingMonitorAction::run() {
 		return;
 	}
 	bool r{true};
-	for (auto piecePtr : dlgCtrl.dialogueRenderState.segments[dlgCtrl.dialogueRenderState.segmentIndex].getPieces()) {
-		auto &piece = *piecePtr;
-		for (auto &glyph : piece.charRenderBuffer) {
-			if (!glyph.fadeStart.expired()) {
-				r = false;
-				break;
-			}
-			// note this checks for fadeStart -- action that monitors for the start of final glyph fadein
-		}
-		if (!r)
+	for (auto *glyph : dlgCtrl.dialogueRenderState.segments[dlgCtrl.dialogueRenderState.segmentIndex].timedGlyphs) {
+		if (!glyph->fadeStart.expired()) {
+			r = false;
 			break;
+		}
 	}
 	if (r) {
 		lastCompletedSegment = dlgCtrl.dialogueRenderState.segmentIndex;
@@ -533,21 +537,41 @@ void DialogueController::layoutDialogue() {
 void DialogueController::layoutLines(TextRenderingState &state) {
 	// Vertically position lines
 	float y{0}, previousDescender{0}, lineHeightMultiplier{0};
-	auto statePieces = state.getPieces();
-	if (!statePieces.empty()) {
-		auto &fi             = statePieces.front()->getPreFontInfo();
+	DialoguePiece *firstStatePiece{nullptr};
+	for (auto &seg : state.segments) {
+		for (auto &run : seg.runs) {
+			if (!run.pieces.empty()) {
+				firstStatePiece = &run.pieces.front();
+				break;
+			}
+		}
+		if (firstStatePiece)
+			break;
+	}
+	if (firstStatePiece) {
+		auto &fi             = firstStatePiece->getPreFontInfo();
 		lineHeightMultiplier = static_cast<float>(fi.style().line_height) / static_cast<float>(fi.style().font_size);
 		y                    = fi.y();
 	}
 	for (auto &line : state.lines) {
 		bool hasAtLeastOneChar{false};
 
-		auto linePiecesWithRuby = line.getPieces(true);
-		for (auto piece : linePiecesWithRuby) {
-			if (std::any_of(piece->charRenderBuffer.begin(), piece->charRenderBuffer.end(),
-			                [](RenderBufferGlyph &g) { return !g.applyNewFontinfoHere && !g.renderRubyHere; })) {
+		auto hasRenderableChar = [](DialoguePiece *piece) {
+			return std::any_of(piece->charRenderBuffer.begin(), piece->charRenderBuffer.end(),
+			                   [](RenderBufferGlyph &g) { return !g.applyNewFontinfoHere && !g.renderRubyHere; });
+		};
+		for (auto *piece : line.pieces) {
+			if (hasRenderableChar(piece)) {
 				hasAtLeastOneChar = true;
 				break;
+			}
+		}
+		if (!hasAtLeastOneChar) {
+			for (auto *piece : line.rubyPieces) {
+				if (hasRenderableChar(piece)) {
+					hasAtLeastOneChar = true;
+					break;
+				}
 			}
 		}
 
@@ -612,8 +636,7 @@ void DialogueController::layoutLines(TextRenderingState &state) {
 		if (line.pieces.empty())
 			continue;
 		float frontX = line.pieces.front()->position.x;
-		auto linePiecesWithRuby = line.getPieces(true);
-		for (auto piecePtr : linePiecesWithRuby) {
+		auto positionPiece = [&](DialoguePiece *piecePtr) {
 			DialoguePiece &piece = *piecePtr;
 			piece.position.x += line.position.x;
 			if (line.horizontalResize != 1.0) {
@@ -626,7 +649,9 @@ void DialogueController::layoutLines(TextRenderingState &state) {
 			/*if (!state.tightlyFitBottomEdge)
 				piece.position.h += line.maxDescender - piece.usedSpaceBelowBaseline;*/
 			// we hope that we no longer need this
-		}
+		};
+		for (auto *piecePtr : line.pieces) positionPiece(piecePtr);
+		for (auto *piecePtr : line.rubyPieces) positionPiece(piecePtr);
 	}
 
 	// Set cursor positions
@@ -639,6 +664,9 @@ void DialogueController::layoutLines(TextRenderingState &state) {
 		segment.cursorPosition.x = lastPiece->position.x + lastPiece->position.w - (lastPiece->borderPadding * 2);
 		segment.cursorPosition.y = lastPiece->position.y + lastPiece->baseline;
 	}
+
+	if (&state == &dialogueRenderState || &state == &nameRenderState)
+		prepareRenderCommands(state);
 }
 
 void DialogueController::getRenderingBounds(TextRenderingState &state, bool visiblePiecesOnly) {
@@ -728,7 +756,18 @@ void DialogueController::prepareForRendering(const char *buf, Fontinfo &f_info, 
 	while (f_info.styleStack.size() > 1) f_info.styleStack.pop();
 
 	layoutSegment(state, text, f_info);
-	if (state.getPieces().empty())
+	bool hasPieces{false};
+	for (auto &seg : state.segments) {
+		for (auto &run : seg.runs) {
+			if (!run.pieces.empty()) {
+				hasPieces = true;
+				break;
+			}
+		}
+		if (hasPieces)
+			break;
+	}
+	if (!hasPieces)
 		return; // >D
 
 	layoutLines(state);
@@ -788,6 +827,7 @@ void DialogueController::timeCurrentDialogueSegment() {
 	int fade  = textFadeDuration.get(ons.text_fade_duration);
 
 	char16_t prevCodepoint = 0;
+	seg.timedGlyphs.clear();
 
 	for (auto &run : seg.runs) {
 		int usedMs      = 0;
@@ -802,6 +842,9 @@ void DialogueController::timeCurrentDialogueSegment() {
 						rubyGlyph.fadeStart.setCountdown(usedMs);
 						rubyGlyph.fadeStop.setCountdown(usedMs + fade);
 						rubyGlyph.fadeDuration = fade;
+						rubyGlyph.renderAlpha  = computeDialogueGlyphRenderAlpha(rubyGlyph);
+						if (!rubyGlyph.fadeStop.expired())
+							seg.timedGlyphs.push_back(&rubyGlyph);
 					}
 					rubiesTimed++;
 					continue;
@@ -822,6 +865,9 @@ void DialogueController::timeCurrentDialogueSegment() {
 				glyph.fadeStart.setCountdown(usedMs);
 				glyph.fadeStop.setCountdown(usedMs + fade);
 				glyph.fadeDuration = fade;
+				glyph.renderAlpha  = computeDialogueGlyphRenderAlpha(glyph);
+				if (!glyph.fadeStop.expired())
+					seg.timedGlyphs.push_back(&glyph);
 				usedMs += ons.getCharacterPostDisplayDelay(glyph.codepoint, speed);
 				prevCodepoint = glyph.codepoint;
 			}
@@ -830,13 +876,23 @@ void DialogueController::timeCurrentDialogueSegment() {
 }
 
 void DialogueController::untimeDialogueSegment(int segment) {
-	for (auto piecePtr : dlgCtrl.dialogueRenderState.segments[segment].getPieces(true)) {
-		auto &piece = *piecePtr;
+	DialogueSegment &seg = dlgCtrl.dialogueRenderState.segments[segment];
+	auto untimePiece = [](DialoguePiece &piece) {
 		for (auto &glyph : piece.charRenderBuffer) {
 			glyph.fadeStart.reset();
 			glyph.fadeStop.reset();
+			glyph.renderAlpha = 255;
+		}
+	};
+	for (auto &run : seg.runs) {
+		for (auto &piece : run.pieces) {
+			untimePiece(piece);
+		}
+		for (auto &piece : run.rubyPieces) {
+			untimePiece(piece);
 		}
 	}
+	seg.timedGlyphs.clear();
 }
 
 void DialogueController::untimeAllDialogueSegments() {
@@ -948,15 +1004,124 @@ void DialogueController::layoutRubyPiece(DialoguePiece &mainPiece, DialoguePiece
 }
 
 void DialogueController::render(TextRenderingState &state) {
+	renderTouchedGlyphImages.clear();
+	auto restoreTouchedGlyphImages = [&]() {
+		for (RenderImage *image : renderTouchedGlyphImages) {
+			if (image && (image->color.r != 255 || image->color.g != 255 ||
+			              image->color.b != 255 || image->color.a != 255)) {
+				GPU_SetRGBA(image, 255, 255, 255, 255);
+			}
+		}
+		renderTouchedGlyphImages.clear();
+	};
+
 	int i = 0;
 	for (auto &seg : state.segments) {
-		if (&state == &dialogueRenderState && i > state.segmentIndex)
+		if (&state == &dialogueRenderState && i > state.segmentIndex) {
+			restoreTouchedGlyphImages();
 			return;
+		}
 		for (auto &run : seg.runs) {
 			for (auto &piece : run.pieces) renderPiece(state, piece);
 			for (auto &piece : run.rubyPieces) renderPiece(state, piece);
 		}
 		i++;
+	}
+	restoreTouchedGlyphImages();
+}
+
+void DialogueController::prepareRenderCommands(TextRenderingState &state) {
+	for (auto &seg : state.segments) {
+		for (auto &run : seg.runs) {
+			for (auto &piece : run.pieces) preparePieceRenderCommands(piece);
+			for (auto &piece : run.rubyPieces) preparePieceRenderCommands(piece);
+		}
+	}
+}
+
+void DialogueController::preparePieceRenderCommands(DialoguePiece &piece) {
+	for (;;) {
+		const uint64_t glyphCacheGeneration = ons.glyphCacheGeneration;
+
+		for (auto &pass : piece.renderCommandPasses) {
+			pass.clear();
+			if (pass.capacity() < piece.charRenderBuffer.size())
+				pass.reserve(piece.charRenderBuffer.size());
+		}
+
+		float x = 0;
+		auto fiIterator = piece.fontInfos.begin();
+		cmp::optional<Fontinfo> shadowFont;
+
+		auto queueCommand = [&](DialogueRenderPass pass, size_t glyphIndex, const GlyphValues *glyph, float blitx, float blity, bool renderBorder) {
+			auto &command       = piece.renderCommandPasses[pass].emplace_back();
+			command.glyph       = glyph;
+			command.x           = blitx;
+			command.y           = blity;
+			command.glyphIndex  = glyphIndex;
+			command.renderBorder = renderBorder;
+		};
+
+		for (size_t glyphIndex = 0; glyphIndex < piece.charRenderBuffer.size(); ++glyphIndex) {
+			RenderBufferGlyph &r = piece.charRenderBuffer[glyphIndex];
+			assert(fiIterator < piece.fontInfos.end());
+
+			if (r.renderRubyHere)
+				continue;
+			if (r.applyNewFontinfoHere) {
+				++fiIterator;
+				shadowFont.unset();
+				continue;
+			}
+
+			Fontinfo &fontInfo             = *fiIterator;
+			const GlyphValues *layoutGlyph = r.gv;
+			const auto &style              = fontInfo.style();
+
+			if (style.is_shadow) {
+				if (!shadowFont.has()) {
+					shadowFont.set(fontInfo);
+					auto &shadowStyle        = shadowFont.get().changeStyle();
+					shadowStyle.color        = shadowStyle.shadow_color;
+					shadowStyle.border_color = shadowStyle.shadow_color;
+				}
+				const GlyphValues *shadowGlyph = shadowFont.get().renderUnicodeGlyph(r.codepoint);
+				const float shadowX            = style.shadow_distance[0];
+				const float shadowY            = style.shadow_distance[1];
+				if (style.is_border) {
+					queueCommand(DialogueShadowBorder, glyphIndex, shadowGlyph,
+					             x + shadowGlyph->minx + shadowGlyph->border_bitmap_offset.x + shadowX,
+					             piece.baseline - shadowGlyph->maxy - shadowGlyph->border_bitmap_offset.y + shadowY,
+					             true);
+				}
+				queueCommand(DialogueShadowGlyph, glyphIndex, shadowGlyph,
+				             x + shadowGlyph->minx + shadowX,
+				             piece.baseline - shadowGlyph->maxy + shadowY,
+				             false);
+			}
+
+			const GlyphValues *glyph = r.renderableGlyph ? layoutGlyph : fontInfo.renderUnicodeGlyph(r.codepoint);
+			if (style.is_border) {
+				queueCommand(DialogueRegularBorder, glyphIndex, glyph,
+				             x + glyph->minx + glyph->border_bitmap_offset.x,
+				             piece.baseline - glyph->maxy - glyph->border_bitmap_offset.y,
+				             true);
+			}
+			queueCommand(DialogueRegularGlyph, glyphIndex, glyph,
+			             x + glyph->minx,
+			             piece.baseline - glyph->maxy,
+			             false);
+
+			x += r.layoutData.prevCharIndex ? fontInfo.my_font()->kerning(r.layoutData.prevCharIndex, layoutGlyph->ftCharIndexCache) : 0;
+			x += fontInfo.style().character_spacing;
+			x += layoutGlyph->advance;
+		}
+
+		if (glyphCacheGeneration == ons.glyphCacheGeneration) {
+			piece.renderCommandGlyphCacheGeneration = glyphCacheGeneration;
+			piece.renderCommandsPrepared = true;
+			return;
+		}
 	}
 }
 
@@ -1008,18 +1173,53 @@ void DialogueController::renderDialogueToTarget(RenderTarget *dst, RenderRect *d
 }
 
 void DialogueController::renderPiece(TextRenderingState &state, DialoguePiece &piece) {
-	// Shadow border
-	//ons.printClock("shadow border");
-	renderAddedChars(state, piece, true, true);
-	// Shadow glyph
-	//ons.printClock("shadow glyph");
-	renderAddedChars(state, piece, false, true);
-	// Regular border
-	//ons.printClock("regular border");
-	renderAddedChars(state, piece, true, false);
-	// Regular glyph
-	//ons.printClock("regular glyph");
-	renderAddedChars(state, piece, false, false);
+	if (!piece.renderCommandsPrepared || piece.renderCommandGlyphCacheGeneration != ons.glyphCacheGeneration)
+		preparePieceRenderCommands(piece);
+
+	auto renderCommandOpaque = [&](const GlyphRenderCommand &command) {
+		ons.renderGlyphValues(*command.glyph, state.dstClip, state.dst,
+		                      state.offset.x + piece.position.x + piece.horizontalResize *
+		                          ((state.shiftSpriteDrawByBorderPadding ? piece.borderPadding : 0) + command.x),
+		                      state.offset.y + piece.position.y +
+		                          (state.shiftSpriteDrawByBorderPadding ? piece.borderPadding : 0) + command.y,
+		                      piece.horizontalResize, command.renderBorder, 255, &renderTouchedGlyphImages);
+	};
+
+	auto renderCommandDialogue = [&](const GlyphRenderCommand &command) {
+		RenderBufferGlyph &glyphState = piece.charRenderBuffer[command.glyphIndex];
+		const int alpha               = glyphState.renderAlpha;
+		if (alpha <= 0)
+			return;
+
+		ons.renderGlyphValues(*command.glyph, state.dstClip, state.dst,
+		                      state.offset.x + piece.position.x + piece.horizontalResize *
+		                          ((state.shiftSpriteDrawByBorderPadding ? piece.borderPadding : 0) + command.x),
+		                      state.offset.y + piece.position.y +
+		                          (state.shiftSpriteDrawByBorderPadding ? piece.borderPadding : 0) + command.y,
+		                      piece.horizontalResize, command.renderBorder, alpha, &renderTouchedGlyphImages);
+	};
+	const bool liveDialogueRender = &state == &dialogueRenderState;
+
+	if (!piece.needsLayeredRenderPasses) {
+		if (liveDialogueRender) {
+			for (const auto &command : piece.renderCommandPasses[DialogueRegularGlyph]) renderCommandDialogue(command);
+		} else {
+			for (const auto &command : piece.renderCommandPasses[DialogueRegularGlyph]) renderCommandOpaque(command);
+		}
+		return;
+	}
+
+	if (liveDialogueRender) {
+		for (const auto &command : piece.renderCommandPasses[DialogueShadowBorder]) renderCommandDialogue(command);
+		for (const auto &command : piece.renderCommandPasses[DialogueShadowGlyph]) renderCommandDialogue(command);
+		for (const auto &command : piece.renderCommandPasses[DialogueRegularBorder]) renderCommandDialogue(command);
+		for (const auto &command : piece.renderCommandPasses[DialogueRegularGlyph]) renderCommandDialogue(command);
+	} else {
+		for (const auto &command : piece.renderCommandPasses[DialogueShadowBorder]) renderCommandOpaque(command);
+		for (const auto &command : piece.renderCommandPasses[DialogueShadowGlyph]) renderCommandOpaque(command);
+		for (const auto &command : piece.renderCommandPasses[DialogueRegularBorder]) renderCommandOpaque(command);
+		for (const auto &command : piece.renderCommandPasses[DialogueRegularGlyph]) renderCommandOpaque(command);
+	}
 }
 
 void DialogueController::advanceDialogueRendering(uint64_t ns) {
@@ -1029,19 +1229,21 @@ void DialogueController::advanceDialogueRendering(uint64_t ns) {
 		return;
 
 	for (int segNo = 0; segNo <= dialogueRenderState.segmentIndex; segNo++) {
-		DialogueSegment &seg = dialogueRenderState.segments[segNo];
-		auto tickPiece = [&](DialoguePiece &piece) {
-			for (auto &glyph : piece.charRenderBuffer) {
-				if (glyph.fadeStop.expired())
-					continue;
-				glyph.fadeStart.tickNanos(ns);
-				glyph.fadeStop.tickNanos(ns);
+		auto &timedGlyphs = dialogueRenderState.segments[segNo].timedGlyphs;
+		size_t dst        = 0;
+		for (RenderBufferGlyph *glyph : timedGlyphs) {
+			if (glyph->fadeStop.expired())
+				continue;
+			glyph->fadeStart.tickNanos(ns);
+			glyph->fadeStop.tickNanos(ns);
+			glyph->renderAlpha = computeDialogueGlyphRenderAlpha(*glyph);
+			if (!glyph->fadeStop.expired()) {
+				timedGlyphs[dst++] = glyph;
+			} else {
+				glyph->renderAlpha = 255;
 			}
-		};
-		for (auto &run : seg.runs) {
-			for (auto &piece : run.pieces) tickPiece(piece);
-			for (auto &piece : run.rubyPieces) tickPiece(piece);
 		}
+		timedGlyphs.resize(dst);
 	}
 
 	// Never try to flush when we actually display no text
@@ -1121,6 +1323,7 @@ bool DialogueController::addFittingChars(DialoguePiece &piece, std::u16string &r
 			piece.charRenderBuffer.back().applyNewFontinfoHere = true;
 			// And then record that fontinfo in a list to be shared with the renderer. The renderer will step through it, advancing one entry in the list each time it gets a signal.
 			piece.fontInfos.push_back(workingFontinfo);
+			piece.noteFontInfoRenderStyle(workingFontinfo);
 		}
 
 		auto &workingStyle = workingFontinfo.style();
@@ -1322,6 +1525,7 @@ void DialogueController::addCharToRenderBuffer(DialoguePiece &piece, char16_t co
 	r.codepoint          = codepoint;
 	r.layoutData         = fontInfo.layoutData;
 	r.gv                 = glyph;
+	r.renderableGlyph    = !measure;
 
 	plus = fontInfo.layoutData.prevCharIndex ? fontInfo.my_font()->kerning(fontInfo.layoutData.prevCharIndex, glyph->ftCharIndexCache) : 0;
 	plus += fontInfo.style().character_spacing;
@@ -1340,62 +1544,6 @@ void DialogueController::addCharToRenderBuffer(DialoguePiece &piece, char16_t co
 
 	fontInfo.layoutData.last_printed_codepoint = codepoint;
 	fontInfo.layoutData.prevCharIndex          = glyph->ftCharIndexCache;
-}
-
-void DialogueController::renderAddedChars(TextRenderingState &state, DialoguePiece &p, bool renderBorder, bool renderShadow) {
-	float x         = 0;
-	auto fiIterator = p.fontInfos.begin();
-
-	// We only need a copy of the fontInfo in the renderShadow case.
-	cmp::optional<Fontinfo> opt;
-
-	for (RenderBufferGlyph &r : p.charRenderBuffer) {
-		assert(fiIterator < p.fontInfos.end());
-
-		if (renderShadow && !opt.has()) {
-			opt.set(*fiIterator); // copy it
-			auto &style        = opt.get().changeStyle();
-			style.color        = style.shadow_color;
-			style.border_color = style.shadow_color;
-		}
-
-		Fontinfo &fontInfo = opt.has() ? opt.get() : *fiIterator;
-		if (r.renderRubyHere)
-			continue;
-		if (r.applyNewFontinfoHere) {
-			++fiIterator;
-			opt.unset();
-			continue;
-		}
-
-		char16_t &codepoint = r.codepoint;
-		const GlyphValues *layoutGlyph = r.gv;
-
-		bool renderReady = (&state != &dialogueRenderState) || r.fadeStart.expired();
-
-		// For border/shadow, only do the draw if the fontInfo style says we are supposed to
-		auto &style = fontInfo.style();
-		if (renderReady && !(renderBorder && !style.is_border) && !(renderShadow && !style.is_shadow)) {
-			const GlyphValues *glyph = fontInfo.renderUnicodeGlyph(codepoint);
-			int alpha{255};
-
-			if (&state == &dialogueRenderState && !r.fadeStop.expired() && r.fadeDuration) {
-				alpha = 255 - (255 * r.fadeStop.remaining() / r.fadeDuration);
-			}
-			float blitx = x + glyph->minx + (renderBorder ? glyph->border_bitmap_offset.x : 0) + (renderShadow ? style.shadow_distance[0] : 0);
-			float blity = p.baseline - glyph->maxy - (renderBorder ? glyph->border_bitmap_offset.y : 0) + (renderShadow ? style.shadow_distance[1] : 0);
-			ons.renderGlyphValues(*glyph, state.dstClip, state.dst,
-			                      state.offset.x + p.position.x + p.horizontalResize * ((state.shiftSpriteDrawByBorderPadding ? p.borderPadding : 0) + blitx),
-			                      state.offset.y + p.position.y + (state.shiftSpriteDrawByBorderPadding ? p.borderPadding : 0) + blity,
-			                      p.horizontalResize, renderBorder, alpha);
-		}
-
-		x += r.layoutData.prevCharIndex ? fontInfo.my_font()->kerning(r.layoutData.prevCharIndex, layoutGlyph->ftCharIndexCache) : 0;
-		x += (*fiIterator).style().character_spacing;
-		x += layoutGlyph->advance;
-		//TODO: These 3 lines are code duplication, see addCharToRenderBuffer; extract them into a float Fontinfo::getTotalAdvance(wchar_t codepoint) method.
-		// (maybe there is a better name...)
-	}
 }
 
 void DialogueController::setDialogueActive(bool active) {

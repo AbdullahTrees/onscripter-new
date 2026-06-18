@@ -209,18 +209,24 @@ bool samplerSetsEqual(const SDL3GPUSamplerSet &a, const SDL3GPUSamplerSet &b) {
 }
 
 struct SDL3GPUNativeBlitBatch {
+	struct DrawGroup {
+		SDL_GPUTexture *sourceTexture{nullptr};
+		SDL_GPUSampler *sampler{nullptr};
+		Uint32 firstIndex{0};
+		Uint32 indexCount{0};
+	};
+
 	GPU_Target *target{nullptr};
 	GPU_Image *targetImage{nullptr};
 	SDL_GPUTexture *targetTexture{nullptr};
-	SDL_GPUTexture *sourceTexture{nullptr};
 	SDL_GPUGraphicsPipeline *pipeline{nullptr};
-	SDL_GPUSampler *sampler{nullptr};
 	SDL_GPUViewport viewport{};
 	SDL_Rect scissor{};
 	GPU_bool useBlending{false};
 	GPU_BlendMode blendMode{};
 	std::vector<SDL3GPUVertex> vertices;
 	std::vector<Uint16> indices;
+	std::vector<DrawGroup> drawGroups;
 };
 
 struct SDL3GPUNativeTriangleBatch {
@@ -4263,15 +4269,14 @@ void resetNativeBlitBatch() {
 	nativeBlitBatch.target        = nullptr;
 	nativeBlitBatch.targetImage   = nullptr;
 	nativeBlitBatch.targetTexture = nullptr;
-	nativeBlitBatch.sourceTexture = nullptr;
 	nativeBlitBatch.pipeline      = nullptr;
-	nativeBlitBatch.sampler       = nullptr;
 	nativeBlitBatch.viewport      = SDL_GPUViewport{};
 	nativeBlitBatch.scissor       = SDL_Rect{};
 	nativeBlitBatch.useBlending   = false;
 	nativeBlitBatch.blendMode     = GPU_BlendMode{};
 	nativeBlitBatch.vertices.clear();
 	nativeBlitBatch.indices.clear();
+	nativeBlitBatch.drawGroups.clear();
 }
 
 bool flushNativeBlitBatchOnly() {
@@ -4279,9 +4284,16 @@ bool flushNativeBlitBatchOnly() {
 		return true;
 
 	if (!rendererState.device || !nativeBlitBatch.targetImage || !nativeBlitBatch.targetTexture ||
-	    !nativeBlitBatch.sourceTexture || !nativeBlitBatch.pipeline || !nativeBlitBatch.sampler) {
+	    !nativeBlitBatch.pipeline || nativeBlitBatch.drawGroups.empty()) {
 		resetNativeBlitBatch();
 		return false;
+	}
+	for (const auto &group : nativeBlitBatch.drawGroups) {
+		if (!group.sourceTexture || !group.sampler || group.indexCount == 0 ||
+		    group.firstIndex + group.indexCount > nativeBlitBatch.indices.size()) {
+			resetNativeBlitBatch();
+			return false;
+		}
 	}
 
 	const Uint32 vertexBytes = static_cast<Uint32>(nativeBlitBatch.vertices.size() * sizeof(SDL3GPUVertex));
@@ -4325,11 +4337,6 @@ bool flushNativeBlitBatchOnly() {
 	indexBinding.buffer = indexUploadBuffer.buffer;
 	SDL_BindGPUIndexBuffer(renderPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
-	SDL_GPUTextureSamplerBinding samplerBinding{};
-	samplerBinding.texture = nativeBlitBatch.sourceTexture;
-	samplerBinding.sampler = nativeBlitBatch.sampler;
-	SDL_BindGPUFragmentSamplers(renderPass, 0, &samplerBinding, 1);
-
 	struct VertexUniforms {
 		float mvp[4][4];
 	} vertexUniforms{};
@@ -4346,7 +4353,13 @@ bool flushNativeBlitBatchOnly() {
 
 	SDL_SetGPUViewport(renderPass, &nativeBlitBatch.viewport);
 	SDL_SetGPUScissor(renderPass, &nativeBlitBatch.scissor);
-	SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(nativeBlitBatch.indices.size()), 1, 0, 0, 0);
+	for (const auto &group : nativeBlitBatch.drawGroups) {
+		SDL_GPUTextureSamplerBinding samplerBinding{};
+		samplerBinding.texture = group.sourceTexture;
+		samplerBinding.sampler = group.sampler;
+		SDL_BindGPUFragmentSamplers(renderPass, 0, &samplerBinding, 1);
+		SDL_DrawGPUIndexedPrimitives(renderPass, group.indexCount, 1, group.firstIndex, 0, 0);
+	}
 	SDL_EndGPURenderPass(renderPass);
 	const bool submitted = submitGPUCommandBuffer(commands);
 
@@ -4365,25 +4378,21 @@ bool flushNativeBlitBatch() {
 	return trianglesFlushed && blitsFlushed;
 }
 
-bool nativeBlitBatchMatches(GPU_Target *target, GPU_Image *image, SDL_GPUGraphicsPipeline *pipeline,
-                            SDL_GPUSampler *sampler, const SDL_GPUViewport &viewport, const SDL_Rect &scissor) {
+bool nativeBlitBatchMatchesState(GPU_Target *target, SDL_GPUGraphicsPipeline *pipeline,
+                                 const SDL_GPUViewport &viewport, const SDL_Rect &scissor) {
 	if (!nativeBlitBatchActive())
 		return false;
 	return nativeBlitBatch.target == target &&
 	       nativeBlitBatch.targetImage == target->image &&
 	       nativeBlitBatch.targetTexture == target->texture &&
-	       nativeBlitBatch.sourceTexture == image->texture &&
 	       nativeBlitBatch.pipeline == pipeline &&
-	       nativeBlitBatch.sampler == sampler &&
-	       nativeBlitBatch.useBlending == image->use_blending &&
-	       blendModesEqual(nativeBlitBatch.blendMode, image->blend_mode) &&
 	       viewportsEqual(nativeBlitBatch.viewport, viewport) &&
 	       scissorsEqual(nativeBlitBatch.scissor, scissor);
 }
 
-bool queueNativeBlit(GPU_Image *image, GPU_Target *target, SDL_GPUGraphicsPipeline *pipeline,
-                     SDL_GPUSampler *sampler, const SDL_GPUViewport &viewport, const SDL_Rect &scissor,
-                     const std::array<SDL3GPUVertex, 4> &vertices) {
+bool prepareNativeBlitBatch(GPU_Image *image, GPU_Target *target, SDL_GPUGraphicsPipeline *pipeline,
+                            SDL_GPUSampler *sampler, const SDL_GPUViewport &viewport,
+                            const SDL_Rect &scissor, size_t additionalVertices) {
 	if (!image || !target || !target->image || !pipeline || !sampler)
 		return false;
 
@@ -4394,8 +4403,10 @@ bool queueNativeBlit(GPU_Image *image, GPU_Target *target, SDL_GPUGraphicsPipeli
 
 	constexpr size_t maxVertices = UINT16_MAX;
 	if (nativeBlitBatchActive() &&
-	    (!nativeBlitBatchMatches(target, image, pipeline, sampler, viewport, scissor) ||
-	     nativeBlitBatch.vertices.size() + vertices.size() > maxVertices)) {
+	    (!nativeBlitBatchMatchesState(target, pipeline, viewport, scissor) ||
+	     nativeBlitBatch.useBlending != image->use_blending ||
+	     !blendModesEqual(nativeBlitBatch.blendMode, image->blend_mode) ||
+	     nativeBlitBatch.vertices.size() + additionalVertices > maxVertices)) {
 		if (!flushNativeBlitBatchOnly())
 			return false;
 	}
@@ -4404,22 +4415,66 @@ bool queueNativeBlit(GPU_Image *image, GPU_Target *target, SDL_GPUGraphicsPipeli
 		nativeBlitBatch.target        = target;
 		nativeBlitBatch.targetImage   = target->image;
 		nativeBlitBatch.targetTexture = target->texture;
-		nativeBlitBatch.sourceTexture = image->texture;
 		nativeBlitBatch.pipeline      = pipeline;
-		nativeBlitBatch.sampler       = sampler;
 		nativeBlitBatch.viewport      = viewport;
 		nativeBlitBatch.scissor       = scissor;
 		nativeBlitBatch.useBlending   = image->use_blending;
 		nativeBlitBatch.blendMode     = image->blend_mode;
 		nativeBlitBatch.vertices.reserve(4096);
 		nativeBlitBatch.indices.reserve(6144);
+		nativeBlitBatch.drawGroups.reserve(64);
 	}
+	return true;
+}
 
-	const Uint16 base = static_cast<Uint16>(nativeBlitBatch.vertices.size());
-	nativeBlitBatch.vertices.insert(nativeBlitBatch.vertices.end(), vertices.begin(), vertices.end());
+void appendNativeBlitDrawGroup(SDL_GPUTexture *sourceTexture, SDL_GPUSampler *sampler, Uint32 firstIndex, Uint32 indexCount) {
+	if (!nativeBlitBatch.drawGroups.empty()) {
+		auto &last = nativeBlitBatch.drawGroups.back();
+		if (last.sourceTexture == sourceTexture && last.sampler == sampler &&
+		    last.firstIndex + last.indexCount == firstIndex) {
+			last.indexCount += indexCount;
+			return;
+		}
+	}
+	nativeBlitBatch.drawGroups.push_back(SDL3GPUNativeBlitBatch::DrawGroup{sourceTexture, sampler, firstIndex, indexCount});
+}
+
+void appendNativeBlitQuadIndices(Uint16 base) {
 	const Uint16 indices[6]{base, static_cast<Uint16>(base + 1), static_cast<Uint16>(base + 2),
 	                        static_cast<Uint16>(base + 2), static_cast<Uint16>(base + 1), static_cast<Uint16>(base + 3)};
 	nativeBlitBatch.indices.insert(nativeBlitBatch.indices.end(), indices, indices + 6);
+}
+
+bool queueNativeBlit(GPU_Image *image, GPU_Target *target, SDL_GPUGraphicsPipeline *pipeline,
+                     SDL_GPUSampler *sampler, const SDL_GPUViewport &viewport, const SDL_Rect &scissor,
+                     const std::array<SDL3GPUVertex, 4> &vertices) {
+	if (!prepareNativeBlitBatch(image, target, pipeline, sampler, viewport, scissor, vertices.size()))
+		return false;
+
+	const Uint16 base = static_cast<Uint16>(nativeBlitBatch.vertices.size());
+	nativeBlitBatch.vertices.insert(nativeBlitBatch.vertices.end(), vertices.begin(), vertices.end());
+	const Uint32 firstIndex = static_cast<Uint32>(nativeBlitBatch.indices.size());
+	appendNativeBlitQuadIndices(base);
+	appendNativeBlitDrawGroup(image->texture, sampler, firstIndex, 6);
+	return true;
+}
+
+bool queueNativeBlitRect(GPU_Image *image, GPU_Target *target, SDL_GPUGraphicsPipeline *pipeline,
+                         SDL_GPUSampler *sampler, const SDL_GPUViewport &viewport, const SDL_Rect &scissor,
+                         float x0, float y0, float x1, float y1,
+                         float u0, float v0, float u1, float v1,
+                         float r, float g, float b, float a) {
+	if (!prepareNativeBlitBatch(image, target, pipeline, sampler, viewport, scissor, 4))
+		return false;
+
+	const Uint16 base = static_cast<Uint16>(nativeBlitBatch.vertices.size());
+	nativeBlitBatch.vertices.push_back(SDL3GPUVertex{x0, y0, r, g, b, a, u0, v0});
+	nativeBlitBatch.vertices.push_back(SDL3GPUVertex{x1, y0, r, g, b, a, u1, v0});
+	nativeBlitBatch.vertices.push_back(SDL3GPUVertex{x0, y1, r, g, b, a, u0, v1});
+	nativeBlitBatch.vertices.push_back(SDL3GPUVertex{x1, y1, r, g, b, a, u1, v1});
+	const Uint32 firstIndex = static_cast<Uint32>(nativeBlitBatch.indices.size());
+	appendNativeBlitQuadIndices(base);
+	appendNativeBlitDrawGroup(image->texture, sampler, firstIndex, 6);
 	return true;
 }
 
@@ -4455,33 +4510,38 @@ bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float 
 	const float u1 = (srcX + srcW) / image->w;
 	const float v1 = (srcY + srcH) / image->h;
 
-	constexpr float pi = 3.14159265358979323846f;
-	const float radians = degrees * pi / 180.0f;
-	const float cosTheta = std::cos(radians);
-	const float sinTheta = std::sin(radians);
 	const float halfW = srcW * scaleX * 0.5f;
 	const float halfH = srcH * scaleY * 0.5f;
 
-	auto transform = [&](float localX, float localY, float u, float v) {
-		SDL3GPUVertex vertex{};
-		vertex.x = x + localX * cosTheta - localY * sinTheta;
-		vertex.y = y + localX * sinTheta + localY * cosTheta;
-		vertex.r = r;
-		vertex.g = g;
-		vertex.b = b;
-		vertex.a = a;
-		vertex.s = u;
-		vertex.t = v;
-		return vertex;
-	};
-
-	std::array<SDL3GPUVertex, 4> vertices{
-	    transform(-halfW, -halfH, u0, v0),
-	    transform(halfW, -halfH, u1, v0),
-	    transform(-halfW, halfH, u0, v1),
-	    transform(halfW, halfH, u1, v1)};
-
 	if (activeNativeProgram) {
+		auto vertexAt = [&](float px, float py, float u, float v) {
+			return SDL3GPUVertex{px, py, r, g, b, a, u, v};
+		};
+
+		std::array<SDL3GPUVertex, 4> vertices{};
+		if (degrees == 0.0f) {
+			vertices = {
+			    vertexAt(x - halfW, y - halfH, u0, v0),
+			    vertexAt(x + halfW, y - halfH, u1, v0),
+			    vertexAt(x - halfW, y + halfH, u0, v1),
+			    vertexAt(x + halfW, y + halfH, u1, v1)};
+		} else {
+			constexpr float pi = 3.14159265358979323846f;
+			const float radians = degrees * pi / 180.0f;
+			const float cosTheta = std::cos(radians);
+			const float sinTheta = std::sin(radians);
+
+			auto transform = [&](float localX, float localY, float u, float v) {
+				return vertexAt(x + localX * cosTheta - localY * sinTheta,
+				                y + localX * sinTheta + localY * cosTheta, u, v);
+			};
+
+			vertices = {
+			    transform(-halfW, -halfH, u0, v0),
+			    transform(halfW, -halfH, u1, v0),
+			    transform(-halfW, halfH, u0, v1),
+			    transform(halfW, halfH, u1, v1)};
+		}
 		std::array<Uint16, 6> indices{{0, 1, 2, 2, 1, 3}};
 		return renderNativeIndexedTriangles(image, target, vertices.data(), static_cast<Uint32>(vertices.size()),
 		                                    indices.data(), static_cast<Uint32>(indices.size()));
@@ -4510,6 +4570,28 @@ bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float 
 	viewport.max_depth = 1.0f;
 
 	const SDL_Rect scissor = targetScissor(target);
+	if (degrees == 0.0f) {
+		return queueNativeBlitRect(image, target, pipeline, sampler, viewport, scissor,
+		                           x - halfW, y - halfH, x + halfW, y + halfH,
+		                           u0, v0, u1, v1, r, g, b, a);
+	}
+
+	constexpr float pi = 3.14159265358979323846f;
+	const float radians = degrees * pi / 180.0f;
+	const float cosTheta = std::cos(radians);
+	const float sinTheta = std::sin(radians);
+	auto vertexAt = [&](float px, float py, float u, float v) {
+		return SDL3GPUVertex{px, py, r, g, b, a, u, v};
+	};
+	auto transform = [&](float localX, float localY, float u, float v) {
+		return vertexAt(x + localX * cosTheta - localY * sinTheta,
+		                y + localX * sinTheta + localY * cosTheta, u, v);
+	};
+	const std::array<SDL3GPUVertex, 4> vertices{
+	    transform(-halfW, -halfH, u0, v0),
+	    transform(halfW, -halfH, u1, v0),
+	    transform(-halfW, halfH, u0, v1),
+	    transform(halfW, halfH, u1, v1)};
 	return queueNativeBlit(image, target, pipeline, sampler, viewport, scissor, vertices);
 }
 
@@ -4736,6 +4818,36 @@ void SDLCALL GPU_SetPreInitFlags(GPU_InitFlagEnum GPU_flags) {
 	pendingPreinitFlags = GPU_flags;
 }
 
+const char *presentModeName(SDL_GPUPresentMode mode) {
+	switch (mode) {
+		case SDL_GPU_PRESENTMODE_IMMEDIATE:
+			return "immediate";
+		case SDL_GPU_PRESENTMODE_MAILBOX:
+			return "mailbox";
+		case SDL_GPU_PRESENTMODE_VSYNC:
+		default:
+			return "vsync";
+	}
+}
+
+SDL_GPUPresentMode choosePresentMode(SDL_GPUDevice *device, SDL_Window *window) {
+	if ((pendingPreinitFlags & GPU_INIT_DISABLE_VSYNC) &&
+	    SDL_WindowSupportsGPUPresentMode(device, window, SDL_GPU_PRESENTMODE_IMMEDIATE))
+		return SDL_GPU_PRESENTMODE_IMMEDIATE;
+
+	if (pendingPreinitFlags & GPU_INIT_ENABLE_VSYNC)
+		return SDL_GPU_PRESENTMODE_VSYNC;
+
+	if (SDL_WindowSupportsGPUPresentMode(device, window, SDL_GPU_PRESENTMODE_MAILBOX))
+		return SDL_GPU_PRESENTMODE_MAILBOX;
+
+	if ((pendingPreinitFlags & GPU_INIT_DISABLE_VSYNC) &&
+	    SDL_WindowSupportsGPUPresentMode(device, window, SDL_GPU_PRESENTMODE_MAILBOX))
+		return SDL_GPU_PRESENTMODE_MAILBOX;
+
+	return SDL_GPU_PRESENTMODE_VSYNC;
+}
+
 GPU_Target *SDLCALL GPU_InitRendererByID(GPU_RendererID renderer_request, Uint16 w, Uint16 h, GPU_WindowFlagEnum SDL_flags) {
 	GPU_Quit();
 
@@ -4760,10 +4872,12 @@ GPU_Target *SDLCALL GPU_InitRendererByID(GPU_RendererID renderer_request, Uint16
 		return nullptr;
 	}
 
-	const SDL_GPUPresentMode presentMode = (pendingPreinitFlags & GPU_INIT_DISABLE_VSYNC) ?
-	                                           SDL_GPU_PRESENTMODE_IMMEDIATE :
-	                                           SDL_GPU_PRESENTMODE_VSYNC;
-	SDL_SetGPUSwapchainParameters(rendererState.device, rendererState.window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
+	SDL_GPUPresentMode presentMode = choosePresentMode(rendererState.device, rendererState.window);
+	if (!SDL_SetGPUSwapchainParameters(rendererState.device, rendererState.window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode)) {
+		presentMode = SDL_GPU_PRESENTMODE_VSYNC;
+		SDL_SetGPUSwapchainParameters(rendererState.device, rendererState.window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
+	}
+	sendToLog(LogLevel::Info, "SDL3_GPU present mode: %s\n", presentModeName(presentMode));
 
 	auto *target         = new GPU_Target{};
 	auto *context        = new GPU_Context{};
@@ -4790,6 +4904,7 @@ GPU_Target *SDLCALL GPU_InitRendererByID(GPU_RendererID renderer_request, Uint16
 	rendererState.current_context_target = target;
 	rendererState.preinit_flags          = pendingPreinitFlags;
 	rendererState.swapchain_format       = SDL_GetGPUSwapchainTextureFormat(rendererState.device, rendererState.window);
+	rendererState.present_mode           = presentMode;
 
 	if (!resizeTargetBacking(target, w, h)) {
 		GPU_Quit();
@@ -5215,8 +5330,11 @@ void SDLCALL GPU_GenerateMipmaps(GPU_Image *image) {
 }
 
 void SDLCALL GPU_SetRGBA(GPU_Image *image, Uint8 r, Uint8 g, Uint8 b, Uint8 a) {
-	if (image)
-		image->color = SDL_Color{r, g, b, a};
+	if (!image)
+		return;
+	if (image->color.r == r && image->color.g == g && image->color.b == b && image->color.a == a)
+		return;
+	image->color = SDL_Color{r, g, b, a};
 }
 
 void SDLCALL GPU_SetBlending(GPU_Image *image, GPU_bool enable) {
@@ -5723,6 +5841,397 @@ GPU_bool SDLCALL GPU_MultiplyAlpha(GPU_Image *image, const GPU_Rect *dst_clip) {
 
 void SDLCALL GPU_DiscardImagePixels(GPU_Image *image) {
 	discardCleanImagePixels(image);
+}
+
+int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, const char *outputPath) {
+	iterations = std::max(1, iterations);
+	width      = std::max(320, width);
+	height     = std::max(240, height);
+
+	BenchmarkOutputFile benchmarkOutput(outputPath);
+	if (outputPath && outputPath[0] && !benchmarkOutput.file) {
+		std::fprintf(stderr, "Music Box benchmark output open failed: %s\n", outputPath);
+		return 1;
+	}
+
+	auto writeLine = [&](const char *fmt, ...) {
+		va_list args;
+		va_start(args, fmt);
+		std::vprintf(fmt, args);
+		va_end(args);
+		std::fflush(stdout);
+		if (benchmarkOutput.file) {
+			va_start(args, fmt);
+			std::vfprintf(benchmarkOutput.file, fmt, args);
+			va_end(args);
+			std::fflush(benchmarkOutput.file);
+		}
+	};
+
+	if (!onsSDLInit(SDL_INIT_VIDEO)) {
+		std::fprintf(stderr, "SDL init failed: %s\n", SDL_GetError());
+		return 1;
+	}
+
+	GPU_SetDebugLevel(GPU_DEBUG_LEVEL_0);
+	GPU_SetPreInitFlags(GPU_INIT_DISABLE_VSYNC);
+	GPU_Target *screen = GPU_InitRendererByID(GPU_MakeRendererID("SDL3_GPU", GPU_RENDERER_SDL3_GPU, 3, 0),
+	                                          static_cast<Uint16>(width), static_cast<Uint16>(height),
+	                                          SDL_WINDOW_HIDDEN);
+	if (!screen) {
+		std::fprintf(stderr, "SDL3_GPU init failed: %s\n", SDL_GetError());
+		SDL_Quit();
+		return 1;
+	}
+
+	// Build a synthetic Music Box scrollable element tree matching the real
+	// *bgm_mode_ps3 layout: 2 columns, 800px wide elements, 80px tall, 50px
+	// column gap, 150px first/last margin, ~200 unlocked BGM entries. Each
+	// element carries the same StringTree branches that drawSpecialScrollable
+	// queries every frame (x, y, height, width, bg, text, textmarginwidth,
+	// textmargintop).
+	const int elementWidth   = 800;
+	const int elementHeight  = 80;
+	const int columnGap      = 50;
+	const int firstMargin    = 150;
+	const int columns        = 2;
+	const int totalElements  = 200;
+	const int scrollY        = 0;
+	const int visibleHeight  = 1080;
+
+	struct Element {
+		std::unordered_map<std::string, std::string> branches;
+		std::string insertionKey;
+	};
+	std::vector<Element> elements;
+	elements.reserve(totalElements);
+	int currentY       = firstMargin;
+	int currentX       = 0;
+	int currentColumn  = 0;
+	for (int i = 0; i < totalElements; ++i) {
+		Element e;
+		e.insertionKey = std::to_string(i);
+		auto &b = e.branches;
+		b["height"]          = std::to_string(elementHeight);
+		b["width"]           = std::to_string(elementWidth);
+		b["bg"]              = "318";
+		b["textmarginwidth"] = "55";
+		b["textmargintop"]   = "13";
+		b["text"]            = "♪suspicious_audio_id_" + std::to_string(i + 1);
+		if (currentColumn > 0)
+			b["x"] = std::to_string(currentX);
+		b["y"] = std::to_string(currentY);
+		b["col"] = std::to_string(currentColumn);
+		elements.push_back(std::move(e));
+		currentColumn = (currentColumn + 1) % columns;
+		if (currentColumn == 0) {
+			currentY += elementHeight;
+			currentX  = 0;
+		} else {
+			currentX += elementWidth + columnGap;
+		}
+	}
+
+	// Precomputed (cached) geometry per element + the sorted y-end array used
+	// by the optimized lookup path. This mirrors the ScrollableInfo cache added
+	// to drawSpecialScrollable.
+	struct CachedElement {
+		int x, y, width, height;
+		int textMarginLeft, textMarginRight, textMarginTop;
+		int bgIndex;
+		const std::string *text;
+		bool hasText;
+	};
+	std::vector<CachedElement> cached;
+	cached.reserve(totalElements);
+	std::vector<int> yEndCache;
+	yEndCache.reserve(totalElements);
+	for (const auto &e : elements) {
+		CachedElement c{};
+		const auto &b = e.branches;
+		c.x               = b.count("x") ? std::stoi(b.at("x")) : 0;
+		c.y               = std::stoi(b.at("y"));
+		c.width           = b.count("width") ? std::stoi(b.at("width")) : elementWidth;
+		c.height          = b.count("height") ? std::stoi(b.at("height")) : elementHeight;
+		c.textMarginLeft  = std::stoi(b.at("textmarginwidth"));
+		c.textMarginRight = std::stoi(b.at("textmarginwidth"));
+		c.textMarginTop   = std::stoi(b.at("textmargintop"));
+		c.bgIndex         = std::stoi(b.at("bg"));
+		c.text            = &b.at("text");
+		c.hasText         = b.count("text") != 0;
+		cached.push_back(c);
+		yEndCache.push_back(c.y + c.height);
+	}
+
+	SDL_Surface *bgSurface    = createBenchmarkSurface(elementWidth, elementHeight);
+	SDL_Surface *textSurface  = createBenchmarkSurface(700, 50);
+	if (!bgSurface || !textSurface) {
+		std::fprintf(stderr, "Music Box benchmark surface creation failed: %s\n", SDL_GetError());
+		if (bgSurface) SDL_FreeSurface(bgSurface);
+		if (textSurface) SDL_FreeSurface(textSurface);
+		GPU_Quit();
+		SDL_Quit();
+		return 1;
+	}
+
+	GPU_Image *bgImage   = GPU_CopyImageFromSurface(bgSurface);
+	GPU_Image *textImage = GPU_CopyImageFromSurface(textSurface);
+	GPU_Image *target    = GPU_CreateImage(static_cast<Uint16>(width), static_cast<Uint16>(height), GPU_FORMAT_RGBA);
+	GPU_Target *targetSurface = target ? GPU_GetTarget(target) : nullptr;
+	if (!bgImage || !textImage || !target || !targetSurface) {
+		std::fprintf(stderr, "Music Box benchmark image creation failed: %s\n", SDL_GetError());
+		if (bgImage) GPU_FreeImage(bgImage);
+		if (textImage) GPU_FreeImage(textImage);
+		if (target) GPU_FreeImage(target);
+		SDL_FreeSurface(bgSurface);
+		SDL_FreeSurface(textSurface);
+		GPU_Quit();
+		SDL_Quit();
+		return 1;
+	}
+
+	// Determine the visible element range once (Music Box at scroll_y=0 shows
+	// ~13 rows x 2 columns). The find-visible stages below measure the cost of
+	// computing this range each frame.
+	auto findVisibleUncached = [&]() -> std::pair<int, int> {
+		auto res = std::lower_bound(
+		    elements.begin(), elements.end(), Element{},
+		    [&](const Element &a, const Element &b) {
+			    const auto &ba = a.branches;
+			    const auto &bb = b.branches;
+			    int ya = a.insertionKey.empty() ? scrollY : (ba.count("y") ? std::stoi(ba.at("y")) : 0) + (ba.count("height") ? std::stoi(ba.at("height")) : elementHeight);
+			    int yb = b.insertionKey.empty() ? scrollY : (bb.count("y") ? std::stoi(bb.at("y")) : 0) + (bb.count("height") ? std::stoi(bb.at("height")) : elementHeight);
+			    return ya < yb;
+		    });
+		int first = static_cast<int>(res - elements.begin());
+		int last  = first;
+		for (int i = first; i < totalElements; ++i) {
+			int y = std::stoi(elements[i].branches.at("y"));
+			if (y - scrollY > visibleHeight)
+				break;
+			last = i + 1;
+		}
+		return {first, last};
+	};
+	auto findVisibleCached = [&]() -> std::pair<int, int> {
+		auto res = std::lower_bound(yEndCache.begin(), yEndCache.end(), scrollY);
+		int first = static_cast<int>(res - yEndCache.begin());
+		int last  = first;
+		for (int i = first; i < totalElements; ++i) {
+			if (cached[i].y - scrollY > visibleHeight)
+				break;
+			last = i + 1;
+		}
+		return {first, last};
+	};
+
+	auto [visibleFirst, visibleLast] = findVisibleCached();
+	const int visibleCount = visibleLast - visibleFirst;
+
+	// Warm up the renderer pipelines so the timed runs do not include one-off
+	// shader/texture setup.
+	for (int i = 0; i < 8; ++i) {
+		GPU_ClearRGBA(targetSurface, 0, 0, 0, 0);
+		for (int j = visibleFirst; j < visibleLast; ++j) {
+			GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + cached[j].x, 16.0f + cached[j].y);
+			GPU_Blit(textImage, nullptr, targetSurface, 16.0f + cached[j].x + 55.0f, 16.0f + cached[j].y + 13.0f);
+		}
+		GPU_FlushBlitBuffer();
+	}
+	finishBenchmarkWork(target);
+
+	writeLine("onscripter-new Music Box benchmark\n");
+	writeLine("config: %dx%d, %d iterations, %d elements (%d visible/frame), scroll_y=%d\n",
+	          width, height, iterations, totalElements, visibleCount, scrollY);
+	writeLine("frame budget @144Hz: 6944 us | @120Hz: 8333 us | @60Hz: 16667 us\n\n");
+
+	writeLine("case,iterations,total_ms,avg_us\n");
+
+	// --- find first visible element (getScrollableElementsVisibleAt) ---
+	printBenchmarkResult(benchmarkOutput.file, "musicbox_find_visible_uncached", iterations, benchmarkMs([&]() {
+		for (int i = 0; i < iterations; ++i) {
+			volatile auto r = findVisibleUncached();
+			(void)r;
+		}
+	}));
+	printBenchmarkResult(benchmarkOutput.file, "musicbox_find_visible_cached", iterations, benchmarkMs([&]() {
+		for (int i = 0; i < iterations; ++i) {
+			volatile auto r = findVisibleCached();
+			(void)r;
+		}
+	}));
+
+	// --- per-element StringTree has()/stoi()/[] lookups (drawSpecialScrollable body) ---
+	printBenchmarkResult(benchmarkOutput.file, "musicbox_per_element_lookups_uncached", iterations, benchmarkMs([&]() {
+		for (int i = 0; i < iterations; ++i) {
+			for (int j = visibleFirst; j < visibleLast; ++j) {
+				auto &b = elements[j].branches;
+				volatile bool hasLog = b.count("log");
+				volatile int bg = b.count("bg") ? std::stoi(b["bg"]) : -1;
+				volatile bool hasText = b.count("text");
+				volatile int ml = b.count("textmarginwidth") ? std::stoi(b["textmarginwidth"]) : (b.count("textmarginleft") ? std::stoi(b["textmarginleft"]) : 0);
+				volatile int mr = b.count("textmarginwidth") ? std::stoi(b["textmarginwidth"]) : (b.count("textmarginright") ? std::stoi(b["textmarginright"]) : 0);
+				volatile int mt = b.count("textmargintop") ? std::stoi(b["textmargintop"]) : 0;
+				volatile const char *txt = b.count("text") ? b["text"].c_str() : "";
+				(void)hasLog; (void)bg; (void)hasText; (void)ml; (void)mr; (void)mt; (void)txt;
+			}
+		}
+	}));
+	printBenchmarkResult(benchmarkOutput.file, "musicbox_per_element_lookups_cached", iterations, benchmarkMs([&]() {
+		for (int i = 0; i < iterations; ++i) {
+			for (int j = visibleFirst; j < visibleLast; ++j) {
+				auto &c = cached[j];
+				volatile int bg = c.bgIndex;
+				volatile int ml = c.textMarginLeft;
+				volatile int mr = c.textMarginRight;
+				volatile int mt = c.textMarginTop;
+				volatile const char *txt = c.text->c_str();
+				(void)bg; (void)ml; (void)mr; (void)mt; (void)txt;
+			}
+		}
+	}));
+
+	// --- GPU blits for element background plates (batched, one flush) ---
+	printBenchmarkResult(benchmarkOutput.file, "musicbox_bg_blit_batched", iterations, benchmarkMs([&]() {
+		for (int i = 0; i < iterations; ++i) {
+			for (int j = visibleFirst; j < visibleLast; ++j)
+				GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + cached[j].x, 16.0f + cached[j].y);
+			GPU_FlushBlitBuffer();
+		}
+	}));
+	finishBenchmarkWork(target);
+
+	// --- GPU blits for rendered text (proxy for the cached text-draw path) ---
+	printBenchmarkResult(benchmarkOutput.file, "musicbox_text_draw_blit", iterations, benchmarkMs([&]() {
+		for (int i = 0; i < iterations; ++i) {
+			for (int j = visibleFirst; j < visibleLast; ++j)
+				GPU_Blit(textImage, nullptr, targetSurface, 16.0f + cached[j].x + 55.0f, 16.0f + cached[j].y + 13.0f);
+			GPU_FlushBlitBuffer();
+		}
+	}));
+	finishBenchmarkWork(target);
+
+	// --- full frame: current code path (uncached lookups + find) ---
+	const double fullUncachedMs = benchmarkMs([&]() {
+		for (int i = 0; i < iterations; ++i) {
+			auto [f, l] = findVisibleUncached();
+			for (int j = f; j < l; ++j) {
+				auto &b = elements[j].branches;
+				int bg = b.count("bg") ? std::stoi(b["bg"]) : -1;
+				int ml = b.count("textmarginwidth") ? std::stoi(b["textmarginwidth"]) : 0;
+				int mt = b.count("textmargintop") ? std::stoi(b["textmargintop"]) : 0;
+				int y  = std::stoi(b["y"]);
+				int x  = b.count("x") ? std::stoi(b["x"]) : 0;
+				(void)bg;
+				GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + x, 16.0f + y);
+				GPU_Blit(textImage, nullptr, targetSurface, 16.0f + x + ml, 16.0f + y + mt);
+			}
+			GPU_FlushBlitBuffer();
+		}
+	});
+	printBenchmarkResult(benchmarkOutput.file, "musicbox_full_frame_uncached", iterations, fullUncachedMs);
+	finishBenchmarkWork(target);
+
+	// --- full frame: optimized code path (cached geometry + precomputed yEnd) ---
+	const double fullCachedMs = benchmarkMs([&]() {
+		for (int i = 0; i < iterations; ++i) {
+			auto [f, l] = findVisibleCached();
+			for (int j = f; j < l; ++j) {
+				auto &c = cached[j];
+				GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + c.x, 16.0f + c.y);
+				GPU_Blit(textImage, nullptr, targetSurface, 16.0f + c.x + c.textMarginLeft, 16.0f + c.y + c.textMarginTop);
+			}
+			GPU_FlushBlitBuffer();
+		}
+	});
+	printBenchmarkResult(benchmarkOutput.file, "musicbox_full_frame_cached", iterations, fullCachedMs);
+	finishBenchmarkWork(target);
+
+	// --- full frame: optimized code path (cached geometry + two-pass draw) ---
+	// Two-pass draw: all background plates first, then all text draws. The
+	// native blit batch can now keep compatible source-texture switches inside
+	// one command buffer, but two-pass ordering still reduces draw groups and
+	// sampler rebinds from roughly two per element to two per frame.
+	const double fullReorderedMs = benchmarkMs([&]() {
+		for (int i = 0; i < iterations; ++i) {
+			auto [f, l] = findVisibleCached();
+			for (int j = f; j < l; ++j) {
+				auto &c = cached[j];
+				GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + c.x, 16.0f + c.y);
+			}
+			for (int j = f; j < l; ++j) {
+				auto &c = cached[j];
+				GPU_Blit(textImage, nullptr, targetSurface, 16.0f + c.x + c.textMarginLeft, 16.0f + c.y + c.textMarginTop);
+			}
+			GPU_FlushBlitBuffer();
+		}
+	});
+	printBenchmarkResult(benchmarkOutput.file, "musicbox_full_frame_reordered", iterations, fullReorderedMs);
+	finishBenchmarkWork(target);
+
+	const double fullUncachedUs = fullUncachedMs * 1000.0 / iterations;
+	const double fullCachedUs   = fullCachedMs * 1000.0 / iterations;
+	const double fullReorderedUs = fullReorderedMs * 1000.0 / iterations;
+	const double uncachedFps    = fullUncachedUs > 0.0 ? 1000000.0 / fullUncachedUs : 0.0;
+	const double cachedFps      = fullCachedUs > 0.0 ? 1000000.0 / fullCachedUs : 0.0;
+	const double reorderedFps   = fullReorderedUs > 0.0 ? 1000000.0 / fullReorderedUs : 0.0;
+	const double speedup        = fullUncachedUs > 0.0 ? fullUncachedUs / std::max(0.001, fullReorderedUs) : 0.0;
+
+	writeLine("\n");
+	writeLine("==== Music Box bottleneck analysis ====\n");
+	writeLine("visible elements/frame: %d (2 columns x ~%.1f rows in 1080px)\n", visibleCount, visibleCount / 2.0);
+	writeLine("synthetic full-frame (find + lookups + bg blit + text blit + flush):\n");
+	writeLine("  current single-pass (uncached): %.3f us/frame  ->  ~%.1f FPS\n", fullUncachedUs, uncachedFps);
+	writeLine("  cached geometry only:           %.3f us/frame  ->  ~%.1f FPS\n", fullCachedUs, cachedFps);
+	writeLine("  cached geometry + two-pass:     %.3f us/frame  ->  ~%.1f FPS  (%.2fx faster)\n", fullReorderedUs, reorderedFps, speedup);
+	writeLine("\n");
+	writeLine("hotspots identified in Engine/Core/Animation.cpp drawSpecialScrollable():\n");
+	writeLine("  1. NATIVE BLIT SOURCE GROUPING (dominant measurable cost). The current\n");
+	writeLine("     loop draws each element's background plate and then immediately draws\n");
+	writeLine("     its text. The background and text come from different source textures,\n");
+	writeLine("     so a single-pass frame creates ~2 draw groups per element. The renderer\n");
+	writeLine("     keeps compatible source switches in one command buffer, but each group\n");
+	writeLine("     still needs a sampler bind and indexed draw.\n");
+	writeLine("     Fix: split the loop into two passes - draw every background plate first,\n");
+	writeLine("     then draw every element's text. This reduces source groups from ~48 to\n");
+	writeLine("     ~2 per frame while preserving one command-buffer flush per frame.\n");
+	writeLine("     Scrollable elements never overlap, so text still composites on top of\n");
+	writeLine("     its own background identically.\n");
+	writeLine("  2. getScrollableElementsVisibleAt() runs std::lower_bound with a comparator\n");
+	writeLine("     that does unordered_map hash lookups + std::stoi on every comparison.\n");
+	writeLine("     Fix: precompute a sorted y-end int array and lower_bound over it.\n");
+	writeLine("  3. For every visible element, every frame, the body re-queries the\n");
+	writeLine("     StringTree branches with has()/operator[] and re-parses x/y/width/\n");
+	writeLine("     height/textmargins/bg with std::stoi.\n");
+	writeLine("     Fix: cache decoded geometry + bg sprite index per element; rebuild only\n");
+	writeLine("     when the layout generation changes.\n");
+	writeLine("  4. PER-FRAME TEXT RELAYOUT (not measurable without the font stack). Each\n");
+	writeLine("     visible element calls DialogueController::renderToTarget() every frame,\n");
+	writeLine("     which re-runs decodeUTF8String + layoutSegment (markup parse + wrap) +\n");
+	writeLine("     layoutLines + per-glyph blits. In the Music Box the element text and\n");
+	writeLine("     style never change between frames while idle, so the layout work is\n");
+	writeLine("     redundant. The two-pass fix above reduces draw grouping overhead but each\n");
+	writeLine("     element still re-lays-out its text every frame.\n");
+	writeLine("     Fix: cache the laid-out TextRenderingState per element (keyed by text +\n");
+	writeLine("     style + multiply color + gradient + wrap width) and replay render() with\n");
+	writeLine("     a per-frame offset, re-laying out only on a key change.\n");
+	writeLine("\n");
+	writeLine("note: the synthetic text_draw_blit case measures one batched blit per element.\n");
+	writeLine("      The real per-frame text cost adds layoutSegment + glyph blits on top;\n");
+	writeLine("      hotspot 4 removes the relayout portion of that cost.\n");
+	if (reorderedFps >= 144.0)
+		writeLine("result: optimized scrollable draw path is within the 144Hz frame budget.\n");
+	else
+		writeLine("result: optimized draw path=%.1f FPS; inspect hotspots above for the remainder.\n", reorderedFps);
+
+	GPU_FreeImage(bgImage);
+	GPU_FreeImage(textImage);
+	GPU_FreeImage(target);
+	SDL_FreeSurface(bgSurface);
+	SDL_FreeSurface(textSurface);
+	GPU_Quit();
+	SDL_Quit();
+	return 0;
 }
 
 int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const char *outputPath) {

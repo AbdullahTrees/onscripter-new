@@ -14,6 +14,7 @@
 #include "Support/SDLCompat.hpp"
 #include "Engine/Graphics/RendererBackend.hpp"
 
+#include <cstddef>
 #include <cstdint>
 
 class GlyphAtlasController;
@@ -65,9 +66,39 @@ public:
 
 struct GlyphParamsHash {
 	size_t operator()(const GlyphParams &gp) const {
-		return gp.font_number ^ (static_cast<size_t>(gp.font_size) << 4) ^ (static_cast<size_t>(gp.unicode) << 10) ^
-		       (static_cast<size_t>(gp.is_bold) << 20) ^ (static_cast<size_t>(gp.is_italic) << 21) ^ (static_cast<size_t>(gp.is_underline) << 22) ^
-		       (static_cast<size_t>(gp.is_border) << 23) ^ (static_cast<size_t>(gp.is_colored) << 24) ^ (static_cast<size_t>(gp.is_gradient) << 25);
+		auto combine = [](size_t &seed, size_t value) {
+			seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+		};
+		auto has_color = [](const GlyphParams &params) {
+			return params.is_colored &&
+			       !(params.glyph_color.r == 0 && params.glyph_color.g == 0 && params.glyph_color.b == 0 &&
+			         params.border_color.r == 0 && params.border_color.g == 0 && params.border_color.b == 0);
+		};
+
+		size_t seed = 0;
+		combine(seed, gp.unicode);
+		combine(seed, gp.font_number);
+		combine(seed, static_cast<size_t>(gp.preset_id));
+		combine(seed, static_cast<size_t>(gp.font_size));
+		combine(seed, static_cast<size_t>(gp.border_width));
+		combine(seed, gp.is_bold);
+		combine(seed, gp.is_italic);
+		combine(seed, gp.is_underline);
+		combine(seed, gp.is_border);
+
+		const bool colored = has_color(gp);
+		combine(seed, colored);
+		if (colored) {
+			combine(seed, gp.is_gradient);
+			combine(seed, gp.glyph_color.r);
+			combine(seed, gp.glyph_color.g);
+			combine(seed, gp.glyph_color.b);
+			combine(seed, gp.border_color.r);
+			combine(seed, gp.border_color.g);
+			combine(seed, gp.border_color.b);
+		}
+
+		return seed;
 	}
 };
 
@@ -75,6 +106,7 @@ struct GlyphParamsEqual {
 	bool operator()(const GlyphParams &left, const GlyphParams &right) const {
 		bool base_params_equal = (left.unicode == right.unicode &&
 		                          left.font_number == right.font_number &&
+		                          left.preset_id == right.preset_id &&
 		                          left.font_size == right.font_size &&
 		                          left.is_bold == right.is_bold &&
 		                          left.is_italic == right.is_italic &&

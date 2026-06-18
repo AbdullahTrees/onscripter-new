@@ -88,7 +88,11 @@ void WindowController::setMainTarget(RenderTarget *target) {
 }
 
 void WindowController::setTitle(const char *title) {
-	SDL_SetWindowTitle(window, title);
+	const char *safeTitle = title ? title : "";
+	if (current_title == safeTitle)
+		return;
+	current_title = safeTitle;
+	SDL_SetWindowTitle(window, current_title.c_str());
 }
 
 void WindowController::setIcon(SDL_Surface *icon) {

@@ -22,6 +22,14 @@
 
 #define FT_CEIL(X) ((((X) + 63) & -64) / 64)
 
+namespace {
+void applyFontState(Font &font, const Fontinfo::TextStyleProperties &style) {
+	font.setStyle(style.is_bold, style.is_italic);
+	font.setSize(style.font_size, style.font_number, style.preset_id);
+	font.setBorder(style.is_border ? style.border_width : 0);
+}
+}
+
 Fontinfo::Fontinfo() {
 	layoutData.last_printed_codepoint = 0;
 	layoutData.prevCharIndex          = 0;
@@ -35,16 +43,14 @@ Fontinfo::Fontinfo() {
 
 GlyphParams Fontinfo::getGlyphParams() {
 	// Update font with current style params
-	GlyphParams gp;
+	GlyphParams gp{};
 	auto &s = style();
 	auto &f = fonts.getFont(s.font_number, s.preset_id);
 
-	f.setStyle(s.is_bold, s.is_italic);
-	f.setSize(s.font_size, s.font_number, s.preset_id);
-	f.setBorder(s.is_border ? s.border_width : 0);
+	applyFontState(f, s);
 
 	gp.font_number  = s.font_number;
-	gp.preset_id    = fonts.glyphStorageOptimisation ? -1 : s.preset_id;
+	gp.preset_id    = s.preset_id;
 	gp.font_size    = s.font_size;
 	gp.border_width = s.is_border ? s.border_width : 0;
 
@@ -115,7 +121,10 @@ bool Fontinfo::changeCurrentFont(unsigned int font, int preset_id) {
 }
 
 Font *Fontinfo::my_font() {
-	return &fonts.getFont(style().font_number, style().preset_id);
+	auto &s = style();
+	auto &f = fonts.getFont(s.font_number, s.preset_id);
+	applyFontState(f, s);
+	return &f;
 }
 
 bool Fontinfo::isFontLoaded(unsigned int number) {
@@ -401,7 +410,8 @@ int Font::lineskip() {
 void Font::setSize(int val, unsigned int id, int preset_id) {
 	val *= fonts.getMultiplier(id, preset_id);
 
-	if (val != current_size || prev_face != face) {
+	const bool activeFaceSizeMatches = face && face->size && face->size->metrics.y_ppem == val;
+	if (val != current_size || prev_face != face || !activeFaceSizeMatches) {
 		current_size = val;
 		prev_face    = face;
 		err          = FT_Set_Char_Size(face, 0, static_cast<FT_F26Dot6>(val) * 64, 0, 0);

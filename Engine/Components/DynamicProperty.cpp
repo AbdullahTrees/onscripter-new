@@ -34,42 +34,26 @@ void DynamicPropertyController::reset() {
 }
 
 void DynamicPropertyController::advanceNanos(uint64_t ns) {
-	for (auto &map : customProperties) {
-		if (map.second.empty())
-			continue;
-		DynamicCustomProperty &cp = map.second.front(); // Only advance the item at the front of the queue
-		if (cp.clock.timeNanos() == 0)
-			cp.begin();
-		if (cp.duration != 0)
-			cp.clock.tickNanos(ns);
-	}
-	for (auto &map : spriteProperties) {
-		if (map.second.empty())
-			continue;
-		DynamicSpriteProperty &sp = map.second.front(); // Only advance the item at the front of the queue
-		if (sp.clock.timeNanos() == 0)
-			sp.begin();
-		if (sp.duration != 0)
-			sp.clock.tickNanos(ns);
-	}
-	for (auto &map : globalProperties) {
-		if (map.second.empty())
-			continue;
-		DynamicGlobalProperty &gp = map.second.front(); // Only advance the item at the front of the queue
-		if (gp.clock.timeNanos() == 0)
-			gp.begin();
-		if (gp.duration != 0)
-			gp.clock.tickNanos(ns);
-	}
-	for (auto &map : spritesetProperties) {
-		if (map.second.empty())
-			continue;
-		DynamicSpritesetProperty &ssp = map.second.front(); // Only advance the item at the front of the queue
-		if (ssp.clock.timeNanos() == 0)
-			ssp.begin();
-		if (ssp.duration != 0)
-			ssp.clock.tickNanos(ns);
-	}
+	auto advanceMap = [&](auto &properties) {
+		for (auto it = properties.begin(); it != properties.end();) {
+			auto &queue = it->second;
+			if (queue.empty()) {
+				it = properties.erase(it);
+				continue;
+			}
+			auto &prop = queue.front(); // Only advance the item at the front of the queue
+			if (prop.clock.timeNanos() == 0)
+				prop.begin();
+			if (prop.duration != 0)
+				prop.clock.tickNanos(ns);
+			++it;
+		}
+	};
+
+	advanceMap(customProperties);
+	advanceMap(spriteProperties);
+	advanceMap(globalProperties);
+	advanceMap(spritesetProperties);
 }
 
 void DynamicPropertyController::advance(int ms) {
@@ -80,50 +64,34 @@ void DynamicPropertyController::advance(int ms) {
 
 void DynamicPropertyController::apply() {
 	bool applied_something = false;
-	for (auto &map : customProperties) {
-		while (!map.second.empty()) {
-			DynamicCustomProperty &cp = map.second.front(); // Only apply the item at the front of the queue
-			cp.apply();
-			applied_something = true;
-			if (!cp.endless && cp.clock.timeNanos() >= durationToNanos(cp.duration)) {
-				map.second.pop_front(); // pop it and apply the next one (properly initializes its start value)
-			} else
-				break; // we applied once and couldn't finish and pop, so we're done with this property until the next advance
+	const bool previousBatching = batchingApply;
+	batchingApply              = true;
+	auto applyMap              = [&](auto &properties) {
+		for (auto it = properties.begin(); it != properties.end();) {
+			auto &queue = it->second;
+			while (!queue.empty()) {
+				auto &prop = queue.front(); // Only apply the item at the front of the queue
+				prop.apply();
+				applied_something = true;
+				if (!prop.endless && prop.clock.timeNanos() >= durationToNanos(prop.duration)) {
+					queue.pop_front(); // pop it and apply the next one (properly initializes its start value)
+				} else {
+					break; // we applied once and couldn't finish and pop, so we're done with this property until the next advance
+				}
+			}
+			if (queue.empty())
+				it = properties.erase(it);
+			else
+				++it;
 		}
-	}
-	for (auto &map : spriteProperties) {
-		while (!map.second.empty()) {
-			DynamicSpriteProperty &sp = map.second.front(); // Only apply the item at the front of the queue
-			sp.apply();
-			applied_something = true;
-			if (!sp.endless && sp.clock.timeNanos() >= durationToNanos(sp.duration)) {
-				map.second.pop_front(); // pop it and apply the next one (properly initializes its start value)
-			} else
-				break; // we applied once and couldn't finish and pop, so we're done with this property until the next advance
-		}
-	}
-	for (auto &map : globalProperties) {
-		while (!map.second.empty()) {
-			DynamicGlobalProperty &gp = map.second.front(); // Only apply the item at the front of the queue
-			gp.apply();
-			applied_something = true;
-			if (!gp.endless && gp.clock.timeNanos() >= durationToNanos(gp.duration)) {
-				map.second.pop_front(); // pop it and apply the next one (properly initializes its start value)
-			} else
-				break; // we applied once and couldn't finish and pop, so we're done with this property until the next advance
-		}
-	}
-	for (auto &map : spritesetProperties) {
-		while (!map.second.empty()) {
-			DynamicSpritesetProperty &ssp = map.second.front(); // Only apply the item at the front of the queue
-			ssp.apply();
-			applied_something = true;
-			if (!ssp.endless && ssp.clock.timeNanos() >= durationToNanos(ssp.duration)) {
-				map.second.pop_front(); // pop it and apply the next one (properly initializes its start value)
-			} else
-				break; // we applied once and couldn't finish and pop, so we're done with this property until the next advance
-		}
-	}
+	};
+
+	applyMap(customProperties);
+	applyMap(spriteProperties);
+	applyMap(globalProperties);
+	applyMap(spritesetProperties);
+	batchingApply = previousBatching;
+
 	if (applied_something) {
 		// this probably should have been in the setValues instead of all the way out here.
 		// I think it was actually causing bugs by missing out flushes on calls to addSpriteProperty among other things.
@@ -200,9 +168,7 @@ void DynamicPropertyController::addGlobalProperty(bool _is_abs, int _property, i
 }
 
 void DynamicPropertyController::clearGlobalProperty(int property) {
-	auto it = globalProperties.find(property);
-	if (it != globalProperties.end())
-		it->second.clear();
+	globalProperties.erase(property);
 }
 
 void DynamicPropertyController::addSpritesetProperty(int _spriteset_number, bool _is_abs, int _property, int _value, int _duration, int _motion_equation) {
@@ -234,10 +200,8 @@ void DynamicPropertyController::terminateSpriteProperties(AnimationInfo *ai) {
 			sp2.clock.tick(sp2.getRemainingDuration()); // tick the whole property change away
 			sp2.apply();
 		}
-		if (!noErase) {
-			it->second.clear();
-			++it;
-		}
+		if (!noErase)
+			it = spriteProperties.erase(it);
 	}
 }
 
@@ -253,32 +217,31 @@ void DynamicPropertyController::terminateSpritesetProperties(SpritesetInfo *si) 
 			ss.clock.tick(ss.getRemainingDuration()); // tick the whole property change away
 			ss.apply();
 		}
-		it->second.clear();
-		++it;
+		it = spritesetProperties.erase(it);
 	}
 }
 
 void DynamicPropertyController::waitOnCustomProperty(void *ptr, int property, int event_mode_addons) {
 	auto pair = std::make_pair(ptr, property);
 	//sendToLog(LogLevel::Info, "Going to wait on properties\n");
-	waitOnPropertyGeneric(customProperties[pair], event_mode_addons);
+	waitOnPropertyGeneric(customProperties, pair, event_mode_addons);
 	//sendToLog(LogLevel::Info, "Wait on properties done\n");
 }
 
 void DynamicPropertyController::waitOnSpriteProperty(AnimationInfo *ai, int property, int event_mode_addons) {
 	auto pair = std::make_pair(ai, property);
 	//sendToLog(LogLevel::Info, "Going to wait on properties\n");
-	waitOnPropertyGeneric(spriteProperties[pair], event_mode_addons);
+	waitOnPropertyGeneric(spriteProperties, pair, event_mode_addons);
 	//sendToLog(LogLevel::Info, "Wait on properties done\n");
 }
 
 void DynamicPropertyController::waitOnGlobalProperty(int property, int event_mode_addons) {
-	waitOnPropertyGeneric(globalProperties[property], event_mode_addons);
+	waitOnPropertyGeneric(globalProperties, property, event_mode_addons);
 }
 
 void DynamicPropertyController::waitOnSpritesetProperty(int spriteset_number, int property, int event_mode_addons) {
 	auto pair = std::make_pair(spriteset_number, property);
-	waitOnPropertyGeneric(spritesetProperties[pair], event_mode_addons);
+	waitOnPropertyGeneric(spritesetProperties, pair, event_mode_addons);
 }
 
 template <class T>
@@ -293,12 +256,18 @@ int DynamicPropertyController::getMaxRemainingDuration(std::deque<T> &props) {
 	return max;
 }
 
-template <class T>
-void DynamicPropertyController::waitOnPropertyGeneric(std::deque<T> &props, int event_mode_addons) {
-	static_assert(std::is_base_of<DynamicProperty, T>::value, "waitOnPropertyGeneric called with class that is not a (subclass of) DynamicProperty");
-	while (!props.empty() && !props.front().endless) {
+template <class Map>
+void DynamicPropertyController::waitOnPropertyGeneric(Map &propertyMap, const typename Map::key_type &key, int event_mode_addons) {
+	using Queue = typename Map::mapped_type;
+	using Property = typename Queue::value_type;
+	static_assert(std::is_base_of<DynamicProperty, Property>::value, "waitOnPropertyGeneric called with class that is not a (subclass of) DynamicProperty");
+	while (true) {
+		auto it = propertyMap.find(key);
+		if (it == propertyMap.end() || it->second.empty() || it->second.front().endless)
+			return;
+
 		if ((ons.skip_mode & (ONScripter::SKIP_NORMAL | ONScripter::SKIP_TO_WAIT)) || ons.keyState.ctrl) {
-			advance(getMaxRemainingDuration(props));
+			advance(getMaxRemainingDuration(it->second));
 		}
 		ons.event_mode = ONScripter::WAIT_TIMER_MODE | ONScripter::WAIT_SLEEP_MODE | event_mode_addons;
 		ons.waitEvent(0);
@@ -448,7 +417,8 @@ void DynamicPropertyController::DynamicSpriteProperty::setValue(double value) {
 					ons.errorAndExit("Make sure to use sprite_property2 for dynamic properties of lsp2s.");
 		}
 
-		ons.UpdateAnimPosXY(curAi);
+		if (property == SPRITE_PROPERTY_X_POSITION || property == SPRITE_PROPERTY_Y_POSITION)
+			ons.UpdateAnimPosXY(curAi);
 
 		if (curAi->old_ai && !for_distinguished_new_ai)
 			curAi = ai->old_ai;
@@ -464,7 +434,8 @@ void DynamicPropertyController::DynamicSpriteProperty::setValue(double value) {
 	} else {
 		ons.dirtySpriteRect(sprite_number, false);
 	}
-	ons.flush(REFRESH_NORMAL_MODE, nullptr, nullptr, false, false, false);
+	if (!controller->batchingApply)
+		ons.flush(REFRESH_NORMAL_MODE, nullptr, nullptr, false, false, false);
 }
 
 double DynamicPropertyController::DynamicGlobalProperty::getValue() {
@@ -586,7 +557,8 @@ void DynamicPropertyController::DynamicSpritesetProperty::setValue(double value)
 	//We may be in REFRESH_BEFORESCENE_MODE (addSpritesetProperty), but non-0-duration properties imply both before/after changes.
 	ons.dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 	ons.before_dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
-	ons.flush(REFRESH_NORMAL_MODE, nullptr, nullptr, false, false, false);
+	if (!controller->batchingApply)
+		ons.flush(REFRESH_NORMAL_MODE, nullptr, nullptr, false, false, false);
 }
 
 void DynamicPropertyController::DynamicProperty::apply() {
@@ -631,12 +603,19 @@ double DynamicPropertyController::DynamicProperty::getInterpolatedValue() {
 			new_t *= new_t;
 			break;
 		case MOTION_EQUATION_SPEEDUP:
-			new_t = 1 - (alpha_f * (1 - t) + (3 - 2 * alpha_f) * std::pow((1 - t), 2) + (alpha_f - 2) * std::pow((1 - t), 3));
+		{
+			const double u  = 1 - t;
+			const double u2 = u * u;
+			new_t = 1 - (alpha_f * u + (3 - 2 * alpha_f) * u2 + (alpha_f - 2) * u2 * u);
 			break;
+		}
 		case MOTION_EQUATION_SLOWDOWN:
+		{
+			const double t2 = t * t;
 			//this equation f(t) is the cubic polynomial satisfying f(0)=0, f(1)=1, f'(0)=alpha_f, f'(1)=0
-			new_t = alpha_f * t + (3 - 2 * alpha_f) * std::pow(t, 2) + (alpha_f - 2) * std::pow(t, 3);
+			new_t = alpha_f * t + (3 - 2 * alpha_f) * t2 + (alpha_f - 2) * t2 * t;
 			break;
+		}
 		case MOTION_EQUATION_COSINE_WAVE:
 			new_t = 0.5 - (std::cos(2*M_PI*t)) / 2;
 			break;

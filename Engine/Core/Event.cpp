@@ -18,6 +18,7 @@
 #include <sys/wait.h>
 #endif
 
+#include <algorithm>
 #include <numeric>
 
 const uint32_t MAX_TOUCH_TAP_TIMESPAN{80};
@@ -27,6 +28,8 @@ const float MIN_AUTO_FPS{30.0f};
 const float MAX_AUTO_FPS{360.0f};
 const uint64_t NANOS_PER_MILLISECOND{1000000ULL};
 const uint64_t STALE_FRAME_BASELINE_NS{250ULL * NANOS_PER_MILLISECOND};
+const uint64_t FPS_DISPLAY_UPDATE_INTERVAL_NS{250ULL * NANOS_PER_MILLISECOND};
+const uint64_t MAX_FRAME_TAIL_COMPENSATION_NS{2ULL * NANOS_PER_MILLISECOND};
 #if !defined(ONS_USE_SDL3)
 const float TOUCH_ACTION_THRESHOLD_X = 0.1;
 const float TOUCH_ACTION_THRESHOLD_Y = 0.15;
@@ -311,6 +314,13 @@ void ONScripter::updateFpsCounter(double frameMilliseconds) {
 
 	displayed_fps = 1000.0 / frameMilliseconds;
 
+	static uint64_t lastOverlayUpdateNanos = 0;
+	uint64_t nowNanos = highResolutionTicksNanos();
+	if (!fps_overlay_text.empty() &&
+	    nowNanos - lastOverlayUpdateNanos < FPS_DISPLAY_UPDATE_INTERVAL_NS)
+		return;
+	lastOverlayUpdateNanos = nowNanos;
+
 	char label[32];
 	std::snprintf(label, sizeof(label), "FPS: %.1f", displayed_fps);
 	if (fps_overlay_text != label) {
@@ -404,6 +414,7 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 	static FPSTimeGenerator *fps_timer = nullptr;
 	static uint64_t accumulatedOvershootNanos = 0;
 	static uint64_t lastFlipTimeNanos         = 0;
+	static uint64_t frameTailEstimateNanos    = 0;
 
 	if (!fps_timer || thisCallTime - last_fps_probe >= 1000) {
 		float detected_fps = effectiveRefreshRate();
@@ -416,6 +427,7 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 			active_fps_rate = detected_fps;
 			accumulatedOvershootNanos = 0;
 			lastFlipTimeNanos         = 0;
+			frameTailEstimateNanos    = 0;
 		}
 		last_fps_probe = thisCallTime;
 	}
@@ -429,9 +441,15 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		uint64_t framesOvershoot = 0;
 		uint64_t nanosPerFrame   = fps->nanosPerFrame();
 		uint64_t timeThisFrame{nanosPerFrame};
+		uint64_t waitThisFrame{timeThisFrame};
+		const uint64_t maxTailCompensation = std::min(timeThisFrame / 2, MAX_FRAME_TAIL_COMPENSATION_NS);
+		const uint64_t tailCompensation    = std::min(frameTailEstimateNanos, maxTailCompensation);
+		if (tailCompensation < waitThisFrame)
+			waitThisFrame -= tailCompensation;
 		if (resetFramePacing) {
 			accumulatedOvershootNanos = 0;
 			lastFlipTimeNanos         = thisCallTimeNanos;
+			frameTailEstimateNanos    = 0;
 			resetFramePacing          = false;
 		}
 		while (accumulatedOvershootNanos > timeThisFrame) {
@@ -484,8 +502,9 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 			ticksNow = SDL_GetTicks();
 			uint64_t ticksNowNanos = highResolutionTicksNanos();
 			uint64_t frameElapsed  = ticksNowNanos - lastFlipTimeNanos;
-			if (frameElapsed >= timeThisFrame) {
-				accumulatedOvershootNanos += frameElapsed - timeThisFrame;
+			if (frameElapsed >= waitThisFrame) {
+				if (frameElapsed > timeThisFrame)
+					accumulatedOvershootNanos += frameElapsed - timeThisFrame;
 				break;
 			}
 			// We don't want to be precise in SSKIP mode
@@ -494,10 +513,12 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 			// we still have time, do some downtime processing
 			bool processed{mainThreadDowntimeProcessing(false)};
 			// if we're way ahead of schedule (defined here as more than 5ms), let's have a little nap so we don't destroy everyone's CPU
-			if (!processed && frameElapsed + (5ULL * NANOS_PER_MILLISECOND) <= timeThisFrame) {
+			if (!processed && frameElapsed + (5ULL * NANOS_PER_MILLISECOND) <= waitThisFrame) {
 				SDL_Delay(1);
 			}
 		}
+
+		const uint64_t frameTailStartNanos = highResolutionTicksNanos();
 
 		if (allow_rendering && !(skip_mode & SKIP_SUPERSKIP) && !deferredLoadingEnabled) {
 			if (cursor)
@@ -521,8 +542,10 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 
 		if ((show_fps_counter || fps_overlay_visible) && !(skip_mode & SKIP_SUPERSKIP)) {
 			static std::deque<double> ticksList;
+			static uint64_t lastTitleUpdateNanos = 0;
 			// display fps counter averaged over 30 frames
-			double elapsedMillis = static_cast<double>(highResolutionTicksNanos() - lastFlipTimeNanos) / NANOS_PER_MILLISECOND;
+			uint64_t nowNanos = highResolutionTicksNanos();
+			double elapsedMillis = static_cast<double>(nowNanos - lastFlipTimeNanos) / NANOS_PER_MILLISECOND;
 			if (elapsedMillis > 0.0) {
 				ticksList.push_front(elapsedMillis);
 				if (ticksList.size() > 30)
@@ -530,21 +553,26 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 				double av = std::accumulate(ticksList.begin(), ticksList.end(), 0.0) / ticksList.size();
 				if (fps_overlay_visible)
 					updateFpsCounter(av);
-				if (show_fps_counter) {
-					// put it in a string
-					size_t len        = 128 + std::strlen(wm_title_string);
-					char *titlestring = new char[len];
-					std::snprintf(titlestring, len, "[Renderer: %s / TPF: %.3f ms / FPS: %.3f] %s%s",
+				if (show_fps_counter && (lastTitleUpdateNanos == 0 || nowNanos - lastTitleUpdateNanos >= FPS_DISPLAY_UPDATE_INTERVAL_NS)) {
+					char titlestring[512];
+					std::snprintf(titlestring, sizeof(titlestring), "[Renderer: %s / TPF: %.3f ms / FPS: %.3f] %s%s",
 					              gpu.current_renderer->name, av, 1000.0 / av, volume_on_flag ? "" : "[Sound: Off] ", wm_title_string);
-					// set the title
 					window.setTitle(titlestring);
-					freearr(&titlestring);
+					lastTitleUpdateNanos = nowNanos;
 				}
 			}
 		}
 
 		//sendToLog(LogLevel::Info,"  flipped -- aimed for %i ms, took %i ms\n", constant_refresh_interval, ticksNow - lastFlipTime);
-		lastFlipTimeNanos = highResolutionTicksNanos();
+		const uint64_t frameEndNanos = highResolutionTicksNanos();
+		if (!(skip_mode & SKIP_SUPERSKIP) && frameEndNanos >= frameTailStartNanos) {
+			const uint64_t frameTailNanos = std::min(frameEndNanos - frameTailStartNanos, maxTailCompensation);
+			if (frameTailEstimateNanos == 0)
+				frameTailEstimateNanos = frameTailNanos;
+			else
+				frameTailEstimateNanos = (frameTailEstimateNanos * 7 + frameTailNanos) / 8;
+		}
+		lastFlipTimeNanos = frameEndNanos;
 
 		//printClock("(next iteration)");
 
@@ -691,7 +719,10 @@ bool ONScripter::mouseButtonDecision(EventProcessingState &state, bool left, boo
 		if ((rmode_flag && (event_mode & WAIT_TEXT_MODE)) ||
 		    (event_mode & (WAIT_BUTTON_MODE | WAIT_RCLICK_MODE))) {
 			state.buttonState.set(-1);
-			for (auto ai : sprites(SPRITE_LSP)) {
+			for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+				AnimationInfo *ai = &sprite_info[i];
+				if (!ai->exists)
+					continue;
 				if (ai->scrollableInfo.isSpecialScrollable && ai->scrollableInfo.respondsToClick && ai->scrollableInfo.mouseCursorIsOverHoveredElement) {
 					state.buttonState.set(-81);
 					break;
@@ -707,7 +738,10 @@ bool ONScripter::mouseButtonDecision(EventProcessingState &state, bool left, boo
 			state.buttonState.set(hoveredButtonNumber);
 		} else {
 			state.buttonState.set(0);
-			for (auto ai : sprites(SPRITE_LSP)) {
+			for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+				AnimationInfo *ai = &sprite_info[i];
+				if (!ai->exists)
+					continue;
 				if (ai->scrollableInfo.isSpecialScrollable && ai->scrollableInfo.respondsToClick && ai->scrollableInfo.mouseCursorIsOverHoveredElement) {
 					state.buttonState.set(-80);
 					break;
@@ -961,13 +995,20 @@ bool ONScripter::mouseScrollEvent(SDL_MouseWheelEvent &event, EventProcessingSta
 	last_wheelscroll = event.y;
 
 	addToPostponedEventChanges("scroll scrollables", [this]() {
-		for (auto scrollElem : sprites(SPRITE_LSP | SPRITE_LSP2)) {
-			if (scrollElem->scrollable.h > 0 && scrollElem->scrollableInfo.respondsToMouseOver) {
-				dynamicProperties.addSpriteProperty(scrollElem, scrollElem->id, scrollElem->type == SPRITE_LSP2, false,
-				                                    SPRITE_PROPERTY_SCROLLABLE_Y, mouse_scroll_mul * last_wheelscroll, 100, 1, true);
-				scrollElem->scrollableInfo.snapType = AnimationInfo::ScrollSnap::NONE;
+		auto scrollSprites = [&](AnimationInfo *sprites) {
+			for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+				AnimationInfo *scrollElem = &sprites[i];
+				if (!scrollElem->exists)
+					continue;
+				if (scrollElem->scrollable.h > 0 && scrollElem->scrollableInfo.respondsToMouseOver) {
+					dynamicProperties.addSpriteProperty(scrollElem, scrollElem->id, scrollElem->type == SPRITE_LSP2, false,
+					                                    SPRITE_PROPERTY_SCROLLABLE_Y, mouse_scroll_mul * last_wheelscroll, 100, 1, true);
+					scrollElem->scrollableInfo.snapType = AnimationInfo::ScrollSnap::NONE;
+				}
 			}
-		}
+		};
+		scrollSprites(sprite_info);
+		scrollSprites(sprite2_info);
 	});
 
 	if (event.y > 0 &&
@@ -1296,10 +1337,15 @@ bool ONScripter::keyPressEvent(SDL_KeyboardEvent &event, EventProcessingState &s
 		            (usewheel_flag && (event_mode & WAIT_BUTTON_MODE)))) {
 			addToPostponedEventChanges("change scrollable hovered element", [this, event]() {
 				Direction d = getDirection(onsKeyboardScancode(event));
-				for (auto sptr : sprites(SPRITE_LSP | SPRITE_LSP2)) {
-					if (sptr->visible && sptr->exists && sptr->scrollableInfo.isSpecialScrollable)
-						changeScrollableHoveredElement(sptr, d);
-				}
+				auto shiftSprites = [&](AnimationInfo *sprites) {
+					for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+						AnimationInfo *sptr = &sprites[i];
+						if (sptr->visible && sptr->exists && sptr->scrollableInfo.isSpecialScrollable)
+							changeScrollableHoveredElement(sptr, d);
+					}
+				};
+				shiftSprites(sprite_info);
+				shiftSprites(sprite2_info);
 			});
 		} else if (getpageup_flag && (onsKeyboardScancode(event) == SDL_SCANCODE_PAGEUP)) {
 			state.buttonState.set(-12);

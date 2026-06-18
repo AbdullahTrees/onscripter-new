@@ -250,6 +250,7 @@ struct GPU_Renderer {
 	GPU_DebugLevelEnum debug_level;
 	Uint32 enabled_features;
 	SDL_GPUTextureFormat swapchain_format;
+	SDL_GPUPresentMode present_mode;
 };
 
 GPU_RendererID SDLCALL GPU_MakeRendererID(const char *name, GPU_RendererEnum renderer, int major_version, int minor_version);
@@ -311,6 +312,7 @@ void SDLCALL GPU_SetUniformfv(int location, int num_elements_per_value, int num_
 GPU_bool SDLCALL GPU_MultiplyAlpha(GPU_Image *image, const GPU_Rect *dst_clip);
 void SDLCALL GPU_DiscardImagePixels(GPU_Image *image);
 int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const char *outputPath);
+int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, const char *outputPath);
 void SDLCALL GPU_PushTelemetryScope(const char *source);
 void SDLCALL GPU_PopTelemetryScope(void);
 

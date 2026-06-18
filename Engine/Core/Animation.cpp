@@ -14,6 +14,8 @@
 #include "Support/FileIO.hpp"
 
 #include <unistd.h>
+#include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <unordered_set>
 
@@ -108,6 +110,85 @@ RenderRect cellClipRect(const AnimationInfo *ai, int cell) {
 	return clip_rect;
 }
 
+constexpr int ScrollableTextCacheMinimumPadding = 12;
+
+void appendScrollableTextCacheInt(std::string &key, int value) {
+	key.append(std::to_string(value));
+	key.push_back('\x1f');
+}
+
+void appendScrollableTextCacheColor(std::string &key, const uchar3 &color) {
+	appendScrollableTextCacheInt(key, color.x);
+	appendScrollableTextCacheInt(key, color.y);
+	appendScrollableTextCacheInt(key, color.z);
+}
+
+std::string makeScrollableTextCacheKey(const std::string &text, Fontinfo fi, int wrapLimit, int tightlyFit) {
+	while (fi.styleStack.size() > 1) fi.styleStack.pop();
+	const auto &style = fi.style();
+
+	std::string key;
+	key.reserve(text.size() + 192);
+	key.append(text);
+	key.push_back('\x1e');
+	appendScrollableTextCacheInt(key, wrapLimit);
+	appendScrollableTextCacheInt(key, tightlyFit);
+	appendScrollableTextCacheInt(key, fi.borderPadding);
+	appendScrollableTextCacheColor(key, fi.buttonMultiplyColor);
+	appendScrollableTextCacheInt(key, static_cast<int>(style.font_number));
+	appendScrollableTextCacheInt(key, style.preset_id);
+	appendScrollableTextCacheColor(key, style.color);
+	appendScrollableTextCacheInt(key, style.is_gradient);
+	appendScrollableTextCacheInt(key, style.is_centered);
+	appendScrollableTextCacheInt(key, style.is_fitted);
+	appendScrollableTextCacheInt(key, style.is_bold);
+	appendScrollableTextCacheInt(key, style.is_italic);
+	appendScrollableTextCacheInt(key, style.is_border);
+	appendScrollableTextCacheInt(key, style.border_width);
+	appendScrollableTextCacheColor(key, style.border_color);
+	appendScrollableTextCacheInt(key, style.is_shadow);
+	appendScrollableTextCacheInt(key, style.shadow_distance[0]);
+	appendScrollableTextCacheInt(key, style.shadow_distance[1]);
+	appendScrollableTextCacheColor(key, style.shadow_color);
+	appendScrollableTextCacheInt(key, style.font_size);
+	appendScrollableTextCacheInt(key, style.character_spacing);
+	appendScrollableTextCacheInt(key, style.line_height);
+	appendScrollableTextCacheInt(key, style.wrap_limit);
+	return key;
+}
+
+int scrollableTextCachePadding(TextRenderingState &state) {
+	int padding = ScrollableTextCacheMinimumPadding;
+	auto inspectPiece = [&](DialoguePiece &piece) {
+		padding = std::max(padding, piece.borderPadding);
+		for (const auto &fi : piece.fontInfos) {
+			const auto &style = fi.style();
+			padding           = std::max(padding, fi.borderPadding);
+			if (style.is_border)
+				padding = std::max(padding, style.border_width);
+			if (style.is_shadow) {
+				padding = std::max(padding, std::abs(style.shadow_distance[0]));
+				padding = std::max(padding, std::abs(style.shadow_distance[1]));
+			}
+		}
+	};
+	for (auto &seg : state.segments) {
+		for (auto &run : seg.runs) {
+			for (auto &piece : run.pieces) inspectPiece(piece);
+			for (auto &piece : run.rubyPieces) inspectPiece(piece);
+		}
+	}
+	return padding + 2;
+}
+
+void freeScrollableCachedText(AnimationInfo::ScrollableInfo::CachedText &cached) {
+	if (cached.image)
+		gpu.freeImage(cached.image);
+	cached.image = nullptr;
+	cached.key.clear();
+	cached.padding = 0;
+}
+
 void setSpriteRGBA(RenderImage *src, const AnimationInfo *ai, int alpha) {
 	GPU_SetRGBA(src,
 	            ai->trans * ai->darkenHue.r * alpha / (255 * 255),
@@ -120,12 +201,36 @@ void setSpriteRGBA(RenderImage *src, const AnimationInfo *ai, int alpha) {
 int ONScripter::proceedAnimation() {
 	int minimum_duration = -1;
 
-	for (auto anim : sprites(SPRITE_TACHI | SPRITE_LSP | SPRITE_LSP2, true)) {
+	auto hasAnimationState = [](const AnimationInfo &anim) {
+		return anim.exists || (anim.old_ai && anim.old_ai->exists);
+	};
+	auto proceed = [&](AnimationInfo *anim) {
+		if (!hasAnimationState(*anim))
+			return;
+
 		if (anim->visible && anim->is_animatable) {
 			minimum_duration = estimateNextDuration(anim, anim->pos, minimum_duration);
 		}
 		if (anim->old_ai && anim->old_ai->visible && anim->old_ai->is_animatable) {
 			minimum_duration = estimateNextDuration(anim->old_ai, anim->old_ai->pos, minimum_duration, true);
+		}
+	};
+
+	if (animationProceedCandidatesPrepared && !animationProceedCandidates.empty()) {
+		for (AnimationInfo *anim : animationProceedCandidates)
+			proceed(anim);
+		animationProceedCandidatesPrepared = false;
+	} else {
+		animationProceedCandidatesPrepared = false;
+		for (int i = 0; i < 3; ++i)
+			proceed(&tachi_info[i]);
+		for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+			if (hasAnimationState(sprite_info[i]))
+				proceed(&sprite_info[i]);
+		}
+		for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+			if (hasAnimationState(sprite2_info[i]))
+				proceed(&sprite2_info[i]);
 		}
 	}
 
@@ -197,9 +302,9 @@ int ONScripter::proceedCursorAnimation() {
 int ONScripter::estimateNextDuration(AnimationInfo *anim, RenderRect & /*rect*/, int minimum, bool old_ai) {
 	if (anim->clock.expired()) {
 		if (anim->trans_mode != AnimationInfo::TRANS_LAYER) {
-			if ((minimum == -1) ||
-			    (minimum > anim->getDuration(anim->current_cell)))
-				minimum = anim->getDuration(anim->current_cell);
+			const int duration = anim->getDuration(anim->current_cell);
+			if ((minimum == -1) || (minimum > duration))
+				minimum = duration;
 			if (anim->proceedAnimation()) {
 				dirtySpriteRect(anim, old_ai);
 			}
@@ -209,28 +314,50 @@ int ONScripter::estimateNextDuration(AnimationInfo *anim, RenderRect & /*rect*/,
 			if (handler->update(old_ai))
 				dirtySpriteRect(anim, old_ai);
 			anim->clock.setCountdownNanos(anim->getDurationNanos(anim->current_cell));
-			if ((minimum == -1) ||
-			    (minimum > anim->getDuration(anim->current_cell)))
-				minimum = anim->getDuration(anim->current_cell);
+			const int duration = anim->getDuration(anim->current_cell);
+			if ((minimum == -1) || (minimum > duration))
+				minimum = duration;
 		}
 	} else {
 		if (isSmoothTextCursorSprite(anim))
 			dirtySpriteRect(anim, old_ai);
-		if ((minimum == -1) || (minimum) > static_cast<int>(anim->clock.remaining()))
-			minimum = anim->clock.remaining();
+		const int remaining = static_cast<int>(anim->clock.remaining());
+		if ((minimum == -1) || minimum > remaining)
+			minimum = remaining;
 	}
 
 	return minimum;
 }
 
 void ONScripter::advanceAIclocks(uint64_t ns) {
+	auto needsClockAdvance = [](AnimationInfo &ai) {
+		return ai.exists || ai.old_ai || ai.visible || ai.camera.isMoving() ||
+		       ai.spriteTransforms.warpAmplitude != 0;
+	};
+	auto needsProceed = [](AnimationInfo &ai) {
+		return (ai.visible && ai.is_animatable) ||
+		       (ai.old_ai && ai.old_ai->visible && ai.old_ai->is_animatable);
+	};
+
+	animationProceedCandidates.clear();
+
 	for (int i = 0; i < 3; i++) {
-		advanceSpecificAIclocks(ns, i, -1);
+		if (needsClockAdvance(tachi_info[i]))
+			advanceAnimationInfoClocks(ns, &tachi_info[i], i, -1);
+		if (needsProceed(tachi_info[i]))
+			animationProceedCandidates.push_back(&tachi_info[i]);
 	}
 	for (int i = MAX_SPRITE_NUM - 1; i >= 0; i--) { // why the hell backwards... stand upright ons writers
-		advanceSpecificAIclocks(ns, i, 0);
-		advanceSpecificAIclocks(ns, i, 1);
+		if (needsClockAdvance(sprite_info[i]))
+			advanceAnimationInfoClocks(ns, &sprite_info[i], i, 0);
+		if (needsProceed(sprite_info[i]))
+			animationProceedCandidates.push_back(&sprite_info[i]);
+		if (needsClockAdvance(sprite2_info[i]))
+			advanceAnimationInfoClocks(ns, &sprite2_info[i], i, 1);
+		if (needsProceed(sprite2_info[i]))
+			animationProceedCandidates.push_back(&sprite2_info[i]);
 	}
+	animationProceedCandidatesPrepared = true;
 
 //Mion - ogapee2009
 #ifdef USE_LUA
@@ -239,20 +366,7 @@ void ONScripter::advanceAIclocks(uint64_t ns) {
 #endif
 }
 
-// Can put this in AI if you want
-void ONScripter::advanceSpecificAIclocks(uint64_t ns, int i, int type, bool old_ai) {
-	AnimationInfo *ai = type == 0 ? &sprite_info[i] :
-	                                type > 0 ? &sprite2_info[i] :
-	                                           &tachi_info[i];
-
-	if (old_ai) {
-		if (!ai->old_ai) {
-			errorAndExit("Asked to advance clocks for a non-existent old_ai");
-			return; //dummy
-		}
-		ai = ai->old_ai;
-	}
-
+void ONScripter::advanceAnimationInfoClocks(uint64_t ns, AnimationInfo *ai, int i, int type) {
 	if (ai->visible && ai->is_animatable) {
 		ai->clock.tickNanos(ns);
 		//sendToLog(LogLevel::Info, "Advanced clock for AI %p, anim->clock.time() %i, remaining() %i, expired() %i\n", anim, anim->clock.time(), anim->clock.remaining(), anim->clock.expired());
@@ -270,7 +384,24 @@ void ONScripter::advanceSpecificAIclocks(uint64_t ns, int i, int type, bool old_
 		ai->spriteTransforms.warpClock.tickNanos(ns);
 
 	if (ai->old_ai)
-		advanceSpecificAIclocks(ns, i, type, true);
+		advanceAnimationInfoClocks(ns, ai->old_ai, i, type);
+}
+
+// Can put this in AI if you want
+void ONScripter::advanceSpecificAIclocks(uint64_t ns, int i, int type, bool old_ai) {
+	AnimationInfo *ai = type == 0 ? &sprite_info[i] :
+	                                type > 0 ? &sprite2_info[i] :
+	                                           &tachi_info[i];
+
+	if (old_ai) {
+		if (!ai->old_ai) {
+			errorAndExit("Asked to advance clocks for a non-existent old_ai");
+			return; //dummy
+		}
+		ai = ai->old_ai;
+	}
+
+	advanceAnimationInfoClocks(ns, ai, i, type);
 }
 
 void ONScripter::printImageMemoryTelemetry(const char *context) {
@@ -410,6 +541,7 @@ void ONScripter::setupAnimationInfo(AnimationInfo *anim, Fontinfo *info) {
 					anim->setImage(gpu.createImage(w, h, 4));
 					GPU_GetTarget(anim->gpu_image);
 					state.dst.target = anim->gpu_image->target;
+					gpu.clearWholeTarget(state.dst.target, 0, 0, 0, 0);
 				}
 
 				clip.w = anim->pos.w;
@@ -424,9 +556,17 @@ void ONScripter::setupAnimationInfo(AnimationInfo *anim, Fontinfo *info) {
 					clip.y = anim->pos.h * i;
 				}
 				// Update multiply colour
-				for (auto &piece : state.getPieces(true))
-					for (auto &fi : piece->fontInfos)
+				auto updatePieceColor = [&](DialoguePiece &piece) {
+					for (auto &fi : piece.fontInfos)
 						copyarr(fi.buttonMultiplyColor, anim->color_list[i]);
+					piece.renderCommandsPrepared = false;
+				};
+				for (auto &seg : state.segments) {
+					for (auto &run : seg.runs) {
+						for (auto &piece : run.pieces) updatePieceColor(piece);
+						for (auto &piece : run.rubyPieces) updatePieceColor(piece);
+					}
+				}
 			}
 
 			dlgCtrl.render(state);
@@ -788,54 +928,45 @@ void ONScripter::drawSpecialScrollable(RenderTarget *target, AnimationInfo *info
 	StringTree &tree                  = dataTrees[si.elementTreeIndex];
 	int scroll_y                      = info->scrollable.y;
 
+	ensureScrollableGeometryCache(&si, tree);
+	const auto &gc = si.geometryCache;
+
 	//sendToLog(LogLevel::Info, "Hovered: %d\n", si.hoveredElement);
 
-	auto first = getScrollableElementsVisibleAt(&si, tree, scroll_y);
-	for (auto it = first; it != tree.insertionOrder.end(); ++it) {
-		auto elementIndex = it - tree.insertionOrder.begin();
-
-		StringTree &elem = tree[*it];
-		if (elem.has("log")) {
-			bool read = script_h.logState.logEntryIndexToIsRead(std::stoi(elem["log"].value));
-			if (!read)
-				break;
-		}
-
-		float w = si.elementWidth ? si.elementWidth : info->pos.w;
-		float h = si.elementHeight;
-		RenderRect elemRect{0, 0, w, h};
-		setRectForScrollableElement(&elem, elemRect);
-		if (elemRect.y - scroll_y > info->pos.h) {
-			// we're off the bottom of the visible area, break
+	// Compute the visible element range once, replicating the original loop's
+	// break conditions (first unread log entry, first element past the bottom of
+	// the visible area) so the two draw passes below stay in lockstep.
+	const long firstIdx = static_cast<long>(getScrollableElementsVisibleAt(&si, tree, scroll_y) - tree.insertionOrder.begin());
+	long lastIdx = firstIdx;
+	for (long j = firstIdx; j < static_cast<long>(gc.size()); ++j) {
+		const auto &c = gc[j];
+		if (c.hasLog && !script_h.logState.logEntryIndexToIsRead(c.logIndex))
 			break;
-		}
+		if (c.y - scroll_y > info->pos.h)
+			break;
+		lastIdx = j + 1;
+	}
 
-		auto spriteBg = elem.has("bg") ? &sprite2_info[std::stoi(elem["bg"].value)] : si.elementBackground;
+	// Pass 1: dividers + element backgrounds. Element plates and dividers never
+	// overlap each other or the element text, so drawing every background before
+	// any text lets the SDL3_GPU native blit batch keep one source texture per
+	// pass instead of flushing a command buffer on every bg/text texture switch.
+	for (long j = firstIdx; j < lastIdx; ++j) {
+		const auto &c = gc[j];
+		const float h     = static_cast<float>(c.height);
+		const float yTop  = c.y - scroll_y + camera.center_pos.y;
+		const float yBot  = yTop + h;
+		const float xLeft = c.x + camera.center_pos.x;
+
+		if (j == firstIdx && si.divider)
+			gpu.copyGPUImage(si.divider->oldNew(refresh_mode)->gpu_image, nullptr, &localClip, target, info->pos.x + camera.center_pos.x, info->pos.y + yTop - si.divider->pos.h);
+
+		auto spriteBg = c.bgSpriteIndex >= 0 ? &sprite2_info[c.bgSpriteIndex] : si.elementBackground;
 		if (spriteBg)
 			spriteBg = spriteBg->oldNew(refresh_mode);
-
-		float yTop  = elemRect.y - scroll_y + camera.center_pos.y;
-		float yBot  = yTop + elemRect.h;
-		float xLeft = elemRect.x + camera.center_pos.x;
-
-		// Draw divider before first element
-		if (it == first && si.divider) {
-			gpu.copyGPUImage(si.divider->oldNew(refresh_mode)->gpu_image, nullptr, &localClip, target, info->pos.x + camera.center_pos.x, info->pos.y + yTop - si.divider->pos.h);
-		}
-
-		// DEBUG: Draw debug highlight
-		/*if (si.hoveredElement == elementIndex) {
-            GPU_FlushBlitBuffer();
-            RenderRect rect { info->pos.x+xLeft, info->pos.y+yTop, elemRect.w, elemRect.h };
-            GPU_SetClipRect(target, rect);
-            GPU_ClearRGBA(target, 255, 0, 0, 255);
-            GPU_SetClipRect(target, localClip);
-        }*/
-
-		// Draw element background if any
 		if (spriteBg) {
 			RenderRect bg_rect{0, 0, spriteBg->pos.w, spriteBg->pos.h};
-			if (spriteBg->num_of_cells > 1 && si.hoveredElement == elementIndex) {
+			if (spriteBg->num_of_cells > 1 && si.hoveredElement == j) {
 				// May need to be expanded to allow for elements you can set into a state (e.g. "playing") and then move away from
 				// e.g. selectedElement field (seems confuseable with hoveredElement lol)
 				bg_rect.x += spriteBg->pos.w;
@@ -846,32 +977,93 @@ void ONScripter::drawSpecialScrollable(RenderTarget *target, AnimationInfo *info
 			                 1, 1, 0, false);
 		}
 
-		// Draw the element itself
-		if (elem.has("text") || elem.has("log")) {
-			Fontinfo fi = sentence_font;
-			fi.clear();
-			int marginLeft = elem.has("textmarginwidth") ? std::stoi(elem["textmarginwidth"].value) :
-			                                               elem.has("textmarginleft") ? std::stoi(elem["textmarginleft"].value) : si.textMarginLeft;
-			int marginRight = elem.has("textmarginwidth") ? std::stoi(elem["textmarginwidth"].value) :
-			                                                elem.has("textmarginright") ? std::stoi(elem["textmarginright"].value) : si.textMarginRight;
-			int marginTop                = elem.has("textmargintop") ? std::stoi(elem["textmargintop"].value) : si.textMarginTop;
-			fi.top_xy[0]                 = info->pos.x + xLeft + marginLeft;
-			fi.top_xy[1]                 = info->pos.y + yTop + marginTop;
-			fi.changeStyle().wrap_limit  = elemRect.w - (marginLeft + marginRight);
-			fi.changeStyle().can_loghint = true;
-			auto &buttonMultiplyColor    = elementIndex == si.hoveredElement ? si.hoverMultiplier : si.normalMultipler;
-			auto &gradient               = elementIndex == si.hoveredElement ? si.hoverGradients : si.normalGradients;
-			fi.buttonMultiplyColor       = buttonMultiplyColor;
-			if (fi.style().is_gradient != gradient)
-				fi.changeStyle().is_gradient = gradient;
-			std::string &text = elem.has("log") ? script_h.logState.logEntryIndexToDialogueData(std::stoi(elem["log"].value)).text : elem["text"].value;
-			char *txt         = const_cast<char *>(text.data());
-			dlgCtrl.renderToTarget(target, &localClip, txt, &fi, false, si.tightlyFit);
-		}
-
-		// Draw divider after each element
 		if (si.divider)
 			gpu.copyGPUImage(si.divider->oldNew(refresh_mode)->gpu_image, nullptr, &localClip, target, info->pos.x + camera.center_pos.x, info->pos.y + yBot);
+	}
+
+	// Pass 2: element text. Each visible element's text is rendered once to a
+	// small GPU texture (the same render-to-texture pattern used for lsp string
+	// sprites) and blitted on subsequent frames, so the per-frame cost is one
+	// blit per element instead of decodeUTF8 + layoutSegment + layoutLines +
+	// per-glyph blits.
+	const size_t treeSize = tree.insertionOrder.size();
+	if (si.textCacheTreeVersion != tree.modificationVersion || si.textCacheTreeSize != treeSize) {
+		for (auto &ct : si.textCache)
+			freeScrollableCachedText(ct);
+		si.textCache.clear();
+		si.textCache.assign(treeSize, AnimationInfo::ScrollableInfo::CachedText{});
+		si.textCacheTreeVersion    = tree.modificationVersion;
+		si.textCacheTreeSize       = treeSize;
+		si.textCacheHoveredElement = -1;
+	}
+	// Hover changes the multiply colour / gradient for the hovered element, so
+	// re-render the previously hovered and newly hovered entries.
+	if (si.textCacheHoveredElement != si.hoveredElement) {
+		auto freeEntry = [&](long idx) {
+			if (idx >= 0 && static_cast<size_t>(idx) < si.textCache.size())
+				freeScrollableCachedText(si.textCache[idx]);
+		};
+		freeEntry(si.textCacheHoveredElement);
+		freeEntry(si.hoveredElement);
+		si.textCacheHoveredElement = si.hoveredElement;
+	}
+
+	for (long j = firstIdx; j < lastIdx; ++j) {
+		const auto &c = gc[j];
+		if (!(c.hasText || c.hasLog))
+			continue;
+		const float w     = c.width ? static_cast<float>(c.width) : static_cast<float>(info->pos.w);
+		const float yTop  = c.y - scroll_y + camera.center_pos.y;
+		const float xLeft = c.x + camera.center_pos.x;
+		const float textX = info->pos.x + xLeft + c.textMarginLeft;
+		const float textY = info->pos.y + yTop + c.textMarginTop;
+		const int wrapLimit = static_cast<int>(w - (c.textMarginLeft + c.textMarginRight));
+
+		Fontinfo fi = sentence_font;
+		fi.clear();
+		while (fi.styleStack.size() > 1) fi.styleStack.pop();
+		fi.top_xy[0]                 = 0;
+		fi.top_xy[1]                 = 0;
+		fi.changeStyle().wrap_limit  = wrapLimit;
+		fi.changeStyle().can_loghint = true;
+		auto &buttonMultiplyColor    = j == si.hoveredElement ? si.hoverMultiplier : si.normalMultipler;
+		auto &gradient               = j == si.hoveredElement ? si.hoverGradients : si.normalGradients;
+		fi.buttonMultiplyColor       = buttonMultiplyColor;
+		if (fi.style().is_gradient != gradient)
+			fi.changeStyle().is_gradient = gradient;
+		const std::string &text = c.hasLog ? script_h.logState.logEntryIndexToDialogueData(c.logIndex).text : *c.textValue;
+		const std::string cacheKey = makeScrollableTextCacheKey(text, fi, wrapLimit, si.tightlyFit);
+
+		auto &cached = si.textCache[j];
+		if (cached.image && cached.key == cacheKey) {
+			gpu.copyGPUImage(cached.image, nullptr, &localClip, target, textX - cached.padding, textY - cached.padding);
+			continue;
+		}
+		if (cached.image)
+			freeScrollableCachedText(cached);
+
+		TextRenderingState state;
+		state.tightlyFit                     = si.tightlyFit;
+		state.shiftSpriteDrawByBorderPadding = false;
+		uint16_t tw = 0, th = 0;
+		dlgCtrl.prepareForRendering(text.c_str(), fi, state, tw, th);
+		if (tw > 0 && th > 0) {
+			const int padding = scrollableTextCachePadding(state);
+			const int imageW  = std::min<int>(0xffff, static_cast<int>(tw) + padding * 2);
+			const int imageH  = std::min<int>(0xffff, static_cast<int>(th) + padding * 2);
+			RenderImage *textImage = gpu.createImage(imageW, imageH, 4);
+			GPU_GetTarget(textImage);
+			gpu.clear(textImage->target, 0, 0, 0, 0);
+			state.offset.x = padding;
+			state.offset.y = padding;
+			state.dst.target = textImage->target;
+			dlgCtrl.render(state);
+			cached.image   = textImage;
+			cached.key     = cacheKey;
+			cached.padding = padding;
+			gpu.copyGPUImage(textImage, nullptr, &localClip, target, textX - padding, textY - padding);
+		}
+		state.clear();
 	}
 
 	//sendToLog(LogLevel::Info, "scroll_y: %u\n", scroll_y);
@@ -1112,31 +1304,57 @@ void ONScripter::snapScrollableToElement(AnimationInfo *info, long elementId, An
 }
 
 // returns iterator to si->insertionOrder
+void ONScripter::ensureScrollableGeometryCache(AnimationInfo::ScrollableInfo *si, StringTree &tree) {
+	const size_t treeSize = std::min(tree.insertionOrder.size(), static_cast<size_t>(std::max<long>(0, si->layoutedElements)));
+	if (si->geometryCacheTreeVersion == tree.modificationVersion &&
+	    si->geometryCacheLayoutedElements == si->layoutedElements &&
+	    si->geometryCacheTreeSize == treeSize && !si->geometryCache.empty())
+		return;
+
+	si->geometryCache.clear();
+	si->yEndCache.clear();
+	si->geometryCache.reserve(treeSize);
+	si->yEndCache.reserve(treeSize);
+	for (size_t i = 0; i < treeSize; ++i) {
+		auto found = tree.branches.find(tree.insertionOrder[i]);
+		if (found == tree.branches.end()) {
+			si->geometryCache.push_back(AnimationInfo::ScrollableInfo::CachedGeometry{});
+			si->yEndCache.push_back(0x7fffffff);
+			continue;
+		}
+		StringTree &t = found->second;
+		AnimationInfo::ScrollableInfo::CachedGeometry c{};
+		const bool hasY = t.has("y");
+		c.x               = t.has("x") ? std::stoi(t["x"].value) : 0;
+		c.y               = hasY ? std::stoi(t["y"].value) : 0;
+		c.width           = t.has("width") ? std::stoi(t["width"].value) : si->elementWidth;
+		c.height          = t.has("height") ? std::stoi(t["height"].value) : si->elementHeight;
+		c.textMarginLeft  = t.has("textmarginwidth") ? std::stoi(t["textmarginwidth"].value) : (t.has("textmarginleft") ? std::stoi(t["textmarginleft"].value) : si->textMarginLeft);
+		c.textMarginRight = t.has("textmarginwidth") ? std::stoi(t["textmarginwidth"].value) : (t.has("textmarginright") ? std::stoi(t["textmarginright"].value) : si->textMarginRight);
+		c.textMarginTop   = t.has("textmargintop") ? std::stoi(t["textmargintop"].value) : si->textMarginTop;
+		c.bgSpriteIndex   = t.has("bg") ? std::stoi(t["bg"].value) : -1;
+		c.logIndex        = t.has("log") ? std::stoi(t["log"].value) : -1;
+		c.hasText         = t.has("text");
+		c.hasLog          = t.has("log");
+		c.textValue       = c.hasText ? &t["text"].value : nullptr;
+		si->geometryCache.push_back(c);
+		si->yEndCache.push_back(hasY ? (c.y + c.height) : 0x7fffffff);
+	}
+	si->geometryCacheTreeVersion      = tree.modificationVersion;
+	si->geometryCacheLayoutedElements = si->layoutedElements;
+	si->geometryCacheTreeSize         = treeSize;
+}
+
 std::vector<std::string>::iterator ONScripter::getScrollableElementsVisibleAt(AnimationInfo::ScrollableInfo *si, StringTree &tree, int y) {
-	std::string dummy;
-	// finds first entry in tree.insertionOrder that has "entry.y + entry.h >= y"
-	// dummy value represents y (search value for lower_bound)
-	auto res = std::lower_bound(tree.insertionOrder.begin(), tree.insertionOrder.end(), std::string{}, [&tree, &si, &y](const std::string &s1, const std::string &s2) {
-		int y_b1, y_b2;
-		if (s1.empty()) {
-			y_b1 = y;
-		} else {
-			StringTree &t = tree[s1];
-			if (!t.has("y"))
-				return false;
-			y_b1 = std::stoi(t["y"].value) + (t.has("height") ? std::stoi(t["height"].value) : si->elementHeight);
-		}
-		if (s2.empty()) {
-			y_b2 = y;
-		} else {
-			StringTree &t2 = tree[s2];
-			if (!t2.has("y"))
-				return false;
-			y_b2 = std::stoi(t2["y"].value) + (t2.has("height") ? std::stoi(t2["height"].value) : si->elementHeight);
-		}
-		return y_b1 < y_b2;
-	});
-	return res;
+	ensureScrollableGeometryCache(si, tree);
+	if (!si->yEndCache.empty() && si->yEndCache.size() == si->geometryCache.size()) {
+		auto it = std::lower_bound(si->yEndCache.begin(), si->yEndCache.end(), y);
+		size_t idx = static_cast<size_t>(it - si->yEndCache.begin());
+		if (idx > si->geometryCache.size())
+			idx = si->geometryCache.size();
+		return tree.insertionOrder.begin() + idx;
+	}
+	return tree.insertionOrder.end();
 }
 
 void ONScripter::setRectForScrollableElement(StringTree *elem, RenderRect &rect) {
@@ -1370,9 +1588,6 @@ void ONScripter::drawToGPUTarget(RenderTarget *target, AnimationInfo *info, int 
 	if (!target) {
 		sendToLog(LogLevel::Error, "drawToGPUTarget has no proper target\n");
 		return;
-	}
-	if (target->w != window.canvas_width || target->h != window.canvas_height) {
-		sendToLog(LogLevel::Error, "drawToGPUTarget requires a canvas-sized target!\n");
 	}
 
 	// Don't draw sprites that have a parent independently (they are drawn as part of the drawToGPUTarget(tgt, parent, ...))

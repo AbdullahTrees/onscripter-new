@@ -20,22 +20,30 @@ bool ONScripter::LipsAnimationAction::expired() {
 }
 
 void ONScripter::LipsAnimationAction::setCellForCharacter(const std::string &characterName, int cellNumber) {
-	for (AnimationInfo *ai : ons.sprites(SPRITE_LSP | SPRITE_LSP2, true)) {
+	auto setCell = [&](AnimationInfo *ai, bool oldSprite) {
 		if (ai->exists && ai->gpu_image && ai->visible && ai->lips_name) {
 			if (characterName == ai->lips_name && ai->current_cell != cellNumber) {
 				ai->setCell(cellNumber);
-				ons.dirtySpriteRect(ai->id, ai->type == SPRITE_LSP2);
+				ons.dirtySpriteRect(ai->id, ai->type == SPRITE_LSP2, oldSprite);
 			}
 		}
-		if (ai->old_ai)
-			ai = ai->old_ai;
-		if (ai->exists && ai->gpu_image && ai->visible && ai->lips_name) {
-			if (characterName == ai->lips_name && ai->current_cell != cellNumber) {
-				ai->setCell(cellNumber);
-				ons.dirtySpriteRect(ai->id, ai->type == SPRITE_LSP2, true);
-			}
+	};
+
+	auto scanSprites = [&](AnimationInfo *sprites) {
+		if (!sprites)
+			return;
+		for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+			AnimationInfo *ai = &sprites[i];
+			if (!ai->exists && (!ai->old_ai || !ai->old_ai->exists))
+				continue;
+			setCell(ai, false);
+			if (ai->old_ai)
+				setCell(ai->old_ai, true);
 		}
-	}
+	};
+
+	scanSprites(ons.sprite_info);
+	scanSprites(ons.sprite2_info);
 	ons.flush(ons.refreshMode());
 }
 

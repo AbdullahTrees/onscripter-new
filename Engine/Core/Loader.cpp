@@ -118,8 +118,13 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 	printf("     --audioformat format         set the audio format (choose from s8, u8, s16, u16, s32, f32)\n");
 	printf("     --renderer-blacklist list    comma-separated list of disabled renderers (choose from Vulkan)\n");
 	printf("     --prefer-renderer name       try using this renderer first of all\n");
+#if defined(ONS_USE_SDL3)
+	printf("     --force-vsync                force classic vsync instead of SDL3 mailbox/late-swap\n");
+	printf("     --try-late-swap              try SDL3 mailbox/late-swap mode (default when available)\n");
+#else
 	printf("     --force-vsync                forces vsync (default on Windows)\n");
 	printf("     --try-late-swap              tries late swap vsync mode (default on other OS)\n");
+#endif
 	printf("     --no-texture-reuse           forces freed textures deletion\n");
 	printf("     --texture-upload style       set preferred texture uploading fallback (ramcopy or perrow, GLES2 only)\n");
 	printf("     --no-glclear                 workaround for visual glitches on some specific hardware\n");
@@ -146,6 +151,8 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 	printf("     --sdl3-benchmark-width width set SDL3 benchmark target width (default: 1280)\n");
 	printf("     --sdl3-benchmark-height height set SDL3 benchmark target height (default: 720)\n");
 	printf("     --sdl3-benchmark-output path write SDL3 benchmark CSV output to a file\n");
+	printf("     --musicbox-benchmark         run the in-game Music Box scrollable draw benchmark and exit\n");
+	printf("     --musicbox-benchmark-output path write Music Box benchmark report to a file\n");
 	printf("     --sdl3-gpu-telemetry         log SDL3_GPU aggregate and per-shader fallback counters on exit\n");
 #endif
 	printf("     --cursor                     set cursor parameters: hide, show, auto are supported (default: auto)\n");
@@ -374,6 +381,12 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
 				argc--;
 				argv++;
 				ons.ons_cfg_options["sdl3-benchmark-output"] = argv[0];
+			} else if (!std::strcmp(argv[0] + 1, "-musicbox-benchmark")) {
+				ons.ons_cfg_options["musicbox-benchmark"] = "noval";
+			} else if (!std::strcmp(argv[0] + 1, "-musicbox-benchmark-output")) {
+				argc--;
+				argv++;
+				ons.ons_cfg_options["musicbox-benchmark-output"] = argv[0];
 			} else if (!std::strcmp(argv[0] + 1, "-sdl3-gpu-telemetry")) {
 				ons.ons_cfg_options["sdl3-gpu-telemetry"] = "noval";
 				onsSDLSetEnv("ONS_SDL3_GPU_TELEMETRY", "1", true);
@@ -826,6 +839,29 @@ int main(int argc, char **argv) {
 		    benchmarkIntOption("sdl3-benchmark-width", 1280),
 		    benchmarkIntOption("sdl3-benchmark-height", 720),
 		    benchmarkStringOption("sdl3-benchmark-output"));
+		ctrl.quit(result);
+	}
+	if (ons.ons_cfg_options.find("musicbox-benchmark") != ons.ons_cfg_options.end()) {
+		auto benchmarkIntOption = [](const char *name, int fallback) {
+			auto it = ons.ons_cfg_options.find(name);
+			if (it == ons.ons_cfg_options.end())
+				return fallback;
+			char *end        = nullptr;
+			const long value = std::strtol(it->second.c_str(), &end, 10);
+			return (end && *end == '\0' && value > 0) ? static_cast<int>(value) : fallback;
+		};
+		auto benchmarkStringOption = [](const char *name) -> const char * {
+			auto it = ons.ons_cfg_options.find(name);
+			return it == ons.ons_cfg_options.end() ? nullptr : it->second.c_str();
+		};
+		const char *outPath = benchmarkStringOption("musicbox-benchmark-output");
+		if (!outPath)
+			outPath = benchmarkStringOption("sdl3-benchmark-output");
+		const int result = GPU_RunMusicBoxBenchmark(
+		    benchmarkIntOption("sdl3-benchmark-iterations", 300),
+		    benchmarkIntOption("sdl3-benchmark-width", 1920),
+		    benchmarkIntOption("sdl3-benchmark-height", 1080),
+		    outPath);
 		ctrl.quit(result);
 	}
 #endif

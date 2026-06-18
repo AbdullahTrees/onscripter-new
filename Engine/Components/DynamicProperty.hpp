@@ -234,11 +234,12 @@ private:
 	std::unordered_map<std::pair<AnimationInfo *, int>, std::deque<DynamicSpriteProperty>> spriteProperties;
 	std::unordered_map<int, std::deque<DynamicGlobalProperty>> globalProperties;
 	std::unordered_map<std::pair<int, int>, std::deque<DynamicSpritesetProperty>> spritesetProperties;
+	bool batchingApply{false};
 
 	template <class T>
 	int getMaxRemainingDuration(std::deque<T> &props);
-	template <class T>
-	void waitOnPropertyGeneric(std::deque<T> &props, int event_mode_addons);
+	template <class Map>
+	void waitOnPropertyGeneric(Map &propertyMap, const typename Map::key_type &key, int event_mode_addons);
 
 	std::vector<DynamicPropertyInterface> registeredProperties;
 	std::unordered_map<std::string, int> registeredPropertiesMap;

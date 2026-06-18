@@ -46,6 +46,7 @@ GlyphValues::GlyphValues(const GlyphValues &orig) {
 	advance       = orig.advance;
 	faceAscender  = orig.faceAscender;
 	faceDescender = orig.faceDescender;
+	ftCharIndexCache = orig.ftCharIndexCache;
 
 	glyph_pos  = orig.glyph_pos;
 	border_pos = orig.border_pos;

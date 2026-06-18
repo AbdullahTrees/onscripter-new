@@ -59,11 +59,12 @@ void AnimationInfo::performCopyNonImageFields(const AnimationInfo &o) {
 	darkenHue    = o.darkenHue;
 	is_big_image = o.is_big_image;
 	flip         = o.flip;
-	image_name   = copystr(image_name);
+	image_name   = copystr(o.image_name);
 
 	// Could have used initialiser lists but screw it for the sake of code reuse
 	spriteTransforms = o.spriteTransforms;
 	scrollableInfo   = o.scrollableInfo;
+	resetScrollableCaches();
 	clock            = o.clock;
 	camera           = o.camera;
 
@@ -167,6 +168,28 @@ void AnimationInfo::deleteImage() {
 	distinguish_from_old_ai = true;
 	//We need to do it here, because updateSpritePos does not touch scrollable area and sprite reuse is pretty undefined
 	scrollable.x = scrollable.y = scrollable.w = scrollable.h = 0;
+	freeScrollableCaches();
+}
+
+void AnimationInfo::freeScrollableCaches() {
+	for (auto &ct : scrollableInfo.textCache) {
+		if (ct.image)
+			gpu.freeImage(ct.image);
+		ct.image = nullptr;
+	}
+	resetScrollableCaches();
+}
+
+void AnimationInfo::resetScrollableCaches() {
+	scrollableInfo.textCache.clear();
+	scrollableInfo.textCacheTreeVersion     = 0;
+	scrollableInfo.textCacheTreeSize        = 0;
+	scrollableInfo.textCacheHoveredElement  = -1;
+	scrollableInfo.geometryCache.clear();
+	scrollableInfo.yEndCache.clear();
+	scrollableInfo.geometryCacheLayoutedElements = -1;
+	scrollableInfo.geometryCacheTreeSize         = 0;
+	scrollableInfo.geometryCacheTreeVersion      = 0;
 }
 
 // The difference between remove and reset is that remove is backup-preserving.
@@ -213,6 +236,7 @@ void AnimationInfo::removeNonImageFields() {
 
 	removeTag();
 
+	freeScrollableCaches();
 	camera               = Camera();
 	clock                = Clock();
 	scrollableInfo       = ScrollableInfo();

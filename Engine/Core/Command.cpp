@@ -3131,8 +3131,9 @@ int ONScripter::cspCommand() {
 	};
 
 	if (no1 == -1) {
-		for (auto sp : sprites(csp2_flag ? SPRITE_LSP2 : SPRITE_LSP))
-			killSprite(*sp);
+		for (int i = 0; i < MAX_SPRITE_NUM; ++i)
+			if (s_info[i].exists)
+				killSprite(s_info[i]);
 	} else {
 		std::for_each(&s_info[validSprite(no1)], &s_info[validSprite(no2) + 1], killSprite);
 	}
@@ -3968,7 +3969,10 @@ int ONScripter::amspCommand() {
 
 int ONScripter::allsp2resumeCommand() {
 	all_sprite2_hide_flag = false;
-	for (auto sptr : sprites(SPRITE_LSP2)) {
+	for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+		AnimationInfo *sptr = &sprite2_info[i];
+		if (!sptr->exists)
+			continue;
 		backupState(sptr);
 		if (sptr->exists && sptr->visible)
 			dirtySpriteRect(sptr);
@@ -3978,7 +3982,10 @@ int ONScripter::allsp2resumeCommand() {
 
 int ONScripter::allspresumeCommand() {
 	all_sprite_hide_flag = false;
-	for (auto sptr : sprites(SPRITE_LSP)) {
+	for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+		AnimationInfo *sptr = &sprite_info[i];
+		if (!sptr->exists)
+			continue;
 		backupState(sptr);
 		if (sptr->exists && sptr->visible)
 			dirtySpriteRect(sptr);
@@ -3988,7 +3995,10 @@ int ONScripter::allspresumeCommand() {
 
 int ONScripter::allsp2hideCommand() {
 	all_sprite2_hide_flag = true;
-	for (auto sptr : sprites(SPRITE_LSP2)) {
+	for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+		AnimationInfo *sptr = &sprite2_info[i];
+		if (!sptr->exists)
+			continue;
 		backupState(sptr);
 		if (sptr->exists && sptr->visible)
 			dirtySpriteRect(sptr);
@@ -3998,7 +4008,10 @@ int ONScripter::allsp2hideCommand() {
 
 int ONScripter::allsphideCommand() {
 	all_sprite_hide_flag = true;
-	for (auto sptr : sprites(SPRITE_LSP)) {
+	for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
+		AnimationInfo *sptr = &sprite_info[i];
+		if (!sptr->exists)
+			continue;
 		backupState(sptr);
 		if (sptr->exists && sptr->visible)
 			dirtySpriteRect(sptr);

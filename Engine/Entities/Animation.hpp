@@ -20,6 +20,9 @@
 
 #include <utility>
 #include <map>
+#include <vector>
+#include <string>
+#include <cstdint>
 
 #include <cstring>
 
@@ -133,7 +136,45 @@ public:
 		// always identical in the case of gamepad, not so for mouse
 		// (mouse changes hoveredElement based on its position, scrolledToElement based on its wheel)
 		bool mouseCursorIsOverHoveredElement = false; // when we move cursor outside an element, hoveredElement remains intact for gamepad's sake. This becomes false.
+
+		// Decoded per-element geometry cache. Rebuilt only when the layout
+		// generation (layoutedElements / insertionOrder size) changes, so the
+		// per-frame draw loop does not re-hash StringTree branches or re-run
+		// std::stoi on every visible element every frame.
+		struct CachedGeometry {
+			int x, y, width, height;
+			int textMarginLeft, textMarginRight, textMarginTop;
+			int bgSpriteIndex; // -1 when the element has no "bg" branch
+			int logIndex;      // -1 when the element has no "log" branch
+			const std::string *textValue; // points into the StringTree when hasText
+			bool hasText;
+			bool hasLog;
+		};
+		std::vector<CachedGeometry> geometryCache;
+		std::vector<int> yEndCache; // sorted y+height per element for lower_bound
+		long geometryCacheLayoutedElements = -1;
+		size_t geometryCacheTreeSize = 0;
+		uint64_t geometryCacheTreeVersion = 0;
+
+		// Cached rendered text per element. Each visible element's text is
+		// rendered once to a small GPU texture (the same pattern used for lsp
+		// string sprites) and blitted on subsequent frames, re-rendering only
+		// when the text or its style key changes. This removes the per-frame
+		// decodeUTF8 + layoutSegment + layoutLines + glyph-blit cost from the
+		// scrollable draw loop.
+		struct CachedText {
+			std::string key;
+			RenderImage *image{nullptr};
+			int padding{0};
+		};
+		std::vector<CachedText> textCache;
+		uint64_t textCacheTreeVersion = 0;
+		size_t textCacheTreeSize = 0;
+		long textCacheHoveredElement = -1;
 	};
+
+	void resetScrollableCaches();
+	void freeScrollableCaches();
 
 	struct SpriteTransforms {
 		bool sepia{false};

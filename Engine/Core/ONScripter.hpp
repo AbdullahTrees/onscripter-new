@@ -38,6 +38,7 @@
 #include <string>
 #include <sstream>
 #include <algorithm>
+#include <array>
 #include <unordered_map>
 #include <deque>
 #include <set>
@@ -1034,7 +1035,10 @@ private:
 			return a->id > b->id || (a->id == b->id && a->type == SPRITE_LSP);
 		}
 	};
-	std::unordered_map<int, std::set<AnimationInfo *, cmpById>> spriteZLevels;
+	std::array<std::vector<AnimationInfo *>, MAX_SPRITE_NUM> spriteZLevels;
+	std::vector<int> spriteZLevelIndices;
+	std::vector<AnimationInfo *> animationProceedCandidates;
+	bool animationProceedCandidatesPrepared{false};
 
 	std::map<int, SpritesetInfo> spritesets;
 	std::set<AnimationInfo *> nontransitioningSprites;
@@ -1200,8 +1204,9 @@ private:
 	void setwindowCore();
 
 public: // DialogueController wants access to this
+	uint64_t glyphCacheGeneration{0};
 	void resetGlyphCache();
-	void renderGlyphValues(const GlyphValues &values, RenderRect *dst_clip, TextRenderingState::TextRenderingDst dst, float x, float y, float r, bool render_border, int alpha);
+	void renderGlyphValues(const GlyphValues &values, RenderRect *dst_clip, TextRenderingState::TextRenderingDst dst, float x, float y, float r, bool render_border, int alpha, std::vector<RenderImage *> *touchedGlyphImages = nullptr);
 	const GlyphValues *renderUnicodeGlyph(Font *font, GlyphParams *key);
 	const GlyphValues *measureUnicodeGlyph(Font *font, GlyphParams *key);
 	bool isAlphanumeric(char16_t codepoint);
@@ -1527,6 +1532,7 @@ private:
 	int proceedCursorAnimation();
 	int estimateNextDuration(AnimationInfo *anim, RenderRect &rect, int minimum, bool old_ai = false);
 	void advanceAIclocks(uint64_t ns);
+	void advanceAnimationInfoClocks(uint64_t ns, AnimationInfo *ai, int i, int type);
 	void advanceSpecificAIclocks(uint64_t ns, int i, int type, bool old_ai = false);
 
 	struct SpriteRangeMotion {
@@ -1563,6 +1569,7 @@ private:
 	void drawSpritesetToGPUTarget(RenderTarget *target, SpritesetInfo *spriteset, RenderRect *clip, int rm);
 	void layoutSpecialScrollable(AnimationInfo *info); // doesn't belonggggggggggggggggg
 	void calculateDynamicElementHeight(StringTree &element, int width, int tightlyFit);
+	void ensureScrollableGeometryCache(AnimationInfo::ScrollableInfo *si, StringTree &tree);
 	std::vector<std::string>::iterator getScrollableElementsVisibleAt(AnimationInfo::ScrollableInfo *si, StringTree &tree, int y);
 	void setRectForScrollableElement(StringTree *elem, RenderRect &rect);
 	void mouseOverSpecialScrollable(int aiSpriteNo, int x, int y);

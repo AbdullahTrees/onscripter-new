@@ -748,41 +748,60 @@ void ONScripter::cleanSpritesetCache(SpritesetInfo *spriteset, bool before) {
 }
 
 void ONScripter::setupZLevels(int refresh_mode) {
-	spriteZLevels.clear();
+	for (int zOrder : spriteZLevelIndices)
+		spriteZLevels[zOrder].clear();
+	spriteZLevelIndices.clear();
+
 	auto insertSprite = [&](AnimationInfo &ai) {
 		auto spr = ai.oldNew(refresh_mode);
-		if (spr->exists)
-			spriteZLevels[spr->has_z_order_override ? spr->z_order_override : spr->id].insert(spr);
+		if (!spr->exists)
+			return;
+		if (!spr->visible)
+			return;
+		if (spr->parentImage.no != -1)
+			return;
+		if (spr->type == SPRITE_LSP && all_sprite_hide_flag)
+			return;
+		if (spr->type == SPRITE_LSP2 && all_sprite2_hide_flag)
+			return;
+
+		const int zOrder = spr->has_z_order_override ? spr->z_order_override : spr->id;
+		if (zOrder < 0 || zOrder >= MAX_SPRITE_NUM)
+			return;
+
+		auto &level = spriteZLevels[zOrder];
+		if (level.empty())
+			spriteZLevelIndices.push_back(zOrder);
+		level.push_back(spr);
 	};
 	for (int i = 0; i < MAX_SPRITE_NUM; i++) insertSprite(sprite_info[i]);
 	for (int i = 0; i < MAX_SPRITE_NUM; i++) insertSprite(sprite2_info[i]);
+
+	for (int zOrder : spriteZLevelIndices) {
+		auto &level = spriteZLevels[zOrder];
+		if (level.size() > 1)
+			std::sort(level.begin(), level.end(), cmpById{});
+	}
+	std::sort(spriteZLevelIndices.begin(), spriteZLevelIndices.end(), [](int a, int b) {
+		return a > b;
+	});
 }
 
 // Helper function for refreshSceneTo & refreshHudTo.
 void ONScripter::drawSpritesBetween(int upper_inclusive, int lower_exclusive, RenderTarget *target, RenderRect *clip_dst, int refresh_mode) {
-	for (int i = upper_inclusive; i > lower_exclusive; i--) {
-		if (refresh_mode & REFRESH_SAYA_MODE && i <= 9)
+	auto zIt = std::lower_bound(spriteZLevelIndices.begin(), spriteZLevelIndices.end(), upper_inclusive,
+	                            [](int zOrder, int upper) { return zOrder > upper; });
+	for (; zIt != spriteZLevelIndices.end(); ++zIt) {
+		int zOrder = *zIt;
+		if (zOrder <= lower_exclusive)
+			break;
+		if (refresh_mode & REFRESH_SAYA_MODE && zOrder <= 9)
 			return;
 
-		auto z = spriteZLevels.find(i);
-		if (z == spriteZLevels.end())
-			continue;
+		auto &level = spriteZLevels[zOrder];
 
-		for (AnimationInfo *spr : z->second) {
+		for (AnimationInfo *spr : level) {
 			// Will iterate through sprites in correct z order using cmpById
-			// Don't display:
-			// LSP sprites if those are hidden
-			if (spr->type == SPRITE_LSP && all_sprite_hide_flag)
-				continue;
-			// LSP2 sprites if those are hidden
-			if (spr->type == SPRITE_LSP2 && all_sprite2_hide_flag)
-				continue;
-			// Sprites that have no image and don't have the excuse that they're layers
-			if (!spr->exists)
-				continue;
-			// Invisible sprites
-			if (!spr->visible)
-				continue;
 			// Draw it!
 			drawToGPUTarget(target, spr, refresh_mode, clip_dst, spr->type == SPRITE_LSP2);
 		}

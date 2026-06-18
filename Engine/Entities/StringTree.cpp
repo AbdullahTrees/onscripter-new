@@ -25,6 +25,7 @@ std::string StringTree::getValue(std::deque<std::string> &ss) {
 }
 
 int StringTree::setValue(std::deque<std::string> &ss, std::string &value) { //unwilling to use the last element of a deque
+	++modificationVersion;
 	int autoNum = -1;
 	if (!ss.empty()) {
 		std::string val(std::move(ss.front()));
@@ -43,6 +44,7 @@ int StringTree::setValue(std::deque<std::string> &ss, std::string &value) { //un
 }
 
 void StringTree::prune(std::deque<std::string> &ss) {
+	++modificationVersion;
 	if (ss.size() > 1) {
 		std::string val(std::move(ss.front()));
 		ss.pop_front();
@@ -55,6 +57,7 @@ void StringTree::prune(std::deque<std::string> &ss) {
 }
 
 void StringTree::clear() {
+	++modificationVersion;
 	branches.clear();
 	insertionOrder.clear();
 	value = "";

@@ -523,12 +523,14 @@ void ONScripter::resetGlyphCache() {
 	auto sz = glyphCache.size();
 	glyphCache.resize(0);
 	glyphCache.resize(sz);
+	++glyphCacheGeneration;
 }
 
-void ONScripter::renderGlyphValues(const GlyphValues &values, RenderRect *dst_clip, TextRenderingState::TextRenderingDst dst, float x, float y, float r, bool render_border, int alpha) {
+void ONScripter::renderGlyphValues(const GlyphValues &values, RenderRect *dst_clip, TextRenderingState::TextRenderingDst dst, float x, float y, float r, bool render_border, int alpha, std::vector<RenderImage *> *touchedGlyphImages) {
 	if (alpha <= 0)
 		return;
 
+	Uint8 glyphAlpha = alpha >= 255 ? 255 : static_cast<Uint8>(alpha);
 	RenderImage *coloured_glyph{nullptr};
 	RenderRect *src_rect{nullptr};
 	if ((!render_border && values.glyph_pos.has()) || (render_border && values.border_pos.has())) {
@@ -542,8 +544,13 @@ void ONScripter::renderGlyphValues(const GlyphValues &values, RenderRect *dst_cl
 	if (coloured_glyph) {
 		x += r * (src_rect ? src_rect->w : coloured_glyph->w) / 2.0;
 		y += 1 * (src_rect ? src_rect->h : coloured_glyph->h) / 2.0;
-		if (alpha < 255) {
-			GPU_SetRGBA(coloured_glyph, alpha, alpha, alpha, alpha);
+		if (coloured_glyph->color.r != glyphAlpha || coloured_glyph->color.g != glyphAlpha ||
+		    coloured_glyph->color.b != glyphAlpha || coloured_glyph->color.a != glyphAlpha) {
+			GPU_SetRGBA(coloured_glyph, glyphAlpha, glyphAlpha, glyphAlpha, glyphAlpha);
+		}
+		if (touchedGlyphImages && glyphAlpha < 255 &&
+		    (touchedGlyphImages->empty() || touchedGlyphImages->back() != coloured_glyph)) {
+			touchedGlyphImages->push_back(coloured_glyph);
 		}
 		if (dst.target) {
 			gpu.copyGPUImage(coloured_glyph, src_rect, dst_clip, dst.target, x, y, r, 1, 0, true);
@@ -553,7 +560,7 @@ void ONScripter::renderGlyphValues(const GlyphValues &values, RenderRect *dst_cl
 			else
 				errorAndExit("BigImages do not support scaled text at this moment!");
 		}
-		if (alpha < 255) {
+		if (!touchedGlyphImages && glyphAlpha < 255) {
 			GPU_SetRGBA(coloured_glyph, 255, 255, 255, 255);
 		}
 	}
@@ -573,11 +580,15 @@ const GlyphValues *ONScripter::renderUnicodeGlyph(Font *font, GlyphParams *key) 
 		// First let's see if there's an uncolored one already in the cache.
 		GlyphParams uncolored = k;
 		uncolored.is_colored  = false;
+		uncolored.is_gradient = false;
 		GlyphValues *uncolored_glyph;
 		try {
 			uncolored_glyph = glyphCache.get(uncolored);
 		} catch (int) {
 			// No uncoloured one in the cache either. Looks like we gotta render it from FT. (Then put it in the cache for later use.)
+			font->setStyle(uncolored.is_bold, uncolored.is_italic);
+			font->setSize(uncolored.font_size, uncolored.font_number, uncolored.preset_id);
+			font->setBorder(uncolored.border_width);
 			uncolored_glyph = font->renderGlyph(&uncolored, fcol, bcol);
 			if (uncolored_glyph->buildGPUImages(use_text_atlas ? &glyphAtlas : nullptr)) {
 				glyphCache.set(uncolored, uncolored_glyph);
@@ -614,10 +625,15 @@ const GlyphValues *ONScripter::renderUnicodeGlyph(Font *font, GlyphParams *key) 
 
 const GlyphValues *ONScripter::measureUnicodeGlyph(Font *font, GlyphParams *key) {
 	GlyphParams k = *key;
+	k.is_colored  = false;
+	k.is_gradient = false;
 	GlyphValues *glyph;
 	try {
 		glyph = glyphMeasureCache.get(k);
 	} catch (int) {
+		font->setStyle(k.is_bold, k.is_italic);
+		font->setSize(k.font_size, k.font_number, k.preset_id);
+		font->setBorder(k.border_width);
 		glyph = font->measureGlyph(&k);
 		glyphMeasureCache.set(k, glyph);
 	}

@@ -30,6 +30,7 @@
 #include <stack>
 #include <locale>
 #include <cstdlib>
+#include <array>
 
 struct DialogueProcessingEvent {
 	bool firstCall;
@@ -48,9 +49,27 @@ struct RenderBufferGlyph {
 	LayoutData layoutData{};
 	const GlyphValues *gv{nullptr};
 	int fadeDuration{0};
+	int renderAlpha{255};
 	char16_t codepoint{0};
+	bool renderableGlyph{false};
 	bool renderRubyHere{false};
 	bool applyNewFontinfoHere{false};
+};
+
+enum DialogueRenderPass {
+	DialogueShadowBorder,
+	DialogueShadowGlyph,
+	DialogueRegularBorder,
+	DialogueRegularGlyph,
+	DialogueRenderPassCount
+};
+
+struct GlyphRenderCommand {
+	const GlyphValues *glyph{nullptr};
+	float x{0};
+	float y{0};
+	size_t glyphIndex{0};
+	bool renderBorder{false};
 };
 
 // A piece is a partial or full line of text to be rendered (does not linebreak or wrap).
@@ -63,6 +82,8 @@ struct DialoguePiece {
 	}
 	void setPostFontInfo(const Fontinfo &postFontInfo) {
 		fontInfos.push_back(postFontInfo);
+		noteFontInfoRenderStyle(postFontInfo);
+		renderCommandsPrepared = false;
 	}
 	Fontinfo &getPreFontInfo() {
 		// Gets the fontInfo that applies at the start of the piece
@@ -71,7 +92,16 @@ struct DialoguePiece {
 	void setPreFontInfo(const Fontinfo &preFontInfo) {
 		fontInfos.clear();
 		fontInfos.push_back(preFontInfo);
+		needsLayeredRenderPasses = false;
+		renderCommandsPrepared  = false;
+		renderCommandGlyphCacheGeneration = 0;
+		for (auto &pass : renderCommandPasses) pass.clear();
+		noteFontInfoRenderStyle(preFontInfo);
 		inlineOverrides = preFontInfo.style().inlineOverrides;
+	}
+	void noteFontInfoRenderStyle(const Fontinfo &fontInfo) {
+		const auto &style = fontInfo.style();
+		needsLayeredRenderPasses |= style.is_shadow || style.is_border;
 	}
 
 	struct VerticalSize {
@@ -90,11 +120,20 @@ struct DialoguePiece {
 	int baseline{0};               // where to find the baseline, in pixels counted downwards from the top of the padding
 	float xPxLeft{0}, xPxRight{0};
 	VerticalSize verticalSize;
+	bool needsLayeredRenderPasses{false};
+	bool renderCommandsPrepared{false};
+	uint64_t renderCommandGlyphCacheGeneration{0};
+	std::array<std::vector<GlyphRenderCommand>, DialogueRenderPassCount> renderCommandPasses;
 	void resetLayoutInfo() {
 		charRenderBuffer.clear();
 		while (fontInfos.size() > 1) fontInfos.pop_back();
 		xPxLeft = xPxRight = 0;
 		verticalSize       = {};
+		needsLayeredRenderPasses = false;
+		renderCommandsPrepared  = false;
+		renderCommandGlyphCacheGeneration = 0;
+		for (auto &pass : renderCommandPasses) pass.clear();
+		noteFontInfoRenderStyle(getPreFontInfo());
 		inlineOverrides    = getPreFontInfo().style().inlineOverrides;
 	}
 };
@@ -126,6 +165,7 @@ struct DialogueRun {
 struct DialogueSegment {
 	std::deque<DialogueRun> runs{1}; // These will be rendered concurrently.
 	float2 cursorPosition{0, 0};     // the position of the cursor after rendering this segment
+	std::vector<RenderBufferGlyph *> timedGlyphs;
 	std::vector<DialoguePiece *> getPieces(bool includeRuby = false) {
 		std::vector<DialoguePiece *> ret;
 		size_t pieceCount{0};
@@ -182,8 +222,13 @@ struct DialogueClickPart {
 	}
 	unsigned int getCharacterCount() {
 		unsigned int total{0};
-		for (auto piecePtr : getPieces(true)) {
-			total += piecePtr->charRenderBuffer.size();
+		for (auto *seg : segments) {
+			for (auto &run : seg->runs) {
+				for (auto &piece : run.pieces)
+					total += piece.charRenderBuffer.size();
+				for (auto &piece : run.rubyPieces)
+					total += piece.charRenderBuffer.size();
+			}
 		}
 		return total;
 	}
@@ -340,20 +385,10 @@ public:
 	void renderDialogueToTarget(RenderTarget *dst, RenderRect *dstClip, int refresh_mode, bool camera = true);
 
 	bool isDialogueSegmentRendered(int segment) {
-		bool r{true};
-		for (auto piecePtr : dialogueRenderState.segments[segment].getPieces()) {
-			auto &piece = *piecePtr;
-			for (auto &glyph : piece.charRenderBuffer) {
-				if (!glyph.fadeStop.expired()) {
-					r = false;
-					break;
-				}
-				// note this checks for fadeStop -- action that runs dialogue rendering to total completion
-			}
-			if (!r)
-				break;
-		}
-		return r;
+		for (auto *glyph : dialogueRenderState.segments[segment].timedGlyphs)
+			if (!glyph->fadeStop.expired())
+				return false;
+		return true;
 	}
 	bool isCurrentDialogueSegmentRendered() {
 		return isDialogueSegmentRendered(dialogueRenderState.segmentIndex);
@@ -417,16 +452,18 @@ private:
 	DialoguePiece layoutPiece(TextRenderingState &state, std::u16string &text, Fontinfo &fontInfo, std::deque<DialoguePiece> *rubyPieces);
 	void layoutRubyPiece(DialoguePiece &mainPiece, DialoguePiece &rubyPiece, size_t rubyStartPosition, float xFinish, bool measure = false);
 	void layoutLines(TextRenderingState &state);
+	void prepareRenderCommands(TextRenderingState &state);
+	void preparePieceRenderCommands(DialoguePiece &piece);
 	void renderPiece(TextRenderingState &state, DialoguePiece &piece);
 
 	bool addFittingChars(DialoguePiece &piece, std::u16string &rhs, const std::u16string &original, std::deque<DialoguePiece> *rubyPieces = nullptr, bool measure = false);
 	void addCharToRenderBuffer(DialoguePiece &piece, char16_t codepoint, Fontinfo &fontInfo, bool measure = false);
-	void renderAddedChars(TextRenderingState &state, DialoguePiece &p, bool renderBorder = false, bool renderShadow = false);
 
 	// temps with preallocated buffers
 	std::u16string layoutPieceTmpFreshText;
 	std::u16string addFittingCharsTmpLastSafeBreakRHS;
 	std::u16string addRubyFittingCharsTmpLastSafeBreakRHS;
+	std::vector<RenderImage *> renderTouchedGlyphImages;
 
 	slre_regex_info regexInfo{};
 };
