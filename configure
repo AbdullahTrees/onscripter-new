@@ -126,6 +126,7 @@ TOOLCHAIN_PREFIX=""
 COMPILER_PREFIX=""
 EMBED_PATH=""
 BUILD_PATH=""
+DISCORD_APP_ID=""
 
 VERSION=$(awk '/define VER_NUMBER/ {print $3}' Resources/Support/Version.hpp | sed s/-ru$//)
 
@@ -196,6 +197,10 @@ do
         ;;
       --sdl3-runtime-shaderc | -sdl3-runtime-shaderc)
         SDL3_RUNTIME_SHADERC=true ;;
+      --discord-app-id=* | -discord-app-id=*)
+        DISCORD_APP_ID=$arg ;;
+      --discord-app-id | -discord-app-id)
+        prev=DISCORD_APP_ID ;;
       --cross=* | -cross=*)
         CROSS_TRIPLE=$arg ;;
       --embed-path=* | =embed-path=*)
@@ -221,6 +226,7 @@ do
 	  --build-path=DIR         absolute path to build directory (default is DerivedData)
 	  --release-build          build with PUBLIC_RELEASE flag 	
 	  --strip-binary           strip debug information from the executable
+	  --discord-app-id=ID      embed default Discord Rich Presence application ID
 	  --directx-sdk-path=DIR   enable DirectX 9 SDK support (Windows only)
 	  --prefer-clang           use clang compiler if CC is not specified
 	  --droid-build            build for droid
@@ -618,6 +624,14 @@ esac
 
 EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DONS_USE_SDL3"
 
+if [ "$DISCORD_APP_ID" != "" ]; then
+  if [[ ! "$DISCORD_APP_ID" =~ ^[0-9]{16,32}$ ]]; then
+    echo "Error: --discord-app-id must be a 16-32 digit Discord application snowflake ID"
+    exit 2
+  fi
+  EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DONS_DISCORD_APP_ID=\\\"$DISCORD_APP_ID\\\""
+fi
+
 echo "done"
 
 # ---------- External library support ----------
@@ -808,6 +822,7 @@ SOURCES=(
   'Engine/Readers/Sar.cpp'
   'Support/AudioBridge.cpp'
   'Support/Cache.cpp'
+  'Support/DiscordPresence.cpp'
   'Support/DirPaths.cpp'
   'Support/DirtyRect.cpp'
   'Support/FileIO.cpp'
@@ -861,6 +876,7 @@ HEADERS=(
   'Support/AudioBridge.hpp'
   'Support/Cache.hpp'
   'Support/Camera.hpp'
+  'Support/DiscordPresence.hpp'
   'Support/Clock.hpp'
   'Support/DirPaths.hpp'
   'Support/DirtyRect.hpp'

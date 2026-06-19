@@ -1,6 +1,6 @@
 # onscripter-new Project Status
 
-Updated: 2026-06-18
+Updated: 2026-06-19
 
 This file consolidates the former compilation guide, dependency audit, and SDL3 performance audit into one maintenance document for the current `onscripter-new` release branch.
 
@@ -4343,6 +4343,153 @@ verified exactly. UCRT64 `make -j8` rebuilt and relinked
 to `D:\Umineko Project` with matching SHA-256 hashes. A short launch probe saw
 the fallback title at 0.5 seconds and the expected Rondo title at 1.0 seconds.
 No broader runtime visual/audio pass was run.
+
+Discord Rich Presence follow-up: the 2026-06-19 engine pass adds a
+dependency-free local Discord RPC IPC client for desktop builds. It stays
+inactive unless a Discord Application ID is provided with runtime
+`--discord-app-id`, `ONS_DISCORD_APP_ID`, or configure-time
+`--discord-app-id=...`; `--disable-discord-rich-presence` suppresses it even
+when an ID is configured. Presence sends basic details, a session start
+timestamp, and a state derived from the pinned Rondo/Chiru window title when
+`caption` runs, then explicitly clears the activity during normal shutdown.
+Unsupported platforms, missing Discord desktop IPC, and missing/invalid app IDs
+are no-op paths, and configure-time ID validation mirrors the runtime snowflake
+length check. The current local release build embeds Discord Application ID
+`1517334948967747794`, so end users do not need a command-line flag for Rich
+Presence. The Xcode app targets also reference the new support source so Apple
+builds link the implementation. UCRT64
+`./configure --release-build --strip-binary --std=gnu++23 --discord-app-id=1517334948967747794`
+succeeded, forced UCRT64 `make -B -j8` rebuilt and relinked
+`onscripter-new.exe`, and the rebuilt executable was copied to
+`D:\Umineko Project\onscripter-new.exe` with matching SHA-256 hash
+`026EB812596397EAB6C69A4DEE726AC7FB5F244D3EDD16D7E6923A32250B577A`. The
+executable help output showed the new Discord options. `git diff --check`
+reported only the existing LF/CRLF working-copy warnings. No live Discord
+client presence verification, executable boot test, benchmark, or broader
+runtime telemetry pass was run.
+
+Discord Rich Presence keepalive follow-up: the same-date correction keeps the
+local Discord RPC connection serviced after the initial update. The client now
+caches the current activity, polls the IPC pipe during frame upkeep, replies to
+Discord ping frames, handles close/error frames, retries connection when Discord
+is unavailable or restarted, and refreshes the current activity periodically.
+This fixes the first-pass one-shot update behavior that could connect but fail
+to remain visible. A direct local IPC probe against the running Discord desktop
+client returned successful `READY`, `SET_ACTIVITY`, and clear responses for
+Application ID `1517334948967747794`; a 25-second debug boot of
+`D:\Umineko Project\onscripter-new.exe --use-console --debug` logged
+`Discord Rich Presence connected` and `Discord Rich Presence activity accepted`.
+UCRT64 configure with embedded Discord Application ID
+`1517334948967747794` succeeded, UCRT64 `make -j8` relinked, and the rebuilt
+executable was copied to `D:\Umineko Project\onscripter-new.exe` with matching
+SHA-256 hash
+`2924351CE44D278AD23E26268D007D55670DE69FC0085D45775E67CF4D3D1F8E`.
+`git diff --check` still only reported the existing LF/CRLF working-copy
+warnings. No manual Discord profile visual check or broader gameplay telemetry
+pass was run.
+
+Discord Rich Presence icon follow-up: the same-date asset pass adds optional
+large image fields to the local RPC activity payload and points the default
+activity at the existing 1024x1024 project icon hosted at
+`https://raw.githubusercontent.com/timftw21/onscripter-new/master/Resources/Bundle/Images.xcassets/AppIcon-ios.appiconset/1024.png`.
+A direct local Discord IPC probe using that URL returned a successful
+`SET_ACTIVITY` response with a Discord media-proxied `large_image`; probing the
+unuploaded `onscripter-new` asset key showed Discord dropping `large_image`,
+confirming that an external URL avoids a required Developer Portal art-asset
+upload. UCRT64 configure with embedded Discord Application ID
+`1517334948967747794` succeeded, UCRT64 `make -j8` relinked, and the rebuilt
+executable was copied to `D:\Umineko Project\onscripter-new.exe` with matching
+SHA-256 hash
+`09326BB533D1FF2C9E7D770EEDBFF1A44BD08B478201685C1D75FD70A96712ED`. A
+20-second debug boot logged `Discord Rich Presence connected` and
+`Discord Rich Presence activity accepted`; no manual Discord profile visual
+check or broader gameplay telemetry pass was run.
+
+Discord Rich Presence transparent icon follow-up: the same-date asset tweak
+switches the default large-image URL from the 1024x1024 iOS app icon, whose PNG
+has an opaque black background, to the existing 512x512 macOS app icon at
+`https://raw.githubusercontent.com/timftw21/onscripter-new/master/Resources/Bundle/Images.xcassets/AppIcon-mac.appiconset/512x512.png`.
+The macOS icon file has transparent corners (`Format32bppArgb`, alpha 0 at the
+sampled corners) and Discord accepted the URL in a direct local IPC probe,
+returning a media-proxied `large_image`. UCRT64 configure with embedded Discord
+Application ID `1517334948967747794` succeeded, UCRT64 `make -j8` relinked,
+and the rebuilt executable was copied to `D:\Umineko Project\onscripter-new.exe`
+with matching SHA-256 hash
+`5CFCF28807B25E384CACCDAD6A41959D69ABE59E874D9A6F399FC58AE7E62802`. A
+20-second debug boot logged `Discord Rich Presence connected` and
+`Discord Rich Presence activity accepted`; no manual Discord profile visual
+check or broader gameplay telemetry pass was run.
+
+Discord Rich Presence text follow-up: the same-date display tweak removes the
+`details` line that previously showed `Reading Umineko Project` and wraps each
+state string in tildes, e.g. `~Rondo of the Witch and Reasoning~`,
+`~Nocturne of Truth and Illusions~`, or `~Starting up~`. A direct local Discord
+IPC probe returned a successful `SET_ACTIVITY` response with the tilde-wrapped
+state, the transparent icon `large_image`, and no `details` field. UCRT64
+configure with embedded Discord Application ID `1517334948967747794` succeeded,
+UCRT64 `make -j8` relinked, and the rebuilt executable was copied to
+`D:\Umineko Project\onscripter-new.exe` with matching SHA-256 hash
+`6D88646947D0A3167295A4F416D6048C234B60AC4D131913B5DA93573EB55963`. A
+20-second debug boot logged `Discord Rich Presence connected` and
+`Discord Rich Presence activity accepted`; no manual Discord profile visual
+check or broader gameplay telemetry pass was run.
+
+Chiru Picture Box eve_last panorama follow-up: the same-date script pass fixes
+Chiru Picture Box page 5 slot 54, whose thumbnail uses
+`graphics\thumb\chiru\eve_last.png`. The full-view handler now defines
+`eve_last` as a `stralias`, loads it through `lbg2` so the `chiru.file`
+`eve_last_left=11840` hotspot is honored, starts the strip at the left edge,
+and pans to the registered right-end crop over 18 seconds before waiting for
+the normal click/right-click exit. This replaces the previous static
+`bg ":c;graphics\cg\cg_box\eve_last.png"` path, which ignored the hotspot and
+treated the 12800x1080 panorama as an ordinary background. The English script
+was repacked with `Tools/nscmake/nscmake.exe`, decoded back with
+`Tools/nscdec/nscdec.exe`, and the decoded text matched exactly. The packed
+`en.file.new` was copied to `D:\Umineko Project\en.file` with matching SHA-256
+hash `CACEA2BEBD33C296F653D41939C1B47B6BB7AF665B0238DAAB8137BA54640417`.
+A 12-second hidden debug startup loaded the updated script, initialized the
+renderer and audio, and was then stopped manually; no direct Picture Box visual
+navigation pass was run.
+
+Discord Rich Presence Config toggle follow-up: the same-date privacy pass adds
+a script command, `discord_presence`, and a Game Settings row directly under
+Song Subtitles labelled `Discord Rich Presence`. The setting defaults on to
+preserve the current behavior, writes `env[discord_presence]=true/false` to
+`ons.cfg` through `operate_config u_write`, and applies immediately: off clears
+the current Discord activity and shuts down the IPC client, while on reconnects
+using the embedded Application ID when available. Startup now reads the same
+user config value before connecting, so a saved false value suppresses the
+initial Discord connection without requiring PowerShell or a command-line flag.
+The command-line `--disable-discord-rich-presence` switch remains a hard
+override. The English script was repacked with `Tools/nscmake/nscmake.exe`,
+decoded back with `Tools/nscdec/nscdec.exe`, and the decoded text matched
+exactly. UCRT64 `make -j8` rebuilt and relinked `onscripter-new.exe`; the
+rebuilt executable and packed script were copied to `D:\Umineko Project` with
+matching SHA-256 hashes
+`7951F2CA32B22E0B313C5043FA62DD580FD56675907B746592C8DDB99145C27E` for
+`onscripter-new.exe` and
+`7956A3E8EB8191F2CD7BC7666A391B06554B0AB7C782C5E834184952BFE76746` for
+`en.file`. An 18-second normal debug boot logged `Discord Rich Presence
+connected` and `Discord Rich Presence activity accepted`; an 18-second debug
+boot with `--env[discord_presence] false` initialized renderer and audio
+without any Discord connection or activity logs. `git diff --check` reported
+only the existing LF/CRLF working-copy warnings. No direct in-menu visual
+navigation pass was run.
+
+Release packaging follow-up: local `v2026.06.19` artifacts were prepared under
+`DerivedData\Release\v2026.06.19`. The Windows x86_64 zip includes the rebuilt
+Discord Rich Presence executable, the current packed `en.file` containing the
+Picture Box panorama and Config-toggle script updates, install notes, and the
+maintained loose textbox preview assets at
+`graphics\system\wnd\msgwnd_preview_en.png`,
+`msgwnd_preview_ep5_en.png`, `msgwnd_preview2.png`,
+`msgwnd_preview3.png`, and transparent `msgwnd_preview4.png`. The release
+archive was validated with `unzip -t`, and `SHA256SUMS.txt` was regenerated
+for `onscripter-new-windows-x86_64.zip` with SHA-256
+`03c6e8e913457d22ecb0e5d71678d57808e1e38a9d155cdc704fc1dc6ab65996`. A new
+Android APK was not produced because the Android SDK/signing environment was
+not present locally, and the previous APK was intentionally not carried forward
+because the updated packed script now calls the new `discord_presence` command.
 
 ## Findings
 

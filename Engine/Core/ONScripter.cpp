@@ -17,7 +17,11 @@
 #include "Engine/Layers/Media.hpp"
 #include "Resources/Support/Resources.hpp"
 #include "Resources/Support/Version.hpp"
+#include "Support/DiscordPresence.hpp"
 #include "Support/FileIO.hpp"
+#include "Support/SDLCompat.hpp"
+
+#include <cstring>
 
 #ifdef USE_OBJC
 #ifdef MACOSX
@@ -43,6 +47,14 @@ const int DEFAULT_WM_ICON_W = 32;
 const int DEFAULT_WM_ICON_H = 32;
 #endif
 const int DEFAULT_FONT_SIZE = 26;
+
+namespace {
+
+bool configValueDisablesDiscordPresence(const std::string &value) {
+	return value == "false" || value == "0" || value == "off" || value == "no";
+}
+
+} // namespace
 
 using CommandFunc = int (ONScripter::*)();
 static std::unordered_map<HashedString, CommandFunc> func_lut{
@@ -154,6 +166,7 @@ static std::unordered_map<HashedString, CommandFunc> func_lut{
     {"past_label2", &ONScripter::pastLabelCommand},
     {"past_label", &ONScripter::pastLabelCommand},
     {"operate_config", &ONScripter::operateConfigCommand},
+    {"discord_presence", &ONScripter::discordPresenceCommand},
     {"no_smart_quotes", &ONScripter::nosmartquotesCommand},
     {"nearest_log", &ONScripter::nearestJumpableLogEntryIndexCommand},
     {"moreram", &ONScripter::moreramCommand},
@@ -1034,6 +1047,7 @@ int ONScripter::ownInit() {
 		openDebugFolders();
 
 	initSDL();
+	initDiscordPresence();
 
 	pixel_format_enum_32bpp = onsMasksToPixelFormatEnum(32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000); // RGBA
 	pixel_format_enum_24bpp = onsMasksToPixelFormatEnum(24, 0x0000ff, 0x00ff00, 0xff0000, 0);                // RGB
@@ -1139,7 +1153,96 @@ int ONScripter::ownInit() {
 	return 0;
 }
 
+void ONScripter::initDiscordPresence() {
+#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
+	discordPresenceApplicationId.clear();
+	discordPresenceUserEnabled = true;
+
+	if (ons_cfg_options.contains("disable-discord-rich-presence"))
+		return;
+
+	auto userOpt = user_cfg_options.find("discord_presence");
+	if (userOpt != user_cfg_options.end() && configValueDisablesDiscordPresence(userOpt->second))
+		discordPresenceUserEnabled = false;
+
+	std::string applicationId;
+	auto opt = ons_cfg_options.find("discord-app-id");
+	if (opt != ons_cfg_options.end())
+		applicationId = opt->second;
+	else if (const char *envAppId = onsSDLGetEnv("ONS_DISCORD_APP_ID"))
+		applicationId = envAppId;
+#ifdef ONS_DISCORD_APP_ID
+	if (applicationId.empty())
+		applicationId = ONS_DISCORD_APP_ID;
+#endif
+
+	if (applicationId.empty())
+		return;
+
+	discordPresenceApplicationId = applicationId;
+	if (discordPresenceUserEnabled)
+		setDiscordPresenceEnabled(true);
+#endif
+}
+
+void ONScripter::setDiscordPresenceEnabled(bool enabled) {
+#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
+	discordPresenceUserEnabled = enabled;
+
+	if (!enabled) {
+		discordPresence.shutdown();
+		return;
+	}
+
+	if (ons_cfg_options.contains("disable-discord-rich-presence") || discordPresenceApplicationId.empty())
+		return;
+
+	if (!discordPresence.isEnabled())
+		discordPresence.start(discordPresenceApplicationId);
+	updateDiscordPresence();
+#else
+	(void)enabled;
+#endif
+}
+
+int ONScripter::discordPresenceCommand() {
+	setDiscordPresenceEnabled(script_h.readInt() != 0);
+	return RET_CONTINUE;
+}
+
+void ONScripter::updateDiscordPresence() {
+#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
+	if (!discordPresenceUserEnabled || !discordPresence.isEnabled())
+		return;
+
+	DiscordPresence::Activity activity;
+	activity.largeImage = "https://raw.githubusercontent.com/timftw21/onscripter-new/master/Resources/Bundle/Images.xcassets/AppIcon-mac.appiconset/512x512.png";
+	activity.largeText  = "Umineko Project";
+
+	const char *title = wm_title_string && wm_title_string[0] ? wm_title_string : DEFAULT_WM_TITLE;
+	if (std::strstr(title, "Rondo of the Witch and Reasoning"))
+		activity.state = "~Rondo of the Witch and Reasoning~";
+	else if (std::strstr(title, "Nocturne of Truth and Illusions"))
+		activity.state = "~Nocturne of Truth and Illusions~";
+	else
+		activity.state = "~Starting up~";
+
+	discordPresence.update(activity);
+#endif
+}
+
+void ONScripter::serviceDiscordPresence() {
+#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
+	if (!discordPresenceUserEnabled)
+		return;
+
+	discordPresence.service();
+#endif
+}
+
 int ONScripter::ownDeinit() {
+	discordPresence.shutdown();
+
 	reset();
 
 	delete[] sprite_info;

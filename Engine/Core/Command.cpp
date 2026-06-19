@@ -3381,6 +3381,7 @@ int ONScripter::captionCommand() {
 
 	script_h.setStr(&wm_title_string, title);
 	window.setTitle(wm_title_string);
+	updateDiscordPresence();
 
 	return RET_CONTINUE;
 }

@@ -267,6 +267,7 @@ public:
 	int pastLogCommand();
 	int pastLabelCommand();
 	int operateConfigCommand();
+	int discordPresenceCommand();
 	int nearestJumpableLogEntryIndexCommand();
 	int nosmartquotesCommand();
 	int moreramCommand();
@@ -687,6 +688,10 @@ protected:
 	bool mainThreadDowntimeProcessing(bool essentialProcessingOnly);
 	void advanceGameState(uint64_t ns);
 	void constantRefresh();
+	void initDiscordPresence();
+	void setDiscordPresenceEnabled(bool enabled);
+	void updateDiscordPresence();
+	void serviceDiscordPresence();
 
 private:
 	enum {
@@ -736,6 +741,8 @@ private:
 	RenderImage *fps_overlay_gpu{nullptr};
 	std::string fps_overlay_text;
 	double displayed_fps{0.0};
+	bool discordPresenceUserEnabled{true};
+	std::string discordPresenceApplicationId;
 
 	void UpdateAnimPosXY(AnimationInfo *animp) {
 		animp->pos.x = animp->orig_pos.x;

@@ -1609,6 +1609,8 @@ void ONScripter::handleRegisteredActions(uint64_t ns) {
 }
 
 void ONScripter::advanceGameState(uint64_t ns) {
+	serviceDiscordPresence();
+
 	handleRegisteredActions(ns);
 	camera.update(static_cast<unsigned int>(ns / 1000000));
 

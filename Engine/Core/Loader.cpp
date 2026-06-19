@@ -145,6 +145,8 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 	printf("     --check-file-case            attempt to check file case on case-insensitive file systems\n");
 	printf("     --show-fps                   display a ms/frame counter in the window title\n");
 	printf("     --force-fps value            override all fps changes to this value\n");
+	printf("     --discord-app-id id          enable Discord Rich Presence with this application ID\n");
+	printf("     --disable-discord-rich-presence disable Discord Rich Presence\n");
 #if defined(ONS_USE_SDL3)
 	printf("     --sdl3-benchmark             run SDL3_GPU compatibility performance benchmarks and exit\n");
 	printf("     --sdl3-benchmark-iterations n set SDL3 benchmark iterations (default: 300)\n");
@@ -362,6 +364,12 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
 				argc--;
 				argv++;
 				ons.ons_cfg_options["force-fps"] = argv[0];
+			} else if (!std::strcmp(argv[0] + 1, "-discord-app-id")) {
+				argc--;
+				argv++;
+				ons.ons_cfg_options["discord-app-id"] = argv[0];
+			} else if (!std::strcmp(argv[0] + 1, "-disable-discord-rich-presence")) {
+				ons.ons_cfg_options["disable-discord-rich-presence"] = "noval";
 #if defined(ONS_USE_SDL3)
 			} else if (!std::strcmp(argv[0] + 1, "-sdl3-benchmark")) {
 				ons.ons_cfg_options["sdl3-benchmark"] = "noval";

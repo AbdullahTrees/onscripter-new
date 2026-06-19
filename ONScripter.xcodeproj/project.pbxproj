@@ -45,6 +45,7 @@
 		2FD1DB4B1D52108C00362A7C /* Parser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0A5FA817478EFA004A9BCC /* Parser.cpp */; };
 		2FD1DB4C1D52108C00362A7C /* TextWindow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C2761F01B00F6C100EEC566 /* TextWindow.cpp */; };
 		2FD1DB4D1D52108C00362A7C /* AudioBridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2FAE871D1CD1114800521EB4 /* AudioBridge.cpp */; };
+		CE5D900120F0000000D1C0DE /* DiscordPresence.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE5D900320F0000000D1C0DE /* DiscordPresence.cpp */; };
 		2FD1DB4E1D52108C00362A7C /* Animation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0A5F6D17478EFA004A9BCC /* Animation.cpp */; };
 		2FD1DB4F1D52108C00362A7C /* Cache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1CBAFA03181063F7008CA340 /* Cache.cpp */; };
 		2FD1DB501D52108C00362A7C /* ConstantRefresh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C7F9AC8198D3DF100054BBF /* ConstantRefresh.cpp */; };
@@ -113,6 +114,7 @@
 		CE61AC5220E3C0E1000B31C7 /* CocoaWrapper.mm in Sources */ = {isa = PBXBuildFile; fileRef = 1CBD8C6319A207E3005FF933 /* CocoaWrapper.mm */; };
 		CE61AC5320E3C0E1000B31C7 /* UIKitWrapper.mm in Sources */ = {isa = PBXBuildFile; fileRef = CEFEC4701D52B2CA00957675 /* UIKitWrapper.mm */; };
 		CE61AC5420E3C0E1000B31C7 /* AudioBridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2FAE871D1CD1114800521EB4 /* AudioBridge.cpp */; };
+		CE5D900220F0000000D1C0DE /* DiscordPresence.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE5D900320F0000000D1C0DE /* DiscordPresence.cpp */; };
 		CE61AC5520E3C0E1000B31C7 /* Cache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1CBAFA03181063F7008CA340 /* Cache.cpp */; };
 		CE61AC5620E3C0E1000B31C7 /* DirPaths.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0A5F7517478EFA004A9BCC /* DirPaths.cpp */; };
 		CE61AC5720E3C0E1000B31C7 /* DirtyRect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C0A5F7717478EFA004A9BCC /* DirtyRect.cpp */; };
@@ -540,6 +542,8 @@
 		2F5351771D51FD970023D8F0 /* onscripter-ru-ios.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "onscripter-ru-ios.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		2FAE871D1CD1114800521EB4 /* AudioBridge.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioBridge.cpp; sourceTree = "<group>"; };
 		2FAE871E1CD1114800521EB4 /* AudioBridge.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = AudioBridge.hpp; sourceTree = "<group>"; };
+		CE5D900320F0000000D1C0DE /* DiscordPresence.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DiscordPresence.cpp; sourceTree = "<group>"; };
+		CE5D900420F0000000D1C0DE /* DiscordPresence.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = DiscordPresence.hpp; sourceTree = "<group>"; };
 		2FEDA8071CC2792300995386 /* Controller.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Controller.cpp; sourceTree = "<group>"; };
 		2FEDA8081CC2792300995386 /* Controller.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = Controller.hpp; sourceTree = "<group>"; };
 		CE24317B1E3A6A50003276DA /* Unicode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Unicode.cpp; sourceTree = "<group>"; };
@@ -928,6 +932,8 @@
 				1CBAFA03181063F7008CA340 /* Cache.cpp */,
 				1C8C42AD17CB8674007FE8B4 /* Camera.hpp */,
 				1C54C70C17DFA24200C2E511 /* Clock.hpp */,
+				CE5D900320F0000000D1C0DE /* DiscordPresence.cpp */,
+				CE5D900420F0000000D1C0DE /* DiscordPresence.hpp */,
 				1C0A5F7517478EFA004A9BCC /* DirPaths.cpp */,
 				1C0A5F7617478EFA004A9BCC /* DirPaths.hpp */,
 				1C0A5F7717478EFA004A9BCC /* DirtyRect.cpp */,
@@ -1559,6 +1565,7 @@
 				2FD1DB4B1D52108C00362A7C /* Parser.cpp in Sources */,
 				2FD1DB4C1D52108C00362A7C /* TextWindow.cpp in Sources */,
 				2FD1DB4D1D52108C00362A7C /* AudioBridge.cpp in Sources */,
+				CE5D900120F0000000D1C0DE /* DiscordPresence.cpp in Sources */,
 				2FD1DB4E1D52108C00362A7C /* Animation.cpp in Sources */,
 				2FD1DB4F1D52108C00362A7C /* Cache.cpp in Sources */,
 				2FD1DB501D52108C00362A7C /* ConstantRefresh.cpp in Sources */,
@@ -1635,6 +1642,7 @@
 				CE61AC5220E3C0E1000B31C7 /* CocoaWrapper.mm in Sources */,
 				CE61AC5320E3C0E1000B31C7 /* UIKitWrapper.mm in Sources */,
 				CE61AC5420E3C0E1000B31C7 /* AudioBridge.cpp in Sources */,
+				CE5D900220F0000000D1C0DE /* DiscordPresence.cpp in Sources */,
 				CE61AC5520E3C0E1000B31C7 /* Cache.cpp in Sources */,
 				CE61AC5620E3C0E1000B31C7 /* DirPaths.cpp in Sources */,
 				CE61AC5720E3C0E1000B31C7 /* DirtyRect.cpp in Sources */,
