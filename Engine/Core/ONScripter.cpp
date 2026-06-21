@@ -50,9 +50,11 @@ const int DEFAULT_FONT_SIZE = 26;
 
 namespace {
 
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 bool configValueDisablesDiscordPresence(const std::string &value) {
 	return value == "false" || value == "0" || value == "off" || value == "no";
 }
+#endif
 
 constexpr int SaveLoadOverlayFrameMs = 83;
 constexpr int SaveLoadFadeMs         = 260;
@@ -1161,7 +1163,7 @@ int ONScripter::ownInit() {
 }
 
 void ONScripter::initDiscordPresence() {
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 	discordPresenceApplicationId.clear();
 	discordPresenceUserEnabled = true;
 
@@ -1193,7 +1195,7 @@ void ONScripter::initDiscordPresence() {
 }
 
 void ONScripter::setDiscordPresenceEnabled(bool enabled) {
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 	discordPresenceUserEnabled = enabled;
 
 	if (!enabled) {
@@ -1218,7 +1220,7 @@ int ONScripter::discordPresenceCommand() {
 }
 
 void ONScripter::updateDiscordPresence() {
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 	if (!discordPresenceUserEnabled || !discordPresence.isEnabled())
 		return;
 
@@ -1239,7 +1241,7 @@ void ONScripter::updateDiscordPresence() {
 }
 
 void ONScripter::serviceDiscordPresence() {
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 	if (!discordPresenceUserEnabled)
 		return;
 

@@ -15,6 +15,10 @@
 #include <cstdint>
 #include <string>
 
+#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
+#define ONS_DISCORD_PRESENCE_SUPPORTED 1
+#endif
+
 class DiscordPresence {
 public:
 	struct Activity {
@@ -30,10 +34,15 @@ public:
 	void shutdown();
 
 	bool isEnabled() const {
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 		return enabled;
+#else
+		return false;
+#endif
 	}
 
 private:
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 	bool connect();
 	bool openConnection();
 	void closeConnection();
@@ -64,6 +73,7 @@ private:
 	void *connection{nullptr};
 #elif defined(LINUX) || defined(MACOSX)
 	int connection{-1};
+#endif
 #endif
 };
 

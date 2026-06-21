@@ -32,6 +32,7 @@
 
 DiscordPresence discordPresence;
 
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 namespace {
 
 constexpr uint32_t OpcodeHandshake = 0;
@@ -133,11 +134,12 @@ std::vector<std::string> discordIpcSearchRoots() {
 #endif
 
 } // namespace
+#endif
 
 bool DiscordPresence::start(const std::string &id) {
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 	shutdown();
 
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
 	if (!validApplicationId(id)) {
 		sendToLog(LogLevel::Warn, "Discord Rich Presence disabled: invalid Discord application ID\n");
 		return false;
@@ -163,7 +165,7 @@ bool DiscordPresence::start(const std::string &id) {
 }
 
 void DiscordPresence::update(const Activity &activity) {
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 	if (!enabled)
 		return;
 	currentActivity = activity;
@@ -175,7 +177,7 @@ void DiscordPresence::update(const Activity &activity) {
 }
 
 void DiscordPresence::service() {
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 	if (!enabled)
 		return;
 
@@ -211,18 +213,18 @@ void DiscordPresence::service() {
 }
 
 void DiscordPresence::shutdown() {
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 	if (connected)
 		sendActivity(nullptr);
 	closeConnection();
-#endif
 	applicationId.clear();
 	enabled     = false;
 	hasActivity = false;
+#endif
 }
 
+#ifdef ONS_DISCORD_PRESENCE_SUPPORTED
 bool DiscordPresence::connect() {
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
 	if (connected)
 		return true;
 
@@ -255,9 +257,6 @@ bool DiscordPresence::connect() {
 	nextReconnectMs = 0;
 	sendToLog(LogLevel::Info, "Discord Rich Presence connected\n");
 	return true;
-#else
-	return false;
-#endif
 }
 
 bool DiscordPresence::openConnection() {
@@ -354,7 +353,6 @@ bool DiscordPresence::hasReadableData() {
 }
 
 bool DiscordPresence::writeFrame(uint32_t opcode, const std::string &payload) {
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
 	if (payload.size() > MaxFramePayload)
 		return false;
 
@@ -365,15 +363,9 @@ bool DiscordPresence::writeFrame(uint32_t opcode, const std::string &payload) {
 		std::memcpy(frame.data() + 8, payload.data(), payload.size());
 
 	return writeAll(frame.data(), frame.size());
-#else
-	(void)opcode;
-	(void)payload;
-	return false;
-#endif
 }
 
 bool DiscordPresence::readFrame(uint32_t &opcode, std::string &payload, uint32_t timeoutMs) {
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
 	uint8_t header[8]{};
 	if (!readExact(header, sizeof(header), timeoutMs))
 		return false;
@@ -388,12 +380,6 @@ bool DiscordPresence::readFrame(uint32_t &opcode, std::string &payload, uint32_t
 		return true;
 
 	return readExact(reinterpret_cast<uint8_t *>(payload.data()), size, timeoutMs);
-#else
-	(void)opcode;
-	(void)payload;
-	(void)timeoutMs;
-	return false;
-#endif
 }
 
 bool DiscordPresence::writeAll(const uint8_t *data, size_t size) {
@@ -484,7 +470,6 @@ bool DiscordPresence::readExact(uint8_t *data, size_t size, uint32_t timeoutMs) 
 }
 
 bool DiscordPresence::handleFrame(uint32_t opcode, const std::string &payload) {
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
 	if (opcode == OpcodePing) {
 		if (!writeFrame(OpcodePong, payload)) {
 			closeConnection();
@@ -503,15 +488,9 @@ bool DiscordPresence::handleFrame(uint32_t opcode, const std::string &payload) {
 		failureLogged = true;
 	}
 	return true;
-#else
-	(void)opcode;
-	(void)payload;
-	return false;
-#endif
 }
 
 void DiscordPresence::sendActivity(const Activity *activity) {
-#if defined(WIN32) || defined(LINUX) || defined(MACOSX)
 	if (!connect())
 		return;
 
@@ -554,11 +533,9 @@ void DiscordPresence::sendActivity(const Activity *activity) {
 		sendToLog(LogLevel::Info, "Discord Rich Presence activity accepted\n");
 		updateLogged = true;
 	}
-#else
-	(void)activity;
-#endif
 }
 
 std::string DiscordPresence::nextNonce() {
 	return "onscripter-new-" + std::to_string(++nonceCounter);
 }
+#endif

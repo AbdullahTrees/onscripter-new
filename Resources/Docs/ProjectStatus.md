@@ -4570,6 +4570,31 @@ for `onscripter-new-windows-x86_64.zip` with SHA-256
 No Android APK was produced because the Android SDK/signing environment was not
 present locally.
 
+Android release correction: local `v2026.06.21.1` artifacts were prepared under
+`DerivedData\Release\v2026.06.21.1` to restore the Android APK after the
+Discord Rich Presence script-command release. The APK was rebuilt from the
+current engine source instead of carrying forward the pre-Discord APK, so the
+Android build recognizes the `discord_presence` command while the unsupported
+desktop IPC implementation stays a no-op on Droid. The shared
+`Support\DiscordPresence` platform gate was centralized as
+`ONS_DISCORD_PRESENCE_SUPPORTED`, removing the Droid-only unused-code warnings
+from both arm64-v8a and x86_64 native builds.
+
+Status: UCRT64 Windows release configure with embedded Discord Application ID
+`1517334948967747794` and `make -j8` linked successfully. Android
+`Scripts\quickdroid.tool --release` produced a multi-ABI APK containing
+`lib/arm64-v8a/libmain.so` and `lib/x86_64/libmain.so`; the APK verified with
+APK Signature Scheme v2, package id `org.umineko_project.onscripter_ru`, label
+`onscripter-new`, min SDK 34, target SDK 36, only
+`android.permission.VIBRATE`, and native code ABIs `arm64-v8a` and `x86_64`.
+The Windows archive was validated with `unzip -t`. `SHA256SUMS.txt` now covers
+both artifacts with SHA-256
+`4d6b39cad201e2620854d7a3066035bc6330680d9f35e9b74e7f4169f1754d13` for
+`onscripter-new-windows-x86_64.zip` and
+`bc13b519c1293defaa8c78fc460b05d241eea0877dfad61e18a98143d939f9db` for
+`onscripter-new-android.apk`. The refreshed Windows executable SHA-256 is
+`C67474C7D4D5C3DC8AC18CE674131CFB262D75051351CF21881A69B9FB081156`.
+
 ## Findings
 
 ### 1. Readback and Upload Traffic Dominate the Measured Boot/Video Path
