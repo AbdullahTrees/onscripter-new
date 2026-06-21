@@ -2032,31 +2032,40 @@ int ONScripter::loadgameCommand() {
 	if (no < 0)
 		errorAndExit("loadgame: save number is less than 0.");
 
+	SaveFileInfo info;
+	if (!readSaveFileHeader(no, &info) || !verifyChecksum())
+		return RET_CONTINUE;
+
+	startSaveLoadOverlay();
+
 	// Avoid accidental repaints before entering the loadgosub
 	skip_mode = SKIP_NORMAL | SKIP_SUPERSKIP;
 
-	if (!loadSaveFile(no)) {
-		fillCanvas(true, true);
-		commitVisualState();
-		flush(refreshMode());
+	loadSaveFileData(info.version);
+	if (file_io_read_len != file_io_buf_ptr + sizeof(uint32_t)) {
+		ons.errorAndExit("Unrecognised data was discovered in the save file");
+	}
 
-		saveon_flag          = true;
-		internal_saveon_flag = true;
-		skip_mode &= ~SKIP_NORMAL;
-		automode_flag = false;
-		deleteButtonLink();
-		deleteSelectLink();
-		keyState.pressedFlag = false;
-		page_enter_status    = 0;
-		string_buffer_offset = 0;
-		break_flag           = false;
+	saveon_flag          = true;
+	internal_saveon_flag = true;
+	skip_mode &= ~SKIP_NORMAL;
+	automode_flag = false;
+	deleteButtonLink();
+	deleteSelectLink();
+	keyState.pressedFlag = false;
+	page_enter_status    = 0;
+	string_buffer_offset = 0;
+	break_flag           = false;
 
-		refreshButtonHoverState();
+	refreshButtonHoverState();
 
-		if (loadgosub_label) {
-			should_flip = 0;
-			gosubReal(loadgosub_label, script_h.getCurrent());
-		}
+	save_load_transition_pending = true;
+	if (loadgosub_label) {
+		should_flip = 0;
+		gosubReal(loadgosub_label, script_h.getCurrent());
+		save_load_transition_call_depth = callStack.size();
+	} else {
+		completeSaveLoadTransition();
 	}
 
 	skip_mode = 0;

@@ -1,6 +1,6 @@
 # onscripter-new Project Status
 
-Updated: 2026-06-19
+Updated: 2026-06-21
 
 This file consolidates the former compilation guide, dependency audit, and SDL3 performance audit into one maintenance document for the current `onscripter-new` release branch.
 
@@ -4490,6 +4490,85 @@ for `onscripter-new-windows-x86_64.zip` with SHA-256
 Android APK was not produced because the Android SDK/signing environment was
 not present locally, and the previous APK was intentionally not carried forward
 because the updated packed script now calls the new `discord_presence` command.
+
+In-game load-time pass: the 2026-06-20 UCRT64 rebuild improves numbered save
+restore work by introducing save format `4.1` with sparse sprite tables for new
+saves while keeping the legacy fixed-table reader for existing `4.0` saves.
+New saves now serialize only sprite slots that carry state instead of always
+writing all 1000 `lsp` and 1000 `lsp2` entries. During restore, identical
+static image tags reuse an already restored image resource from the same load,
+avoiding repeated decode/upload work for duplicate scene assets; string sprites,
+layers, and big images stay on the existing independent paths.
+
+Status: UCRT64 `make -j8` linked successfully, and the rebuilt executable was
+copied to `D:\Umineko Project\onscripter-new.exe` with matching SHA-256
+`58C66EB1BEF72C0C26AB4D406140596DD3F0E0B1A5E9B29291B121D70F5EB026`.
+Renderer benchmark output was written to
+`DerivedData\MinGW-x86_64\sdl3-benchmark-after-sparse-save-load-final.csv`;
+Music Box benchmark output was written to
+`DerivedData\MinGW-x86_64\musicbox-benchmark-after-sparse-save-load-final.txt`
+with `musicbox_full_frame_reordered` at 46.790 us/frame. A 15-second hidden
+Umineko Project startup smoke initialized Vulkan, audio, script layers, and
+the configured save path before the process was intentionally stopped.
+`git diff --check` reported only the existing LF/CRLF working-copy warnings.
+No direct in-menu save/load visual pass was run.
+
+In-game load polish follow-up: the 2026-06-20 UCRT64 rebuild adds engine-owned
+visual feedback around numbered save restores. `loadgame` now validates the save
+header/checksum before changing the display, then presents the existing
+four-frame `graphics\system\loading_en.png`/`loading_ru.png` strip in the
+bottom-right corner while restore work is in progress. The overlay is drawn
+through the HUD buffer so saved camera state cannot shift it, and restore
+milestones step the animation without adding an artificial loading delay. Once
+the save state is restored, the loading frame crossfades into the restored scene
+instead of popping directly from black.
+
+Status: UCRT64 `make -j8` linked successfully, and the rebuilt executable was
+copied to `D:\Umineko Project\onscripter-new.exe` with matching SHA-256
+`F1E51626208EE926A2522549902A0D205D4538788092B972CDCC8449E2B6FCEB`.
+Quick SDL3 benchmark output was written to
+`DerivedData\MinGW-x86_64\sdl3-benchmark-after-load-polish.csv`; Music Box
+benchmark output was written to
+`DerivedData\MinGW-x86_64\musicbox-benchmark-after-load-polish.txt` with
+`musicbox_full_frame_reordered` at 46.145 us/frame. A 12-second hidden Umineko
+Project startup smoke stayed alive until intentionally terminated; stderr only
+reported the existing missing `en.cfg` warning. No direct in-menu load visual
+pass was run because no local numbered save slot was found in the checked game
+or user save locations.
+
+Follow-up correction: the load overlay now always uses the English loading
+strip for this build instead of consulting the legacy `english_mode` flag, which
+can be false in the English Umineko Project script. The overlay is also pumped
+from `waitEvent()` while save-load image work runs on the existing async image
+queue, matching the main-menu loading animation pattern instead of advancing
+only between restore milestones. The reveal is deferred through
+`screenflip 1` from `loadgosub *load_system` (with a gosub-return fallback) so
+script-side textbox and sprite-expression correction runs before the restored
+scene crossfades in.
+
+Status: UCRT64 `make -j8` linked successfully, and the rebuilt executable was
+copied to `D:\Umineko Project\onscripter-new.exe` with matching SHA-256
+`D273D62926F285F558DC4B4148E5118C1ABC4BDBF4C381BDAB38200E9151B41B`.
+Quick SDL3 benchmark output was written to
+`DerivedData\MinGW-x86_64\sdl3-benchmark-after-load-polish-followup.csv`;
+Music Box benchmark output was written to
+`DerivedData\MinGW-x86_64\musicbox-benchmark-after-load-polish-followup.txt`
+with `musicbox_full_frame_reordered` at 53.065 us/frame. A 12-second hidden
+Umineko Project startup smoke stayed alive until intentionally terminated;
+stderr only reported the existing missing `en.cfg` warning.
+
+Release packaging follow-up: local `v2026.06.21` artifacts were prepared under
+`DerivedData\Release\v2026.06.21`. The Windows x86_64 zip includes the rebuilt
+save-load performance/polish executable, the current packed `en.file`, install
+notes, and the maintained loose textbox preview assets at
+`graphics\system\wnd\msgwnd_preview_en.png`,
+`msgwnd_preview_ep5_en.png`, `msgwnd_preview2.png`,
+`msgwnd_preview3.png`, and transparent `msgwnd_preview4.png`. The release
+archive was validated with `unzip -t`, and `SHA256SUMS.txt` was regenerated
+for `onscripter-new-windows-x86_64.zip` with SHA-256
+`2633a70b0ec1e760c9e74faad192b3bad7fa817c7c96bbacd320021a2b2bbaa9`.
+No Android APK was produced because the Android SDK/signing environment was not
+present locally.
 
 ## Findings
 

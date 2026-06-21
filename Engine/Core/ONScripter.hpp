@@ -1313,6 +1313,11 @@ private:
 	bool setEffect();
 	bool doEffect();
 	void mergeForEffect(RenderImage *dst, RenderRect *scene_rect, RenderRect *hud_rect, int refresh_mode);
+	void startSaveLoadOverlay();
+	void stepSaveLoadOverlay(bool force = false);
+	void finishSaveLoadOverlay();
+	void fadeInLoadedSave();
+	void completeSaveLoadTransition();
 	void sendToPreScreen(bool refreshSrc, std::function<PooledGPUImage(GPUTransformableCanvasImage &)> applyTransform, int refresh_mode_src, int refresh_mode_dst);
 	void effectTrvswave(const char *params, int duration);
 	void effectWhirl(const char *params, int duration);
@@ -1323,6 +1328,12 @@ private:
 	/* Breakup related */
 
 	bool new_breakup_implementation{true};
+
+	AnimationInfo save_load_overlay_info;
+	bool save_load_overlay_active{false};
+	bool save_load_transition_pending{false};
+	uint32_t save_load_overlay_last_frame{0};
+	size_t save_load_transition_call_depth{0};
 
 	struct BreakupData {
 		int n_cells, tot_frames;
@@ -1593,7 +1604,7 @@ private:
 	/* File I/O */
 	bool readSaveFileHeader(int no, SaveFileInfo *save_file_info = nullptr);
 	void writeSaveFileHeader(const char *savestr);
-	void loadSaveFileData();
+	void loadSaveFileData(int file_version);
 	void saveSaveFileData();
 	bool verifyChecksum();
 	void writeChecksum();
@@ -1610,7 +1621,7 @@ private:
 	void writeFontinfo(Fontinfo &fi);
 	void readWindowCtrl(TextWindowController &wnd);
 	void writeWindowCtrl(TextWindowController &wnd);
-	void readAnimationInfo(AnimationInfo &ai);
+	void readAnimationInfo(AnimationInfo &ai, std::vector<AnimationInfo *> *restore_image_cache = nullptr);
 	void writeAnimationInfo(AnimationInfo &ai);
 	void readCamera(Camera &camera);
 	void writeCamera(Camera &camera);

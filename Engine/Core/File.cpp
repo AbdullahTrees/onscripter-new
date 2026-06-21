@@ -16,12 +16,87 @@
 #include <zlib.h>
 
 #include <ctime>
+#include <vector>
 
 const uint32_t SAVEFILE_MAGIC_NUMBER = 0x534E4F52; // RONS
 const uint32_t SAVEFILE_INIT_HASH    = 0x69F23B1B;
 const uint32_t SAVEFILE_HASH_LENGH   = sizeof(uint32_t);
 const int SAVEFILE_VERSION_MAJOR     = 4;
-const int SAVEFILE_VERSION_MINOR     = 0;
+const int SAVEFILE_VERSION_MINOR     = 1;
+const int SAVEFILE_VERSION_SPARSE_SPRITES = 401;
+
+namespace {
+bool cameraHasSavedState(Camera &camera) {
+	return camera.x_move.multiplier != 1 ||
+	       camera.x_move.cycleTime != 200 ||
+	       camera.x_move.getAmplitude() != 0 ||
+	       camera.y_move.multiplier != 1 ||
+	       camera.y_move.cycleTime != 200 ||
+	       camera.y_move.getAmplitude() != 0;
+}
+
+bool transformsHaveSavedState(const AnimationInfo::SpriteTransforms &transforms) {
+	return transforms.sepia ||
+	       transforms.negative1 ||
+	       transforms.negative2 ||
+	       transforms.greyscale ||
+	       transforms.blurFactor != 0 ||
+	       transforms.breakupFactor != 0 ||
+	       transforms.breakupDirectionFlagset != 0 ||
+	       transforms.warpSpeed != 0 ||
+	       transforms.warpWaveLength != 1000 ||
+	       transforms.warpAmplitude != 0;
+}
+
+bool hasSavedAnimationState(AnimationInfo &ai) {
+	return ai.exists ||
+	       ai.visible ||
+	       ai.image_name ||
+	       ai.lips_name ||
+	       ai.mask_file_name ||
+	       ai.file_name ||
+	       !ai.childImages.empty() ||
+	       ai.parentImage.no != -1 ||
+	       ai.trans != 255 ||
+	       ai.orig_pos.x != 0 ||
+	       ai.orig_pos.y != 0 ||
+	       ai.orig_pos.w != 0 ||
+	       ai.orig_pos.h != 0 ||
+	       ai.pos.x != 0 ||
+	       ai.pos.y != 0 ||
+	       ai.pos.w != 0 ||
+	       ai.pos.h != 0 ||
+	       ai.current_cell != 0 ||
+	       ai.num_of_cells != 0 ||
+	       ai.loop_mode != 0 ||
+	       ai.vertical_cells ||
+	       ai.is_animatable ||
+	       ai.skip_whitespace ||
+	       ai.layer_no != -1 ||
+	       ai.blending_mode != BlendModeId::NORMAL ||
+	       ai.trans_mode != AnimationInfo::TRANS_COPY ||
+	       ai.darkenHue.r != 255 ||
+	       ai.darkenHue.g != 255 ||
+	       ai.darkenHue.b != 255 ||
+	       ai.flip != FLIP_NONE ||
+	       ai.has_z_order_override ||
+	       ai.has_hotspot ||
+	       ai.has_scale_center ||
+	       ai.scale_x != 0 ||
+	       ai.scale_y != 0 ||
+	       ai.rot != 0 ||
+	       ai.is_big_image ||
+	       transformsHaveSavedState(ai.spriteTransforms) ||
+	       cameraHasSavedState(ai.camera);
+}
+
+bool canReuseRestoredImage(const AnimationInfo &ai) {
+	return ai.image_name &&
+	       ai.trans_mode != AnimationInfo::TRANS_STRING &&
+	       ai.trans_mode != AnimationInfo::TRANS_LAYER &&
+	       !ai.is_big_image;
+}
+} // namespace
 
 void ONScripter::readFontinfo(Fontinfo &fi) {
 	fi.clear();
@@ -199,7 +274,7 @@ void ONScripter::writeWindowCtrl(TextWindowController &wnd) {
 	write32s(wnd.nameBoxPadding.left);
 }
 
-void ONScripter::readAnimationInfo(AnimationInfo &ai) {
+void ONScripter::readAnimationInfo(AnimationInfo &ai, std::vector<AnimationInfo *> *restore_image_cache) {
 	ai.remove();
 	ai.childImages.clear();
 
@@ -238,7 +313,27 @@ void ONScripter::readAnimationInfo(AnimationInfo &ai) {
 		}
 	} else if (ai.image_name) {
 		parseTaggedString(&ai);
-		setupAnimationInfo(&ai);
+		bool reusedImage = false;
+		if (restore_image_cache && canReuseRestoredImage(ai)) {
+			for (auto it = restore_image_cache->rbegin(); it != restore_image_cache->rend(); ++it) {
+				AnimationInfo *candidate = *it;
+				if (!candidate || candidate == &ai || candidate->stale_image)
+					continue;
+				if (!candidate->gpu_image && !candidate->image_surface && !candidate->big_image)
+					continue;
+				if (!treatAsSameImage(*candidate, ai))
+					continue;
+
+				ai.shareImageFrom(*candidate);
+				ai.exists = true;
+				reusedImage = true;
+				break;
+			}
+		}
+		if (!reusedImage)
+			setupAnimationInfo(&ai);
+		if (restore_image_cache && canReuseRestoredImage(ai) && ai.exists && !ai.stale_image)
+			restore_image_cache->push_back(&ai);
 	}
 
 	if (ai.type == SPRITE_LSP || ai.type == SPRITE_LSP2) {
@@ -279,6 +374,7 @@ void ONScripter::readAnimationInfo(AnimationInfo &ai) {
 	}
 
 	ai.calcAffineMatrix(window.script_width, window.script_height);
+	stepSaveLoadOverlay();
 }
 
 void ONScripter::writeAnimationInfo(AnimationInfo &ai) {
@@ -581,6 +677,7 @@ void ONScripter::readSoundData() {
 		}
 		playSoundThreaded(loop_bgm_name[0], SOUND_CHUNK, false, MIX_LOOPBGM_CHANNEL0);
 	}
+	stepSaveLoadOverlay();
 }
 
 void ONScripter::writeSoundData() {
@@ -676,7 +773,28 @@ void ONScripter::writeParamData(AnimationInfo *&p, bool bar) {
 	}
 }
 
-void ONScripter::loadSaveFileData() {
+void ONScripter::loadSaveFileData(int file_version) {
+	std::vector<AnimationInfo *> restore_image_cache;
+	restore_image_cache.reserve(128);
+
+	auto readAnimationInfoTableSparse = [&](AnimationInfo *table) {
+		for (int i = 0; i < MAX_SPRITE_NUM; i++) {
+			table[i].remove();
+			table[i].childImages.clear();
+		}
+
+		const int32_t count = read32s();
+		if (count < 0 || count > MAX_SPRITE_NUM)
+			errorAndExit("Save file has an invalid sparse sprite table.");
+
+		for (int32_t i = 0; i < count; i++) {
+			const int32_t id = read32s();
+			if (id < 0 || id >= MAX_SPRITE_NUM)
+				errorAndExit("Save file has an invalid sparse sprite id.");
+			readAnimationInfo(table[id], &restore_image_cache);
+		}
+	};
+
 	// Variable data
 	readVariables(0, script_h.global_variable_border);
 	readArrayVariable();
@@ -713,22 +831,30 @@ void ONScripter::loadSaveFileData() {
 		buf++;
 	}
 	script_h.setCurrent(buf);
+	stepSaveLoadOverlay();
 
 	// AnimationInfo data
-	readAnimationInfo(cursor_info[0]);
-	readAnimationInfo(cursor_info[1]);
-	readAnimationInfo(sentence_font_info);
+	readAnimationInfo(cursor_info[0], &restore_image_cache);
+	readAnimationInfo(cursor_info[1], &restore_image_cache);
+	readAnimationInfo(sentence_font_info, &restore_image_cache);
 	bg_info.remove();
 	readFilePath(&bg_info.file_name);
 	createBackground();
+	if (bg_info.exists && !bg_info.stale_image)
+		restore_image_cache.push_back(&bg_info);
 
 	for (auto &tachi : tachi_info) {
-		readAnimationInfo(tachi);
+		readAnimationInfo(tachi, &restore_image_cache);
 	}
 
-	for (int i = 0; i < MAX_SPRITE_NUM; i++) {
-		readAnimationInfo(sprite_info[i]);
-		readAnimationInfo(sprite2_info[i]);
+	if (file_version >= SAVEFILE_VERSION_SPARSE_SPRITES) {
+		readAnimationInfoTableSparse(sprite_info);
+		readAnimationInfoTableSparse(sprite2_info);
+	} else {
+		for (int i = 0; i < MAX_SPRITE_NUM; i++) {
+			readAnimationInfo(sprite_info[i], &restore_image_cache);
+			readAnimationInfo(sprite2_info[i], &restore_image_cache);
+		}
 	}
 
 	btndef_info.remove();
@@ -772,6 +898,22 @@ void ONScripter::loadSaveFileData() {
 }
 
 void ONScripter::saveSaveFileData() {
+	auto writeAnimationInfoTableSparse = [&](AnimationInfo *table) {
+		int32_t count = 0;
+		for (int i = 0; i < MAX_SPRITE_NUM; i++) {
+			if (hasSavedAnimationState(table[i]))
+				count++;
+		}
+
+		write32s(count);
+		for (int i = 0; i < MAX_SPRITE_NUM; i++) {
+			if (!hasSavedAnimationState(table[i]))
+				continue;
+			write32s(i);
+			writeAnimationInfo(table[i]);
+		}
+	};
+
 	// Variable data
 	writeVariables(0, script_h.global_variable_border);
 	writeArrayVariable();
@@ -811,10 +953,8 @@ void ONScripter::saveSaveFileData() {
 		writeAnimationInfo(tachi);
 	}
 
-	for (int i = 0; i < MAX_SPRITE_NUM; i++) {
-		writeAnimationInfo(sprite_info[i]);
-		writeAnimationInfo(sprite2_info[i]);
-	}
+	writeAnimationInfoTableSparse(sprite_info);
+	writeAnimationInfoTableSparse(sprite2_info);
 
 	writeStr(btndef_info.image_name);
 
@@ -924,11 +1064,12 @@ void ONScripter::writeChecksum() {
 }
 
 int ONScripter::loadSaveFile(int no) {
-	if (!readSaveFileHeader(no) || !verifyChecksum()) {
+	SaveFileInfo info;
+	if (!readSaveFileHeader(no, &info) || !verifyChecksum()) {
 		return -1;
 	}
 
-	loadSaveFileData();
+	loadSaveFileData(info.version);
 
 	if (file_io_read_len != file_io_buf_ptr + SAVEFILE_HASH_LENGH) {
 		ons.errorAndExit("Unrecognised data was discovered in the save file");

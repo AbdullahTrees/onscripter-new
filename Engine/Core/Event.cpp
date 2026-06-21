@@ -459,7 +459,9 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		}
 
 		advanceGameState(nanosPerFrame * (framesOvershoot + 1)); // may advance multiple frames if we are lagging
-		if (allow_rendering) {
+		if (save_load_overlay_active) {
+			stepSaveLoadOverlay();
+		} else if (allow_rendering) {
 			constantRefresh();
 		}
 		handleSDLEvents();
@@ -477,7 +479,7 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 			}
 		}
 
-		if (allow_rendering && !(skip_mode & SKIP_SUPERSKIP) && !deferredLoadingEnabled) {
+		if (allow_rendering && !save_load_overlay_active && !(skip_mode & SKIP_SUPERSKIP) && !deferredLoadingEnabled) {
 			if ((fps_overlay_visible || fps_overlay_refresh_required) && !screenChanged) {
 				RenderRect fullRect = full_script_clip;
 				flushDirect(fullRect, fullRect, refreshMode() | CONSTANT_REFRESH_MODE | REFRESH_BEFORESCENE_MODE);
@@ -520,7 +522,7 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 
 		const uint64_t frameTailStartNanos = highResolutionTicksNanos();
 
-		if (allow_rendering && !(skip_mode & SKIP_SUPERSKIP) && !deferredLoadingEnabled) {
+		if (allow_rendering && !save_load_overlay_active && !(skip_mode & SKIP_SUPERSKIP) && !deferredLoadingEnabled) {
 			if (cursor)
 				SDL_SetCursor(nullptr);
 			if (screenChanged && !window.getFullscreenFix() && should_flip) {

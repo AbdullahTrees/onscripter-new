@@ -1628,7 +1628,9 @@ int ONScripter::setFpsCommand() {
 
 int ONScripter::screenFlipCommand() {
 	should_flip = script_h.readInt();
-	if (should_flip)
+	if (should_flip && save_load_transition_pending)
+		completeSaveLoadTransition();
+	else if (should_flip)
 		repaintCommand();
 	return RET_CONTINUE;
 }

@@ -138,6 +138,32 @@ void AnimationInfo::deepcopy(const AnimationInfo &o) {
 		big_image = std::make_shared<GPUBigImage>(*bi);
 }
 
+void AnimationInfo::shareImageFrom(const AnimationInfo &o) {
+	if (this == &o)
+		return;
+
+	deleteImage();
+
+	image_surface = o.image_surface;
+	gpu_image     = o.gpu_image;
+	big_image     = o.big_image;
+
+	if (image_surface)
+		image_surface->refcount++;
+	if (gpu_image)
+		gpu_image->refcount++;
+
+	if (image_surface)
+		calculateImage(image_surface->w, image_surface->h);
+	else if (gpu_image)
+		calculateImage(gpu_image->w, gpu_image->h);
+	else if (big_image)
+		calculateImage(big_image->w, big_image->h);
+
+	if (image_surface || gpu_image || big_image)
+		stale_image = false;
+}
+
 void AnimationInfo::reset() {
 	remove();
 

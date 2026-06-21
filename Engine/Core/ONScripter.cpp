@@ -54,6 +54,13 @@ bool configValueDisablesDiscordPresence(const std::string &value) {
 	return value == "false" || value == "0" || value == "off" || value == "no";
 }
 
+constexpr int SaveLoadOverlayFrameMs = 83;
+constexpr int SaveLoadFadeMs         = 260;
+
+const char *saveLoadOverlayTag() {
+	return ":a/4,83,0;graphics\\system\\loading_en.png";
+}
+
 } // namespace
 
 using CommandFunc = int (ONScripter::*)();
@@ -1707,6 +1714,117 @@ void ONScripter::flushDirect(RenderRect &scene_rect, RenderRect &hud_rect, int r
 	screenChanged    = true;
 }
 
+void ONScripter::startSaveLoadOverlay() {
+	save_load_transition_pending    = false;
+	save_load_transition_call_depth = 0;
+	if (!screen_target || !accumulation_gpu || !hud_gpu)
+		return;
+
+	save_load_overlay_info.remove();
+	save_load_overlay_info.type = SPRITE_LSP;
+	save_load_overlay_info.id   = 4;
+	save_load_overlay_info.setImageName(saveLoadOverlayTag());
+	parseTaggedString(&save_load_overlay_info);
+	setupAnimationInfo(&save_load_overlay_info);
+
+	if (!save_load_overlay_info.exists || !save_load_overlay_info.gpu_image) {
+		save_load_overlay_info.remove();
+		return;
+	}
+
+	save_load_overlay_info.visible = true;
+	save_load_overlay_info.orig_pos.x = std::max(0.0f, static_cast<float>(window.script_width) - save_load_overlay_info.pos.w);
+	save_load_overlay_info.orig_pos.y = std::max(0.0f, static_cast<float>(window.script_height) - save_load_overlay_info.pos.h);
+	save_load_overlay_info.pos.x      = save_load_overlay_info.orig_pos.x;
+	save_load_overlay_info.pos.y      = save_load_overlay_info.orig_pos.y;
+	save_load_overlay_info.current_cell = 0;
+	save_load_overlay_info.calcAffineMatrix(window.script_width, window.script_height);
+
+	save_load_overlay_active     = true;
+	save_load_overlay_last_frame = 0;
+	stepSaveLoadOverlay(true);
+}
+
+void ONScripter::stepSaveLoadOverlay(bool force) {
+	if (!save_load_overlay_active || !screen_target || !accumulation_gpu || !hud_gpu)
+		return;
+
+	const uint32_t now = SDL_GetTicks();
+	if (!force && now - save_load_overlay_last_frame < SaveLoadOverlayFrameMs)
+		return;
+
+	if (!force && save_load_overlay_info.num_of_cells > 1)
+		save_load_overlay_info.current_cell = (save_load_overlay_info.current_cell + 1) % save_load_overlay_info.num_of_cells;
+	save_load_overlay_last_frame = now;
+
+	gpu.clearWholeTarget(accumulation_gpu->target, 0, 0, 0, 255);
+	gpu.clearWholeTarget(hud_gpu->target, 0, 0, 0, 0);
+	drawToGPUTarget(hud_gpu->target, &save_load_overlay_info, REFRESH_NORMAL_MODE, nullptr);
+
+	RenderRect combined_camera = camera.center_pos;
+	combined_camera.x -= camera.pos.x;
+	combined_camera.y -= camera.pos.y;
+
+	GPU_SetBlending(accumulation_gpu, false);
+	gpu.copyGPUImage(accumulation_gpu, &combined_camera, nullptr, screen_target);
+	GPU_SetBlending(accumulation_gpu, true);
+	gpu.copyGPUImage(hud_gpu, &camera.center_pos, nullptr, screen_target);
+
+	GPU_FlushBlitBuffer();
+	GPU_Flip(screen_target);
+	gpu.clearWholeTarget(screen_target);
+	screenChanged = false;
+
+#ifndef DROID
+	SDL_PollEvent(nullptr);
+#endif
+}
+
+void ONScripter::fadeInLoadedSave() {
+	const bool had_overlay = save_load_overlay_active;
+	if (had_overlay) {
+		stepSaveLoadOverlay(true);
+		save_load_overlay_active = false;
+	}
+
+	fillCanvas(true, true);
+
+	if (!had_overlay) {
+		commitVisualState();
+		flush(refreshMode());
+		return;
+	}
+
+	EffectLink load_effect;
+	load_effect.effect   = 10;
+	load_effect.duration = SaveLoadFadeMs;
+
+	const int restore_skip_mode = skip_mode;
+	const bool restore_should_flip = should_flip;
+	skip_mode &= ~(SKIP_NORMAL | SKIP_SUPERSKIP);
+	should_flip = true;
+	constantRefreshEffect(&load_effect, true, false, REFRESH_NONE_MODE, refreshMode());
+	should_flip = restore_should_flip;
+	skip_mode = restore_skip_mode;
+}
+
+void ONScripter::completeSaveLoadTransition() {
+	if (!save_load_transition_pending)
+		return;
+
+	save_load_transition_pending   = false;
+	save_load_transition_call_depth = 0;
+	fadeInLoadedSave();
+	finishSaveLoadOverlay();
+}
+
+void ONScripter::finishSaveLoadOverlay() {
+	save_load_overlay_active       = false;
+	save_load_transition_pending   = false;
+	save_load_transition_call_depth = 0;
+	save_load_overlay_info.remove();
+}
+
 void ONScripter::combineWithCamera(RenderImage *scene, RenderImage *hud, RenderTarget *dst, RenderRect &scene_rect, RenderRect &hud_rect, int refresh_mode) {
 	//sendToLog(LogLevel::Info, "combineWithCamera called rm %d\n", refresh_mode);
 
@@ -2038,6 +2156,12 @@ void ONScripter::executeLabel() {
 
 			if (!(ret & RET_NO_READ))
 				readToken();
+
+			if (save_load_transition_pending &&
+			    save_load_transition_call_depth > 0 &&
+			    callStack.size() < save_load_transition_call_depth) {
+				completeSaveLoadTransition();
+			}
 		}
 
 		current_label_info = script_h.lookupLabelNext(current_label_info->name);

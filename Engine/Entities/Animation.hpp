@@ -276,6 +276,7 @@ public:
 	void performCopyNonImageFields(const AnimationInfo &o); // everything else (but images)
 	void deepcopyNonImageFields(const AnimationInfo &o);
 	void deepcopy(const AnimationInfo &o);
+	void shareImageFrom(const AnimationInfo &o);
 
 	void reset();
 
