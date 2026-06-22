@@ -1,6 +1,6 @@
 # onscripter-new Project Status
 
-Updated: 2026-06-21
+Updated: 2026-06-22
 
 This file consolidates the former compilation guide, dependency audit, and SDL3 performance audit into one maintenance document for the current `onscripter-new` release branch.
 
@@ -4594,6 +4594,34 @@ both artifacts with SHA-256
 `bc13b519c1293defaa8c78fc460b05d241eea0877dfad61e18a98143d939f9db` for
 `onscripter-new-android.apk`. The refreshed Windows executable SHA-256 is
 `C67474C7D4D5C3DC8AC18CE674131CFB262D75051351CF21881A69B9FB081156`.
+
+Message Browser jump-confirmation centering follow-up: the 2026-06-22
+packed-script UI pass removes the old 1600-pixel wrapper from
+`jump_hint_text` so the shared centered-message helper measures and centers the
+visible prompt text directly. This matches the exact-width approach already
+used by the reset confirmation dialog and keeps the `Yes, I'm sure`/`No!`
+choice row centered as a group. The English script was repacked and decode
+round-trip verified exactly. The updated `en.file` was copied to
+`D:\Umineko Project` with matching SHA-256
+`56935E5F35063EB29E4A0C1B38CD2B8CA44A7FB98DC38AB56D96B83469C1B9C3`.
+No executable rebuild, boot test, benchmark, or runtime visual pass was run.
+
+Release packaging follow-up: local `v2026.06.22` artifacts were prepared under
+`DerivedData\Release\v2026.06.22`. The Windows x86_64 zip carries forward the
+current `onscripter-new.exe`, install notes, and maintained textbox preview
+assets, and replaces only the packed `en.file` with the centered
+Message Browser jump-confirmation script. The Android APK was carried forward
+unchanged from `v2026.06.21.1` because the APK does not bundle `en.file` and no
+native Android code changed. The Windows archive was validated with `unzip -t`;
+the carried APK verified with APK Signature Scheme v2, package id
+`org.umineko_project.onscripter_ru`, label `onscripter-new`, min SDK 34,
+target SDK 36, only `android.permission.VIBRATE`, and native code ABIs
+`arm64-v8a` and `x86_64`. `SHA256SUMS.txt` covers both artifacts with SHA-256
+`019dba5f49871a2f0c4085bf4620fb7579dea4efc6152380d258ae16082fe14c` for
+`onscripter-new-windows-x86_64.zip` and
+`bc13b519c1293defaa8c78fc460b05d241eea0877dfad61e18a98143d939f9db` for
+`onscripter-new-android.apk`. No executable rebuild, boot test, benchmark, or
+runtime visual pass was run for this script-only release package.
 
 ## Findings
 
