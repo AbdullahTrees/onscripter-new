@@ -1,6 +1,6 @@
 # onscripter-new Project Status
 
-Updated: 2026-06-22
+Updated: 2026-06-30
 
 This file consolidates the former compilation guide, dependency audit, and SDL3 performance audit into one maintenance document for the current `onscripter-new` release branch.
 
@@ -4622,6 +4622,274 @@ target SDK 36, only `android.permission.VIBRATE`, and native code ABIs
 `bc13b519c1293defaa8c78fc460b05d241eea0877dfad61e18a98143d939f9db` for
 `onscripter-new-android.apk`. No executable rebuild, boot test, benchmark, or
 runtime visual pass was run for this script-only release package.
+
+Rain pacing and load-SFX restoration: the 2026-06-28 UCRT64 rebuild restores
+the `fall.dll` high-refresh pacing fix. Layer animations authored with
+`setlayer ...,-1` now scale ObjectFall drop movement by the current game-state
+advance relative to the script-authored frame rate (`setfps`, or the engine
+default when unset), so 60 FPS rain does not run at monitor refresh speed on
+144 Hz displays. Explicit millisecond layer intervals still advance one full
+authored layer step per update, and `fall cover` continues simulating full
+authored frames when filling the screen.
+
+The decoded English script already retained the rain ME load repair: `vol_me`
+saves the unscaled replay volume, and `loadgosub *load_system` repairs active
+rain saves whose ME1 replay would otherwise round to zero after applying the
+global SFX volume. The packed English script was rebuilt from that decoded
+source and round-trip verified exactly.
+
+Status: UCRT64 `make -j8` linked successfully. `Tools\nscmake\nscmake.exe`
+rebuilt `DerivedData\decoded-script\en.file.new`, and `Tools\nscdec\nscdec.exe`
+decoded it back to `en.roundtrip.txt` with an exact `cmp` match against
+`en.txt`. The rebuilt executable and packed script were copied to
+`D:\Umineko Project` with matching SHA-256
+`AD26AAB6050D7A460C913037672617963262C31018B48C7798AC20F56A21FF3E` for
+`onscripter-new.exe` and
+`9F413AE360B0C93319A0396D1B58BEC8CF80E60BBDD3E0108F9D1CE4D855F1E3` for
+`en.file`. A 12-second hidden Umineko Project startup smoke stayed alive until
+intentionally terminated; stderr only reported the existing missing `en.cfg`
+warning.
+
+Slot 8 manual telemetry follow-up: the temporary save-slot autoload benchmark
+was removed after it proved too script-order sensitive for this release script.
+Manual Slot 8 runs with `--sdl3-gpu-telemetry --use-logfile` reached the rain
+scene (`setup a sprite for layer 0` and `layer 1`) and exited cleanly with zero
+CPU shader fallback. The telemetry showed high fixed-function draw and command
+buffer volume rather than CPU shader fallback. ObjectFall rendering now emits a
+single clipped textured-triangle batch per layer refresh instead of calling the
+general blit helper once per drop, while preserving the old blit path for direct
+screen-target draws. The manual run durations varied, so aggregate command
+buffer totals are not a deterministic before/after benchmark; the remaining
+known pressure is refresh-pass volume through the active rain layers.
+
+Rain refresh pressure follow-up: the first 2026-06-30 cadence rebuild reduced
+ObjectFall refresh volume by skipping fractional high-refresh display ticks, but
+that made active rain visibly update at the script-authored cadence instead of
+the monitor cadence. The current rebuild restores smooth active rain updates:
+`setlayer ...,-1` ObjectFall sprites update every display tick again while
+scaling drop movement by the current game-state advance relative to the
+script-authored frame rate. That keeps monitor-rate motion without returning to
+the old monitor-rate speedup. Initial rain spawn, `fall cover`, pause/resume,
+blend, base, speed, wind, dimensions, and amount changes still force immediate
+redraw where needed. Paused ObjectFall layers continue to stop dirtying the
+scene after their forced redraw.
+
+The ObjectFall draw path now avoids two CPU costs that remained after clipped
+triangle batching. It uses a new SDL3_GPU compatibility entry point that accepts
+native XY/RGBA/ST vertices directly, so `fall.dll` no longer builds an
+intermediate XY/ST float buffer and then asks `GPU_TriangleBatch()` to translate
+it into the renderer vertex format. Each drop also caches its rotated quad
+corner offsets when spawned, avoiding per-drop trigonometry and corner rotation
+work on every refresh. The direct screen-target fallback path still uses the
+general blit helper for compatibility.
+
+The constant-refresh loop now also skips the early direct animation flush when
+`proceedAnimation()` expires but produced no beforescene/HUD dirty rectangle and
+the camera did not move. This prevents zero-duration layer animations that
+reported no visual change from still forcing a redundant screen composite.
+
+Follow-up telemetry: ObjectFall layers now print one `ObjectFall telemetry:`
+summary line when `--sdl3-gpu-telemetry` is enabled. The line reports update
+calls, fractional update skips, paused skips, immediate redraws, authored-step
+redraws, refresh calls, triangle-batch refreshes, direct screen fallback
+refreshes, rendered-drop totals, and forced redraw requests per layer. Normal
+quit now snapshots ObjectFall and SDL3_GPU telemetry before shutdown cleanup, so
+manual rain runs do not depend on late renderer deinitialisation to emit the
+benchmark counters.
+
+Status: UCRT64 `make -j8` linked successfully and the rebuilt executable was
+copied to `D:\Umineko Project\onscripter-new.exe` with SHA-256
+`5A56F1809DBC5432429F1584833453AD669A3B3983CF43D7F5478BF3E4BD6C60`.
+`git diff --check` reported no whitespace errors beyond the existing CRLF
+checkout warnings. Visible rain telemetry runs with `--use-logfile
+--sdl3-gpu-telemetry` reached both active rain layers and exited normally.
+
+Manual rain benchmark: a 2026-06-30 visible Umineko Project run used
+`--use-logfile --sdl3-gpu-telemetry`, reached `setup a sprite for layer 0` and
+`layer 1`, held the active rain scene for 60 seconds, and closed through a
+normal window close. A first timed run reached the same rain point but did not
+emit shutdown counters before the quit-time telemetry snapshot hook was added.
+The successful run recorded ObjectFall layer 1 with 8,784 update calls, 4,685
+fractional skips (53.34%), 4,099 drop-update calls (46.66%), 4,024 refresh
+calls (45.81%), 4,024 triangle-batch refreshes, zero direct screen fallbacks,
+and 2,012,000 rendered drops (500 drops per refresh). SDL3_GPU aggregate
+telemetry for the run reported 291,593 command buffers, 1,407 texture uploads
+(249,022,208 bytes), 8 readbacks (60,026,576 bytes), 234,645 native
+fixed-pipeline draws, 4,562 native shader draws, and zero CPU blit or CPU shader
+fallback work.
+
+Smooth rain benchmark: after restoring monitor-rate visual updates and adding
+the direct native vertex path/cached drop corners, a second 2026-06-30 visible
+Umineko Project run used `--use-logfile --sdl3-gpu-telemetry`, reached both
+active rain layers, held the rain scene for 60 seconds, and closed normally.
+ObjectFall layer 1 recorded 8,346 update calls, zero fractional skips, 8,346
+drop-update calls, 7,963 refresh calls (95.41% of update calls), 7,963
+triangle-batch refreshes, zero direct screen fallbacks, and 3,981,500 rendered
+drops. SDL3_GPU aggregate telemetry reported 317,564 command buffers, 1,425
+texture uploads (249,009,664 bytes), 8 readbacks (30,267,072 bytes), 260,872
+native fixed-pipeline draws, 1,872 native shader draws, and zero CPU blit or CPU
+shader fallback work. This supersedes the fractional-skip benchmark for visual
+quality; the remaining pressure is now per-frame rain draw volume and broader
+fixed-pipeline/command-buffer overhead while preserving smooth rain motion.
+
+Submission throttle follow-up: the SDL3_GPU backend previously forced a full
+`SDL_WaitForGPUIdle()` after every 8 submitted command buffers to prevent an old
+D3D12 private-memory spike during menu loading. The current local runtime uses
+the Vulkan backend, and the active rain scene submits thousands of short command
+buffers per second, so that cap was over-throttling frame pacing. The default
+forced-idle backlog is now 512 submitted command buffers, with an override via
+`ONS_SDL3_GPU_MAX_QUEUED_COMMAND_BUFFERS` (`0` disables this safety throttle).
+SDL3_GPU aggregate telemetry now also reports `blocking_gpu_waits`.
+
+With the 512 default, a 2026-06-30 visible 60-second active-rain run reached
+both rain layers, kept `skipped_fractional_updates=0`, and recorded ObjectFall
+layer 1 with 9,527 update calls, 9,138 refresh calls, 9,138 triangle-batch
+refreshes, zero direct screen fallbacks, and 4,569,000 rendered drops. SDL3_GPU
+reported 364,188 command buffers, 299,843 native fixed-pipeline draws,
+22,006,864 native fixed vertices, 1,814 native shader draws, zero CPU blit or
+CPU shader fallback work, and 715 blocking GPU waits. A comparison run launched
+with `ONS_SDL3_GPU_MAX_QUEUED_COMMAND_BUFFERS=2048` lowered blocking waits to
+173 but also measured fewer ObjectFall updates (9,239), so the copied build
+keeps the safer 512 default unless later user-visible FPS testing shows a larger
+cap is worthwhile.
+
+Slot 2 speaking-sprite follow-up: the 2026-06-30 UCRT64 rebuild reduces
+lipsync refresh pressure by keeping mouth cells at the current audio-derived
+value until the 50 ms lip chunk actually changes. The old lipsync action closed
+the mouth with `draw()` and then usually reopened it for the active chunk on the
+same constant-refresh run, with each helper call flushing independently. The new
+path scans all configured lip character names together, dirties sprites only
+when their cell actually changes, and flushes once for that batch. Expiry still
+closes the mouth, and shutdown telemetry now prints one `Lips telemetry:` line
+when `--sdl3-gpu-telemetry` is enabled.
+
+Status: UCRT64 `make -j8` linked successfully, and the rebuilt executable was
+copied to `D:\Umineko Project\onscripter-new.exe` with SHA-256
+`C05FF942DC284022C2B0649D2B9F98E90010A80391168A91C0DFC26B1839078E`. A visible
+Slot 2 run used `--use-logfile --sdl3-gpu-telemetry`, exercised the
+speaking-sprite/lipsync scene without ObjectFall rain, and exited normally. The
+archived log is
+`C:\ProgramData\ONScripter-RU\20260630-123500-slot2-lips.out.txt`. Lipsync
+telemetry reported 18 load calls, 886 loaded chunks, 4,258 action runs, 4,276
+target-cell update attempts, 191 sprite cell changes, 191 lipsync-triggered
+flushes, 4,075 no-change runs, and 8 expiry closes. SDL3_GPU aggregate telemetry
+for the same run reported 199,577 command buffers, 171,763 native fixed draws,
+5,420,232 native fixed vertices, 2,204 native shader draws, zero CPU blit or CPU
+shader fallback work, and 394 blocking GPU waits.
+
+Slot 10 frame-pacing follow-up: the stable ~125 FPS ceiling in some scenes was
+traced to the wait loop's coarse idle nap. The loop slept with `SDL_Delay(1)`
+whenever it thought more than 5 ms remained before the next flip; at a 144 Hz
+target the whole frame budget is only about 6.945 ms, so a one-millisecond OS
+timer oversleep could quantize light frames near an 8 ms cadence. The SDL3 path
+now uses `SDL_DelayPrecise()` with a 1 ms guard, and the shared non-SDL3 coarse
+sleep path is limited to frame budgets of at least 10 ms. Shutdown telemetry now
+also prints one `Frame pacing telemetry:` line under `--sdl3-gpu-telemetry`.
+
+Status: UCRT64 `make -j8` linked successfully, and the rebuilt executable was
+copied to `D:\Umineko Project\onscripter-new.exe` with SHA-256
+`34D5DEA95BAEFCFD9B410E90A66F35BFCCD8E8BAD685FAB364BBFE8D3A7BA3E8`. A visible
+Slot 10 run used `--use-logfile --sdl3-gpu-telemetry`, reached both ObjectFall
+layers, and exited normally. The archived log is
+`C:\ProgramData\ONScripter-RU\20260630-124723-slot10-frame-pacing.out.txt`.
+Frame pacing telemetry reported 7,515 aggregate loop frames, 6.901 ms average
+loop frame time, 6.945 ms target frame time, 6.345 ms wait target after tail
+compensation, 1,491 precise sleep calls, zero coarse sleep calls, and
+60,712,181 spin polls. The same run recorded ObjectFall layer 1 with 4,134
+update calls, 3,749 triangle-batch refreshes, and 1,874,500 rendered drops.
+SDL3_GPU reported 141,486 command buffers, 116,172 native fixed draws,
+9,906,448 native fixed vertices, 2,104 native shader draws, zero CPU blit or CPU
+shader fallback work, and 279 blocking GPU waits. A later display-counter
+correction showed that this aggregate loop average is not a clean visible-FPS
+measurement for Slot 10.
+
+Display-counter correction: a follow-up 2026-06-30 rebuild feeds the FPS
+overlay/window-title counter from the same completed-frame interval used by the
+frame-pacing telemetry and extends the telemetry line with `fps_display_*`
+fields. This showed that the previous aggregate `average_frame_ms` mixed fast
+non-display loop iterations with visible frames and therefore overstated the
+Slot 10 visible FPS. The copied executable SHA-256 for this follow-up build is
+`F11D14203B13F20A07F95499FFC8415B4961A726363C73EAC6CF82E82EB89EB9`. The
+archived log is
+`C:\ProgramData\ONScripter-RU\20260630-125720-slot10-display-pacing.out.txt`.
+It reported 5,275 aggregate loop frames at 6.488 ms average, but 3,825 FPS
+display samples at 7.837 ms average, matching the user's observed ~125-128 FPS
+counter in Slot 10. CPU fallback still stayed at zero; the remaining pressure is
+real visible-frame cost in this scene rather than stale FPS text.
+
+Fixed-draw attribution follow-up: a 2026-06-30 telemetry rebuild adds
+source-tagged native fixed draw counters and broad draw scopes for animation
+sprites, backgrounds, spritesets, and ObjectFall triangle batches. The copied
+executable SHA-256 for this attribution build is
+`9D55C58AC40954ACA11350EF4483DA527BFAE94C9243754101FC4D7563974DB4`; the
+archived log is
+`C:\ProgramData\ONScripter-RU\20260630-130215-slot10-fixed-draw-sources.out.txt`.
+Slot 10 reported 3,996 FPS display samples at 7.731 ms average, with zero CPU
+fallback. Source-tagged fixed draws showed `draw_sprite` at 19,149 native fixed
+draws and 5,290,272 vertices, while `objectfall_triangle_batch` was only 2,675
+draws and 10,700 vertices. The active rain layer therefore appears to force
+expensive visible sprite redraw volume around the rain pass; ObjectFall's own
+batched triangle draw is no longer the large fixed-pipeline source.
+
+Sprite redraw follow-up: a 2026-06-30 UCRT64 rebuild added a lazy per-cell GPU
+cache for unscaled `GPUBigImage` sprites and extra shutdown telemetry for that
+path. The copied executable SHA-256 for that probe build was
+`A56D5ACEAE86708D4C6B7FDEC1C6515D80027C698A91615E59A5F7F4F448FBFA`; the
+archived Slot 10 log is
+`C:\ProgramData\ONScripter-RU\20260630-133023-slot10-bigimage-cache.out.txt`.
+Slot 10 did not exercise the `GPUBigImage` draw path, so the in-game FPS
+counter remained around the same 125-129 FPS band and the remaining redraw cost
+was confirmed to be regular sprite/HUD composition rather than big-image chunk
+assembly.
+
+SDL3_GPU blit-culling follow-up: a later 2026-06-30 rebuild added backend
+axis-aligned native-blit culling/clipping, fixed native fixed-draw attribution
+to count actual draw-group vertices instead of the full batch per group, and
+switched telemetry source lookup to the innermost active scope. The copied
+executable SHA-256 for that probe build was
+`9F070EC986991A723FB0EBEA4806140040B7611B505EEA656F0D521EE74CD3D5`; the
+archived Slot 10 log is
+`C:\ProgramData\ONScripter-RU\20260630-133550-slot10-blit-cull-attribution.out.txt`.
+It reported 2,627 native blit culls and 8,330 native blit clips, but visible
+frame samples still averaged 7.923 ms, so this low-level clipping did not remove
+the stable FPS ceiling by itself.
+
+A subsequent attempt to composite only the detected active HUD region over
+scene-only rain frames produced misaligned title/menu elements in visual testing
+and was immediately reverted. The current copied executable restores the
+original full-HUD composite in `combineWithCamera()` while keeping the safer
+telemetry and backend culling changes above. Status: UCRT64 `make -j8` linked
+successfully after the revert, and the corrected executable was copied to
+`D:\Umineko Project\onscripter-new.exe` with SHA-256
+`17836474C97064A08A8BB5F15DC8ACEC5F217D7CD7C3A683BF29E5A4C351305F`. No
+post-revert manual benchmark was run.
+
+Release packaging follow-up: local `v2026.06.30` artifacts were prepared under
+`DerivedData\Release\v2026.06.30`. The Windows x86_64 zip includes the rebuilt
+rain/sprite redraw optimization executable, the current packed `en.file`
+containing the rain ME load repair, install notes, and the maintained loose
+textbox preview assets. The Android APK was rebuilt from the current shared
+engine source for both `arm64-v8a` and `x86_64`; a small Android-only warning
+cleanup scoped the coarse SDL2 sleep constants out of SDL3 builds before the
+final rebuild.
+
+Status: UCRT64 Windows release configure with embedded Discord Application ID
+`1517334948967747794` and `make -j8` linked successfully, producing
+`onscripter-new.exe` SHA-256
+`2CD7D31B5107F6E72B5015B71EDDCD8E8CEFD9CD62AC6BE1BE31DFF2AC29D6B5`, which was
+copied to `D:\Umineko Project\onscripter-new.exe` with a matching hash.
+`Scripts\quickdroid.tool --release` produced a multi-ABI APK containing
+`lib/arm64-v8a/libmain.so` and `lib/x86_64/libmain.so`; the APK verified with
+APK Signature Scheme v2, package id `org.umineko_project.onscripter_ru`, label
+`onscripter-new`, min SDK 34, target SDK 36, only
+`android.permission.VIBRATE`, and native code ABIs `arm64-v8a` and `x86_64`.
+The Windows archive was validated with `unzip -t`, and `SHA256SUMS.txt` was
+regenerated and validated for both artifacts with SHA-256
+`cda0e9f1743aad4b235344c1106d8b7b4001b288cea37a7f6821c01378dae3f8` for
+`onscripter-new-windows-x86_64.zip` and
+`224751f353e2d4096c1e8ed52ad63acd0b85bcd58d6f5038a81a94f244ac49f4` for
+`onscripter-new-android.apk`. No post-release manual benchmark or runtime
+visual pass was run.
 
 ## Findings
 

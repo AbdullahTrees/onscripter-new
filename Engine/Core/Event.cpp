@@ -19,6 +19,8 @@
 #endif
 
 #include <algorithm>
+#include <cstdio>
+#include <cstring>
 #include <numeric>
 
 const uint32_t MAX_TOUCH_TAP_TIMESPAN{80};
@@ -30,10 +32,45 @@ const uint64_t NANOS_PER_MILLISECOND{1000000ULL};
 const uint64_t STALE_FRAME_BASELINE_NS{250ULL * NANOS_PER_MILLISECOND};
 const uint64_t FPS_DISPLAY_UPDATE_INTERVAL_NS{250ULL * NANOS_PER_MILLISECOND};
 const uint64_t MAX_FRAME_TAIL_COMPENSATION_NS{2ULL * NANOS_PER_MILLISECOND};
+const uint64_t PRECISE_SLEEP_GUARD_NS{1ULL * NANOS_PER_MILLISECOND};
+const uint64_t PRECISE_SLEEP_MIN_NS{2ULL * NANOS_PER_MILLISECOND};
+#if !defined(ONS_USE_SDL3)
+const uint64_t COARSE_SLEEP_FRAME_MIN_NS{10ULL * NANOS_PER_MILLISECOND};
+const uint64_t COARSE_SLEEP_REMAINING_MIN_NS{8ULL * NANOS_PER_MILLISECOND};
+#endif
 #if !defined(ONS_USE_SDL3)
 const float TOUCH_ACTION_THRESHOLD_X = 0.1;
 const float TOUCH_ACTION_THRESHOLD_Y = 0.15;
 #endif
+
+struct FramePacingTelemetry {
+	uint64_t frames{0};
+	uint64_t totalFrameNanos{0};
+	uint64_t maxFrameNanos{0};
+	uint64_t targetFrameNanos{0};
+	uint64_t waitTargetNanos{0};
+	uint64_t overshootFrames{0};
+	uint64_t overshootNanos{0};
+	uint64_t downtimePolls{0};
+	uint64_t downtimeWorkPolls{0};
+	uint64_t preciseSleepCalls{0};
+	uint64_t coarseSleepCalls{0};
+	uint64_t spinPolls{0};
+	uint64_t fpsDisplaySamples{0};
+	uint64_t fpsDisplayTotalFrameNanos{0};
+	uint64_t fpsDisplayMaxFrameNanos{0};
+	double lastFpsDisplayFrameMs{0};
+	double lastFpsDisplayValue{0};
+	double minFpsDisplayValue{0};
+	double maxFpsDisplayValue{0};
+};
+
+static FramePacingTelemetry framePacingTelemetry;
+
+static bool framePacingTelemetryEnabled() {
+	const char *value = onsSDLGetEnv("ONS_SDL3_GPU_TELEMETRY");
+	return value && *value && std::strcmp(value, "0") != 0;
+}
 
 enum {
 	ONS_MUSIC_EVENT,
@@ -297,6 +334,15 @@ float ONScripter::effectiveRefreshRate() const {
 	return DEFAULT_FPS;
 }
 
+double ONScripter::currentScriptFrameDeltaScale() const {
+	const int authoredFps = game_fps > 0 ? game_fps : DEFAULT_FPS;
+	if (current_game_state_advance_nanos == 0 || authoredFps <= 0)
+		return 1.0;
+
+	return static_cast<double>(current_game_state_advance_nanos) *
+	       static_cast<double>(authoredFps) / 1000000000.0;
+}
+
 void ONScripter::toggleFpsOverlay() {
 	fps_overlay_visible          = !fps_overlay_visible;
 	fps_overlay_dirty            = true;
@@ -327,6 +373,55 @@ void ONScripter::updateFpsCounter(double frameMilliseconds) {
 		fps_overlay_text  = label;
 		fps_overlay_dirty = true;
 	}
+}
+
+void ONScripter::printFramePacingTelemetry() const {
+	if (!framePacingTelemetryEnabled() || framePacingTelemetry.frames == 0)
+		return;
+
+	const double averageFrameMs = static_cast<double>(framePacingTelemetry.totalFrameNanos) /
+	                              static_cast<double>(framePacingTelemetry.frames) /
+	                              static_cast<double>(NANOS_PER_MILLISECOND);
+	const double maxFrameMs = static_cast<double>(framePacingTelemetry.maxFrameNanos) /
+	                          static_cast<double>(NANOS_PER_MILLISECOND);
+	const double targetFrameMs = static_cast<double>(framePacingTelemetry.targetFrameNanos) /
+	                             static_cast<double>(NANOS_PER_MILLISECOND);
+	const double waitTargetMs = static_cast<double>(framePacingTelemetry.waitTargetNanos) /
+	                            static_cast<double>(NANOS_PER_MILLISECOND);
+	const double fpsDisplayAverageFrameMs = framePacingTelemetry.fpsDisplaySamples
+	                                            ? static_cast<double>(framePacingTelemetry.fpsDisplayTotalFrameNanos) /
+	                                                  static_cast<double>(framePacingTelemetry.fpsDisplaySamples) /
+	                                                  static_cast<double>(NANOS_PER_MILLISECOND)
+	                                            : 0.0;
+	const double fpsDisplayMaxFrameMs = static_cast<double>(framePacingTelemetry.fpsDisplayMaxFrameNanos) /
+	                                    static_cast<double>(NANOS_PER_MILLISECOND);
+	std::printf("Frame pacing telemetry: frames=%llu average_frame_ms=%.3f max_frame_ms=%.3f "
+	            "target_frame_ms=%.3f wait_target_ms=%.3f overshoot_frames=%llu overshoot_ms=%.3f "
+	            "downtime_polls=%llu downtime_work_polls=%llu precise_sleep_calls=%llu "
+	            "coarse_sleep_calls=%llu spin_polls=%llu fps_display_samples=%llu "
+	            "fps_display_average_frame_ms=%.3f fps_display_max_frame_ms=%.3f "
+	            "last_fps_display_frame_ms=%.3f last_fps_display_value=%.3f "
+	            "min_fps_display_value=%.3f max_fps_display_value=%.3f\n",
+	            static_cast<unsigned long long>(framePacingTelemetry.frames),
+	            averageFrameMs,
+	            maxFrameMs,
+	            targetFrameMs,
+	            waitTargetMs,
+	            static_cast<unsigned long long>(framePacingTelemetry.overshootFrames),
+	            static_cast<double>(framePacingTelemetry.overshootNanos) /
+	                static_cast<double>(NANOS_PER_MILLISECOND),
+	            static_cast<unsigned long long>(framePacingTelemetry.downtimePolls),
+	            static_cast<unsigned long long>(framePacingTelemetry.downtimeWorkPolls),
+	            static_cast<unsigned long long>(framePacingTelemetry.preciseSleepCalls),
+	            static_cast<unsigned long long>(framePacingTelemetry.coarseSleepCalls),
+	            static_cast<unsigned long long>(framePacingTelemetry.spinPolls),
+	            static_cast<unsigned long long>(framePacingTelemetry.fpsDisplaySamples),
+	            fpsDisplayAverageFrameMs,
+	            fpsDisplayMaxFrameMs,
+	            framePacingTelemetry.lastFpsDisplayFrameMs,
+	            framePacingTelemetry.lastFpsDisplayValue,
+	            framePacingTelemetry.minFpsDisplayValue,
+	            framePacingTelemetry.maxFpsDisplayValue);
 }
 
 void ONScripter::drawFpsOverlay() {
@@ -442,10 +537,15 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		uint64_t nanosPerFrame   = fps->nanosPerFrame();
 		uint64_t timeThisFrame{nanosPerFrame};
 		uint64_t waitThisFrame{timeThisFrame};
+		const bool collectFramePacingTelemetry = framePacingTelemetryEnabled();
 		const uint64_t maxTailCompensation = std::min(timeThisFrame / 2, MAX_FRAME_TAIL_COMPENSATION_NS);
 		const uint64_t tailCompensation    = std::min(frameTailEstimateNanos, maxTailCompensation);
 		if (tailCompensation < waitThisFrame)
 			waitThisFrame -= tailCompensation;
+		if (collectFramePacingTelemetry) {
+			framePacingTelemetry.targetFrameNanos = timeThisFrame;
+			framePacingTelemetry.waitTargetNanos  = waitThisFrame;
+		}
 		if (resetFramePacing) {
 			accumulatedOvershootNanos = 0;
 			lastFlipTimeNanos         = thisCallTimeNanos;
@@ -505,8 +605,13 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 			uint64_t ticksNowNanos = highResolutionTicksNanos();
 			uint64_t frameElapsed  = ticksNowNanos - lastFlipTimeNanos;
 			if (frameElapsed >= waitThisFrame) {
-				if (frameElapsed > timeThisFrame)
+				if (frameElapsed > timeThisFrame) {
 					accumulatedOvershootNanos += frameElapsed - timeThisFrame;
+					if (collectFramePacingTelemetry) {
+						++framePacingTelemetry.overshootFrames;
+						framePacingTelemetry.overshootNanos += frameElapsed - timeThisFrame;
+					}
+				}
 				break;
 			}
 			// We don't want to be precise in SSKIP mode
@@ -514,9 +619,31 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 				break;
 			// we still have time, do some downtime processing
 			bool processed{mainThreadDowntimeProcessing(false)};
-			// if we're way ahead of schedule (defined here as more than 5ms), let's have a little nap so we don't destroy everyone's CPU
-			if (!processed && frameElapsed + (5ULL * NANOS_PER_MILLISECOND) <= waitThisFrame) {
-				SDL_Delay(1);
+			if (collectFramePacingTelemetry) {
+				++framePacingTelemetry.downtimePolls;
+				if (processed)
+					++framePacingTelemetry.downtimeWorkPolls;
+			}
+			if (!processed) {
+				const uint64_t remainingNanos = waitThisFrame - frameElapsed;
+#if defined(ONS_USE_SDL3)
+				if (remainingNanos > PRECISE_SLEEP_MIN_NS + PRECISE_SLEEP_GUARD_NS) {
+					if (collectFramePacingTelemetry)
+						++framePacingTelemetry.preciseSleepCalls;
+					SDL_DelayPrecise(remainingNanos - PRECISE_SLEEP_GUARD_NS);
+					continue;
+				}
+#else
+				if (timeThisFrame >= COARSE_SLEEP_FRAME_MIN_NS &&
+				    remainingNanos >= COARSE_SLEEP_REMAINING_MIN_NS) {
+					if (collectFramePacingTelemetry)
+						++framePacingTelemetry.coarseSleepCalls;
+					SDL_Delay(1);
+					continue;
+				}
+#endif
+				if (collectFramePacingTelemetry)
+					++framePacingTelemetry.spinPolls;
 			}
 		}
 
@@ -542,31 +669,46 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		SDL_PollEvent(nullptr);
 #endif
 
-		if ((show_fps_counter || fps_overlay_visible) && !(skip_mode & SKIP_SUPERSKIP)) {
-			static std::deque<double> ticksList;
-			static uint64_t lastTitleUpdateNanos = 0;
-			// display fps counter averaged over 30 frames
-			uint64_t nowNanos = highResolutionTicksNanos();
-			double elapsedMillis = static_cast<double>(nowNanos - lastFlipTimeNanos) / NANOS_PER_MILLISECOND;
-			if (elapsedMillis > 0.0) {
-				ticksList.push_front(elapsedMillis);
-				if (ticksList.size() > 30)
-					ticksList.pop_back();
-				double av = std::accumulate(ticksList.begin(), ticksList.end(), 0.0) / ticksList.size();
-				if (fps_overlay_visible)
-					updateFpsCounter(av);
-				if (show_fps_counter && (lastTitleUpdateNanos == 0 || nowNanos - lastTitleUpdateNanos >= FPS_DISPLAY_UPDATE_INTERVAL_NS)) {
-					char titlestring[512];
-					std::snprintf(titlestring, sizeof(titlestring), "[Renderer: %s / TPF: %.3f ms / FPS: %.3f] %s%s",
-					              gpu.current_renderer->name, av, 1000.0 / av, volume_on_flag ? "" : "[Sound: Off] ", wm_title_string);
-					window.setTitle(titlestring);
-					lastTitleUpdateNanos = nowNanos;
-				}
-			}
-		}
-
 		//sendToLog(LogLevel::Info,"  flipped -- aimed for %i ms, took %i ms\n", constant_refresh_interval, ticksNow - lastFlipTime);
 		const uint64_t frameEndNanos = highResolutionTicksNanos();
+		const uint64_t frameNanos    = frameEndNanos >= lastFlipTimeNanos ? frameEndNanos - lastFlipTimeNanos : 0;
+		if (collectFramePacingTelemetry && frameEndNanos >= lastFlipTimeNanos) {
+			++framePacingTelemetry.frames;
+			framePacingTelemetry.totalFrameNanos += frameNanos;
+			framePacingTelemetry.maxFrameNanos = std::max(framePacingTelemetry.maxFrameNanos, frameNanos);
+		}
+
+		if ((show_fps_counter || fps_overlay_visible) && !(skip_mode & SKIP_SUPERSKIP) && frameNanos > 0) {
+			static std::deque<double> ticksList;
+			static uint64_t lastTitleUpdateNanos = 0;
+			// Display FPS from the same completed-frame interval used by pacing telemetry.
+			double elapsedMillis = static_cast<double>(frameNanos) / NANOS_PER_MILLISECOND;
+			ticksList.push_front(elapsedMillis);
+			if (ticksList.size() > 30)
+				ticksList.pop_back();
+			double av = std::accumulate(ticksList.begin(), ticksList.end(), 0.0) / ticksList.size();
+			if (collectFramePacingTelemetry) {
+				++framePacingTelemetry.fpsDisplaySamples;
+				framePacingTelemetry.fpsDisplayTotalFrameNanos += frameNanos;
+				framePacingTelemetry.fpsDisplayMaxFrameNanos = std::max(framePacingTelemetry.fpsDisplayMaxFrameNanos, frameNanos);
+				framePacingTelemetry.lastFpsDisplayFrameMs = av;
+				framePacingTelemetry.lastFpsDisplayValue   = 1000.0 / av;
+				if (framePacingTelemetry.minFpsDisplayValue == 0.0 ||
+				    framePacingTelemetry.lastFpsDisplayValue < framePacingTelemetry.minFpsDisplayValue)
+					framePacingTelemetry.minFpsDisplayValue = framePacingTelemetry.lastFpsDisplayValue;
+				framePacingTelemetry.maxFpsDisplayValue = std::max(framePacingTelemetry.maxFpsDisplayValue,
+				                                                   framePacingTelemetry.lastFpsDisplayValue);
+			}
+			if (fps_overlay_visible)
+				updateFpsCounter(av);
+			if (show_fps_counter && (lastTitleUpdateNanos == 0 || frameEndNanos - lastTitleUpdateNanos >= FPS_DISPLAY_UPDATE_INTERVAL_NS)) {
+				char titlestring[512];
+				std::snprintf(titlestring, sizeof(titlestring), "[Renderer: %s / TPF: %.3f ms / FPS: %.3f] %s%s",
+				              gpu.current_renderer->name, av, 1000.0 / av, volume_on_flag ? "" : "[Sound: Off] ", wm_title_string);
+				window.setTitle(titlestring);
+				lastTitleUpdateNanos = frameEndNanos;
+			}
+		}
 		if (!(skip_mode & SKIP_SUPERSKIP) && frameEndNanos >= frameTailStartNanos) {
 			const uint64_t frameTailNanos = std::min(frameEndNanos - frameTailStartNanos, maxTailCompensation);
 			if (frameTailEstimateNanos == 0)
@@ -1611,6 +1753,8 @@ void ONScripter::handleRegisteredActions(uint64_t ns) {
 }
 
 void ONScripter::advanceGameState(uint64_t ns) {
+	current_game_state_advance_nanos = ns;
+
 	serviceDiscordPresence();
 
 	handleRegisteredActions(ns);
@@ -1643,12 +1787,14 @@ void ONScripter::advanceGameState(uint64_t ns) {
 void ONScripter::constantRefresh() {
 
 	if (proceedAnimation() >= 0) {
-		flush(refreshMode() |
-		          (draw_cursor_flag ? REFRESH_CURSOR_MODE : 0) |
-		          REFRESH_BEFORESCENE_MODE,
-		      &before_dirty_rect_scene.bounding_box_script,
-		      &before_dirty_rect_hud.bounding_box_script,
-		      false, true);
+		if (!before_dirty_rect_scene.isEmpty() || !before_dirty_rect_hud.isEmpty() || camera.has_moved) {
+			flush(refreshMode() |
+			          (draw_cursor_flag ? REFRESH_CURSOR_MODE : 0) |
+			          REFRESH_BEFORESCENE_MODE,
+			      &before_dirty_rect_scene.bounding_box_script,
+			      &before_dirty_rect_hud.bounding_box_script,
+			      false, true);
+		}
 	}
 
 	bool effectIsOver = false;

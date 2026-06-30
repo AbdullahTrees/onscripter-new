@@ -1119,7 +1119,7 @@ public:
 	public:
 		int channel{0};
 		void run() override;
-		void draw();
+		bool draw();
 		bool expired() override;
 		void onExpired() override;
 		bool suspendsMainScript() override {
@@ -1130,7 +1130,7 @@ public:
 		}
 
 	private:
-		void setCellForCharacter(const std::string &characterName, int cellNumber);
+		bool setCellForCharacters(const std::vector<std::string> &characterNames, int cellNumber);
 	};
 
 private:
@@ -1143,7 +1143,19 @@ private:
 		std::vector<std::string> characterNames;
 		Lips lipsData;
 	};
+	struct LipsTelemetry {
+		uint64_t loadCalls{0};
+		uint64_t loadedChunks{0};
+		uint64_t runCalls{0};
+		uint64_t targetCellUpdates{0};
+		uint64_t spriteCellChanges{0};
+		uint64_t flushes{0};
+		uint64_t noChangeRuns{0};
+		uint64_t expiredCloses{0};
+	};
 	double speechLevels[2]{0.3, 0.7};
+	LipsTelemetry lipsTelemetry;
+	mutable bool lipsTelemetryPrinted{false};
 
 	std::vector<cmp::optional<LipsChannel>> lipsChannels; // used instead of map for threading guarantees of preallocated vector
 	                                                      // Various solutions were imagined:
@@ -1525,6 +1537,7 @@ public:
 	void flush(int refresh_mode, RenderRect *scene_rect = nullptr, RenderRect *hud_rect = nullptr, bool clear_dirty_flag = true, bool direct_flag = false, bool wait_for_cr = false);
 	void flushDirect(RenderRect &scene_rect, RenderRect &hud_rect, int refresh_mode);
 	float effectiveRefreshRate() const;
+	double currentScriptFrameDeltaScale() const;
 	int game_fps{0};
 	bool force_fps_override{false};
 	bool should_flip{true};
@@ -1535,6 +1548,7 @@ private:
 	bool pre_screen_render{false};
 	int constant_refresh_mode{REFRESH_NONE_MODE};
 	bool screenChanged{false};
+	uint64_t current_game_state_advance_nanos{0};
 	bool saveNextFrame{false};
 	Clock warpClock;
 	float warpSpeed{0};
@@ -1578,6 +1592,9 @@ private:
 	void buildGPUImage(AnimationInfo &ai);
 	void freeRedundantSurfaces(AnimationInfo &ai);
 	void printImageMemoryTelemetry(const char *context);
+	void printFramePacingTelemetry() const;
+	void printLipsTelemetry() const;
+	void printBigImageCellCacheTelemetry() const;
 	void setupAnimationInfo(AnimationInfo *anim, Fontinfo *info = nullptr);
 	void postSetupAnimationInfo(AnimationInfo *anim);
 	void buildAIImage(AnimationInfo *anim);

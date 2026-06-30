@@ -186,6 +186,7 @@ void AnimationInfo::deleteImage() {
 		SDL_FreeSurface(image_surface);
 	if (gpu_image)
 		gpu.freeImage(gpu_image);
+	clearBigImageCellCache();
 
 	gpu_image               = nullptr;
 	image_surface           = nullptr;
@@ -673,6 +674,7 @@ void AnimationInfo::setImage(RenderImage *image) {
 	if (!image)
 		return;
 
+	clearBigImageCellCache();
 	gpu_image = image;
 	calculateImage(image->w, image->h);
 }
@@ -681,6 +683,7 @@ void AnimationInfo::setSurface(SDL_Surface *surface) {
 	if (!surface)
 		return;
 
+	clearBigImageCellCache();
 	image_surface = surface;
 	calculateImage(surface->w, surface->h);
 }
@@ -689,8 +692,18 @@ void AnimationInfo::setBigImage(GPUBigImage *image) {
 	if (!image)
 		return;
 
+	clearBigImageCellCache();
 	big_image = std::shared_ptr<GPUBigImage>(image);
 	calculateImage(image->w, image->h);
+}
+
+void AnimationInfo::clearBigImageCellCache() {
+	if (big_image_cell_cache)
+		gpu.freeImage(big_image_cell_cache);
+	big_image_cell_cache      = nullptr;
+	big_image_cell_cache_cell = -1;
+	big_image_cell_cache_w    = 0;
+	big_image_cell_cache_h    = 0;
 }
 
 void AnimationInfo::backupState() {

@@ -778,6 +778,13 @@ void ScriptParser::deleteLayerInfo() {
 	}
 }
 
+void ScriptParser::printLayerTelemetry() const {
+	for (LayerInfo *tmp = layer_info; tmp; tmp = tmp->next) {
+		if (tmp->handler)
+			tmp->handler->printTelemetry();
+	}
+}
+
 void ScriptParser::setCurrentLabel(const char *label) {
 	current_label_info = script_h.lookupLabel(label);
 	current_line       = script_h.getLineByAddress(current_label_info->start_address); // OPTIMIZE ME: this can probably be changed to = 0? check it

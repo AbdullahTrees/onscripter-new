@@ -9,7 +9,16 @@
 
 #include "Engine/Core/ONScripter.hpp"
 
+#include <cstdio>
+#include <cstring>
 #include <limits>
+
+namespace {
+bool lipsTelemetryEnabled() {
+	const char *value = onsSDLGetEnv("ONS_SDL3_GPU_TELEMETRY");
+	return value && *value && std::strcmp(value, "0") != 0;
+}
+}
 
 bool ONScripter::LipsAnimationAction::expired() {
 	if (ons.skipLipsAction)
@@ -19,12 +28,33 @@ bool ONScripter::LipsAnimationAction::expired() {
 	return !ons.wave_sample[channel] || !Mix_Playing(channel) || Mix_Paused(channel);
 }
 
-void ONScripter::LipsAnimationAction::setCellForCharacter(const std::string &characterName, int cellNumber) {
+bool ONScripter::LipsAnimationAction::setCellForCharacters(const std::vector<std::string> &characterNames, int cellNumber) {
+	if (characterNames.empty())
+		return false;
+
+	const bool collectTelemetry = lipsTelemetryEnabled();
+	if (collectTelemetry)
+		++ons.lipsTelemetry.targetCellUpdates;
+
+	bool changed{false};
+	auto matchesCharacter = [&](const char *lipsName) {
+		if (!lipsName)
+			return false;
+		for (const auto &characterName : characterNames) {
+			if (characterName == lipsName)
+				return true;
+		}
+		return false;
+	};
+
 	auto setCell = [&](AnimationInfo *ai, bool oldSprite) {
 		if (ai->exists && ai->gpu_image && ai->visible && ai->lips_name) {
-			if (characterName == ai->lips_name && ai->current_cell != cellNumber) {
+			if (matchesCharacter(ai->lips_name) && ai->current_cell != cellNumber) {
 				ai->setCell(cellNumber);
 				ons.dirtySpriteRect(ai->id, ai->type == SPRITE_LSP2, oldSprite);
+				changed = true;
+				if (collectTelemetry)
+					++ons.lipsTelemetry.spriteCellChanges;
 			}
 		}
 	};
@@ -44,39 +74,50 @@ void ONScripter::LipsAnimationAction::setCellForCharacter(const std::string &cha
 
 	scanSprites(ons.sprite_info);
 	scanSprites(ons.sprite2_info);
-	ons.flush(ons.refreshMode());
+
+	if (changed) {
+		if (collectTelemetry)
+			++ons.lipsTelemetry.flushes;
+		ons.flush(ons.refreshMode());
+	}
+	return changed;
 }
 
-void ONScripter::LipsAnimationAction::draw() {
+bool ONScripter::LipsAnimationAction::draw() {
 	// do this even if expired on last call. onExpire
-	for (auto &charName : ons.lipsChannels[channel].get().characterNames)
-		setCellForCharacter(charName, 0);
+	if (channel < 0 || channel >= static_cast<int>(ons.lipsChannels.size()) || !ons.lipsChannels[channel].has())
+		return false;
+	return setCellForCharacters(ons.lipsChannels[channel].get().characterNames, 0);
 }
 
 void ONScripter::LipsAnimationAction::onExpired() {
 	ConstantRefreshAction::onExpired();
-	draw();
+	if (draw() && lipsTelemetryEnabled())
+		++ons.lipsTelemetry.expiredCloses;
 }
 
 void ONScripter::LipsAnimationAction::run() {
+	const bool collectTelemetry = lipsTelemetryEnabled();
+	if (collectTelemetry)
+		++ons.lipsTelemetry.runCalls;
+
 	if (ons.skipLipsAction)
 		return;
-
-	draw();
-	int now = SDL_GetTicks();
 
 	// Deal with playing channels.
 	if (!ons.wave_sample[channel] || !Mix_Playing(channel) || Mix_Paused(channel))
 		return;
+
+	if (channel < 0 || channel >= static_cast<int>(ons.lipsChannels.size()) || !ons.lipsChannels[channel].has())
+		return;
+
+	int now = SDL_GetTicks();
 	Lips &lipdata = ons.lipsChannels[channel].get().lipsData;
 
 	int index = static_cast<int>((0.0 + now - lipdata.speechStart) / MS_PER_CHUNK);
-	if (index < 0 || index >= lipdata.seqSize)
-		return;
-
-	for (auto &charName : ons.lipsChannels[channel].get().characterNames) {
-		setCellForCharacter(charName, lipdata.seq[index]);
-	}
+	int cellNumber = (index >= 0 && index < lipdata.seqSize) ? lipdata.seq[index] : 0;
+	if (!setCellForCharacters(ons.lipsChannels[channel].get().characterNames, cellNumber) && collectTelemetry)
+		++ons.lipsTelemetry.noChangeRuns;
 }
 
 double ONScripter::readChunk(int channel, uint32_t no) {
@@ -132,6 +173,10 @@ void ONScripter::getChunkParams(uint32_t &chunk_size, double &max_value) {
 }
 
 void ONScripter::loadLips(int channel) {
+	const bool collectTelemetry = lipsTelemetryEnabled();
+	if (collectTelemetry)
+		++lipsTelemetry.loadCalls;
+
 	uint32_t chunk_size;
 	double max_value;
 	getChunkParams(chunk_size, max_value);
@@ -183,4 +228,26 @@ void ONScripter::loadLips(int channel) {
 	} while (i < buf_len);
 
 	lipdata.seqSize = vc;
+	if (collectTelemetry)
+		lipsTelemetry.loadedChunks += vc;
+}
+
+void ONScripter::printLipsTelemetry() const {
+	if (!lipsTelemetryEnabled() || lipsTelemetryPrinted)
+		return;
+	if (lipsTelemetry.loadCalls == 0 && lipsTelemetry.runCalls == 0 && lipsTelemetry.spriteCellChanges == 0)
+		return;
+
+	lipsTelemetryPrinted = true;
+	std::printf("Lips telemetry: load_calls=%llu loaded_chunks=%llu run_calls=%llu "
+	            "target_cell_updates=%llu sprite_cell_changes=%llu flushes=%llu "
+	            "no_change_runs=%llu expired_closes=%llu\n",
+	            static_cast<unsigned long long>(lipsTelemetry.loadCalls),
+	            static_cast<unsigned long long>(lipsTelemetry.loadedChunks),
+	            static_cast<unsigned long long>(lipsTelemetry.runCalls),
+	            static_cast<unsigned long long>(lipsTelemetry.targetCellUpdates),
+	            static_cast<unsigned long long>(lipsTelemetry.spriteCellChanges),
+	            static_cast<unsigned long long>(lipsTelemetry.flushes),
+	            static_cast<unsigned long long>(lipsTelemetry.noChangeRuns),
+	            static_cast<unsigned long long>(lipsTelemetry.expiredCloses));
 }

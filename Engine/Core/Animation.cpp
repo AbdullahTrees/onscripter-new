@@ -15,11 +15,52 @@
 
 #include <unistd.h>
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <unordered_set>
 
 namespace {
+class OptionalGPUTelemetryScope {
+public:
+	OptionalGPUTelemetryScope(bool active, const char *source)
+	    : active(active) {
+		if (active)
+			GPU_PushTelemetryScope(source);
+	}
+	~OptionalGPUTelemetryScope() {
+		if (active)
+			GPU_PopTelemetryScope();
+	}
+
+	OptionalGPUTelemetryScope(const OptionalGPUTelemetryScope &) = delete;
+	OptionalGPUTelemetryScope &operator=(const OptionalGPUTelemetryScope &) = delete;
+
+private:
+	bool active{false};
+};
+
+const char *animationDrawTelemetrySource(const AnimationInfo *info) {
+	if (!info)
+		return "draw_animation";
+	if (info->type & SPRITE_BG)
+		return "draw_background";
+	if (info->type & (SPRITE_LSP | SPRITE_LSP2))
+		return "draw_sprite";
+	if (info->type & SPRITE_SENTENCE_FONT)
+		return "draw_sentence_font";
+	if (info->type & SPRITE_CURSOR)
+		return "draw_cursor";
+	if (info->type & SPRITE_TACHI)
+		return "draw_tachi";
+	if (info->type & (SPRITE_BAR | SPRITE_PRNUM))
+		return "draw_parameter";
+	if (info->type & SPRITE_BUTTONS)
+		return "draw_button";
+	return "draw_animation";
+}
+
 bool perfTelemetryEnabled() {
 	const char *value = onsSDLGetEnv("ONS_SDL3_GPU_TELEMETRY");
 	return value && *value && std::strcmp(value, "0") != 0;
@@ -38,6 +79,21 @@ struct AnimationMemoryStats {
 	size_t bigImageCount{0};
 };
 
+struct BigImageCellCacheTelemetry {
+	uint64_t drawCalls{0};
+	uint64_t cacheDraws{0};
+	uint64_t cacheHits{0};
+	uint64_t cacheBuilds{0};
+	uint64_t fallbackChunkDraws{0};
+	uint64_t fallbackScaledDraws{0};
+	uint64_t fallbackOversizeDraws{0};
+	uint64_t fallbackMissingDraws{0};
+	uint64_t sourceChunksDrawn{0};
+	uint64_t sourceChunksCached{0};
+};
+
+BigImageCellCacheTelemetry bigImageCellCacheTelemetry;
+
 void addAnimationMemory(AnimationInfo *ai, AnimationMemoryStats &stats, std::unordered_set<AnimationInfo *> &seen) {
 	if (!ai || !seen.insert(ai).second)
 		return;
@@ -50,6 +106,10 @@ void addAnimationMemory(AnimationInfo *ai, AnimationMemoryStats &stats, std::uno
 	if (ai->gpu_image) {
 		++stats.gpuImageCount;
 		stats.gpuPixelBytes += ai->gpu_image->pixels.size();
+	}
+	if (ai->big_image_cell_cache) {
+		++stats.gpuImageCount;
+		stats.gpuPixelBytes += ai->big_image_cell_cache->pixels.size();
 	}
 	if (ai->big_image)
 		++stats.bigImageCount;
@@ -108,6 +168,81 @@ RenderRect cellClipRect(const AnimationInfo *ai, int cell) {
 			clip_rect.y += ai->pos.h * cell;
 	}
 	return clip_rect;
+}
+
+RenderImage *ensureBigImageCellCache(AnimationInfo *info, int base_cell_off_x, int base_cell_off_y) {
+	const bool telemetry = perfTelemetryEnabled();
+	if (!info || !info->big_image) {
+		if (telemetry)
+			++bigImageCellCacheTelemetry.fallbackMissingDraws;
+		return nullptr;
+	}
+
+	const int cacheW = static_cast<int>(info->pos.w);
+	const int cacheH = static_cast<int>(info->pos.h);
+	const int maxTexture = gpu.max_texture;
+	const int maxImageDim = static_cast<int>(std::numeric_limits<uint16_t>::max());
+	if (cacheW <= 0 || cacheH <= 0 || cacheW > maxImageDim || cacheH > maxImageDim ||
+	    (maxTexture > 0 && (cacheW > maxTexture || cacheH > maxTexture))) {
+		if (telemetry)
+			++bigImageCellCacheTelemetry.fallbackOversizeDraws;
+		return nullptr;
+	}
+
+	if (info->big_image_cell_cache &&
+	    info->big_image_cell_cache_cell == info->current_cell &&
+	    info->big_image_cell_cache_w == cacheW &&
+	    info->big_image_cell_cache_h == cacheH) {
+		if (telemetry)
+			++bigImageCellCacheTelemetry.cacheHits;
+		return info->big_image_cell_cache;
+	}
+
+	RenderRect fullCell{static_cast<float>(base_cell_off_x), static_cast<float>(base_cell_off_y),
+	                    static_cast<float>(cacheW), static_cast<float>(cacheH)};
+	auto chunks = info->big_image->getImagesForArea(fullCell);
+	if (chunks.empty()) {
+		if (telemetry)
+			++bigImageCellCacheTelemetry.fallbackMissingDraws;
+		return nullptr;
+	}
+
+	info->clearBigImageCellCache();
+	RenderImage *cache = gpu.createImage(static_cast<uint16_t>(cacheW), static_cast<uint16_t>(cacheH), 4);
+	GPU_GetTarget(cache);
+	GPU_SetImageFilter(cache, GPU_FILTER_LINEAR);
+	GPU_SetBlending(cache, true);
+	GPU_SetRGBA(cache, 255, 255, 255, 255);
+	gpu.clearWholeTarget(cache->target, 0, 0, 0, 0);
+
+	RenderRect cacheClip{0, 0, static_cast<float>(cacheW), static_cast<float>(cacheH)};
+	for (auto &chunk : chunks) {
+		RenderImage *chunkImage = chunk.first;
+		const GPU_bool previousBlending = chunkImage->use_blending;
+		const SDL_Color previousColor   = chunkImage->color;
+		GPU_SetBlending(chunkImage, false);
+		if (previousColor.r != 255 || previousColor.g != 255 || previousColor.b != 255 || previousColor.a != 255)
+			GPU_SetRGBA(chunkImage, 255, 255, 255, 255);
+
+		gpu.copyGPUImage(chunkImage, nullptr, &cacheClip, cache->target,
+		                 chunk.second.x + chunkImage->w / 2.0 - base_cell_off_x,
+		                 chunk.second.y + chunkImage->h / 2.0 - base_cell_off_y,
+		                 1, 1, 0, true);
+
+		if (previousColor.r != 255 || previousColor.g != 255 || previousColor.b != 255 || previousColor.a != 255)
+			GPU_SetRGBA(chunkImage, previousColor.r, previousColor.g, previousColor.b, previousColor.a);
+		GPU_SetBlending(chunkImage, previousBlending);
+	}
+
+	info->big_image_cell_cache      = cache;
+	info->big_image_cell_cache_cell = info->current_cell;
+	info->big_image_cell_cache_w    = cacheW;
+	info->big_image_cell_cache_h    = cacheH;
+	if (telemetry) {
+		++bigImageCellCacheTelemetry.cacheBuilds;
+		bigImageCellCacheTelemetry.sourceChunksCached += chunks.size();
+	}
+	return cache;
 }
 
 constexpr int ScrollableTextCacheMinimumPadding = 12;
@@ -472,6 +607,26 @@ void ONScripter::printImageMemoryTelemetry(const char *context) {
 	          static_cast<unsigned long long>(cacheCount),
 	          static_cast<unsigned long long>(cacheBytes),
 	          static_cast<unsigned long long>(totalBytes));
+}
+
+void ONScripter::printBigImageCellCacheTelemetry() const {
+	if (!perfTelemetryEnabled() || bigImageCellCacheTelemetry.drawCalls == 0)
+		return;
+
+	std::printf("BigImage cell cache telemetry: draw_calls=%llu cache_draws=%llu cache_hits=%llu "
+	            "cache_builds=%llu fallback_chunk_draws=%llu fallback_scaled_draws=%llu "
+	            "fallback_oversize_draws=%llu fallback_missing_draws=%llu "
+	            "source_chunks_drawn=%llu source_chunks_cached=%llu\n",
+	            static_cast<unsigned long long>(bigImageCellCacheTelemetry.drawCalls),
+	            static_cast<unsigned long long>(bigImageCellCacheTelemetry.cacheDraws),
+	            static_cast<unsigned long long>(bigImageCellCacheTelemetry.cacheHits),
+	            static_cast<unsigned long long>(bigImageCellCacheTelemetry.cacheBuilds),
+	            static_cast<unsigned long long>(bigImageCellCacheTelemetry.fallbackChunkDraws),
+	            static_cast<unsigned long long>(bigImageCellCacheTelemetry.fallbackScaledDraws),
+	            static_cast<unsigned long long>(bigImageCellCacheTelemetry.fallbackOversizeDraws),
+	            static_cast<unsigned long long>(bigImageCellCacheTelemetry.fallbackMissingDraws),
+	            static_cast<unsigned long long>(bigImageCellCacheTelemetry.sourceChunksDrawn),
+	            static_cast<unsigned long long>(bigImageCellCacheTelemetry.sourceChunksCached));
 }
 
 void ONScripter::setupAnimationInfo(AnimationInfo *anim, Fontinfo *info) {
@@ -853,6 +1008,7 @@ void ONScripter::parseTaggedString(AnimationInfo *anim, bool is_mask) {
 }
 
 void ONScripter::drawSpritesetToGPUTarget(RenderTarget *target, SpritesetInfo *spriteset, RenderRect *clip, int rm) {
+	GPU_TelemetryScope telemetryScope("draw_spriteset");
 	RenderRect myClip{0, 0, static_cast<float>(target->w), static_cast<float>(target->h)};
 	if (clip) {
 		myClip = *clip;
@@ -1414,8 +1570,10 @@ void ONScripter::drawBigImage(RenderTarget *target, AnimationInfo *info, int /*r
 	float bound_off_x = 0;
 	float bound_off_y = 0;
 
-	int cell_off_x = info->vertical_cells ? 0 : info->pos.w * info->current_cell;
-	int cell_off_y = info->vertical_cells ? info->pos.h * info->current_cell : 0;
+	int base_cell_off_x = info->vertical_cells ? 0 : info->pos.w * info->current_cell;
+	int base_cell_off_y = info->vertical_cells ? info->pos.h * info->current_cell : 0;
+	int cell_off_x      = base_cell_off_x;
+	int cell_off_y      = base_cell_off_y;
 
 	RenderRect bounding_rect = info->bounding_rect;
 	if (info->scrollable.h > 0) {
@@ -1524,7 +1682,46 @@ void ONScripter::drawBigImage(RenderTarget *target, AnimationInfo *info, int /*r
 	    info->trans >= 255)                              // must not be transparent at all
 		allowDirectCopy = true;
 
+	if (perfTelemetryEnabled())
+		++bigImageCellCacheTelemetry.drawCalls;
+
+	if (!sprite_transformation_image && scale_x == 1 && scale_y == 1) {
+		if (RenderImage *cellCache = ensureBigImageCellCache(info, base_cell_off_x, base_cell_off_y)) {
+			RenderRect cacheSource{sourceClip.x - base_cell_off_x,
+			                       sourceClip.y - base_cell_off_y,
+			                       sourceClip.w,
+			                       sourceClip.h};
+			const GPU_bool previousBlending = cellCache->use_blending;
+			const SDL_Color previousColor   = cellCache->color;
+
+			if (allowDirectCopy)
+				GPU_SetBlending(cellCache, false);
+			if (info->trans < 255)
+				GPU_SetRGBA(cellCache, info->trans, info->trans, info->trans, info->trans);
+
+			gpu.copyGPUImage(cellCache, &cacheSource, &targetClip, target,
+			                 targetClip.x + targetClip.w / 2.0,
+			                 targetClip.y + targetClip.h / 2.0,
+			                 1, 1, 0, true);
+
+			if (info->trans < 255)
+				GPU_SetRGBA(cellCache, previousColor.r, previousColor.g, previousColor.b, previousColor.a);
+			if (allowDirectCopy)
+				GPU_SetBlending(cellCache, previousBlending);
+			gpu.popBlendMode();
+			if (perfTelemetryEnabled())
+				++bigImageCellCacheTelemetry.cacheDraws;
+			return;
+		}
+	} else if (perfTelemetryEnabled()) {
+		++bigImageCellCacheTelemetry.fallbackScaledDraws;
+	}
+
 	auto chunks = info->big_image->getImagesForArea(sourceClip);
+	if (perfTelemetryEnabled()) {
+		++bigImageCellCacheTelemetry.fallbackChunkDraws;
+		bigImageCellCacheTelemetry.sourceChunksDrawn += chunks.size();
+	}
 	for (auto &chunk : chunks) {
 		float x = chunk.second.x + chunk.first->w / 2.0;
 		float y = chunk.second.y + chunk.first->h / 2.0;
@@ -1596,6 +1793,9 @@ void ONScripter::drawToGPUTarget(RenderTarget *target, AnimationInfo *info, int 
 	if (info->parentImage.no != -1) {
 		return;
 	}
+
+	const bool telemetryScopeActive = !(info->layer_no >= 0 && info->trans_mode == AnimationInfo::TRANS_LAYER);
+	OptionalGPUTelemetryScope telemetryScope(telemetryScopeActive, animationDrawTelemetrySource(info));
 
 	RenderRect real_clip{0, 0, static_cast<float>(target->w), static_cast<float>(target->h)};
 	if (clip) {

@@ -49,6 +49,8 @@ public:
 	virtual void refresh(RenderTarget *target, RenderRect &clip, float x, float y, bool centre_coordinates, int rm, float scalex = 1.0, float scaley = 1.0) = 0;
 	// Commit the internal state
 	virtual void commit() {}
+	// Optional runtime telemetry snapshot before normal shutdown tears down layers.
+	virtual void printTelemetry() const {}
 	// Standard way of intercommunication: message, return code
 	virtual char *message(const char * /*unused*/, int & /*unused*/) {
 		return nullptr;

@@ -14,10 +14,13 @@
 #include "Engine/Graphics/RendererBackend.hpp"
 
 #include <cmath>
+#include <cstring>
+#include <limits>
 #include <random>
 
 ObjectFallLayer::ObjectFallLayer(uint32_t w, uint32_t h)
     : Layer(w, h) {
+	collectTelemetry = telemetryEnabled();
 	baseDrop = gpu.createImage(baseDropWidth, baseDropHeight, 4);
 	GPU_GetTarget(baseDrop);
 	gpu.clear(baseDrop->target, baseDropColour.r, baseDropColour.g, baseDropColour.b, baseDropColour.a);
@@ -25,12 +28,14 @@ ObjectFallLayer::ObjectFallLayer(uint32_t w, uint32_t h)
 }
 
 ObjectFallLayer::~ObjectFallLayer() {
+	printTelemetry();
 	gpu.freeImage(baseDrop);
 }
 
 void ObjectFallLayer::setDims(uint32_t w, uint32_t h) {
 	dropW = w;
 	dropH = h;
+	forceRedraw();
 }
 
 void ObjectFallLayer::setSpeed(uint32_t speed) {
@@ -38,12 +43,14 @@ void ObjectFallLayer::setSpeed(uint32_t speed) {
 		dropSpeed = height * 0.35; // hardcoded atm
 	else
 		dropSpeed = speed;
+	forceRedraw();
 }
 
 void ObjectFallLayer::setCustomSpeed(uint32_t speed) {
 	dropSpeed = speed / 4 * speedAmplifier;           // 1
 	dropW     = (speed + 400) / 300 * widthAmplifier; // 1
 	dropH     = speed / 3.2 * heightAmplifier;        // 0.875
+	forceRedraw();
 }
 
 void ObjectFallLayer::setAmplifiers(float s, float w, float h, float r, float m) {
@@ -63,6 +70,7 @@ void ObjectFallLayer::setAmount(uint32_t dropNum) {
 
 	dropAmount = dropNum;
 	dropSpawnOrder.clear();
+	forceRedraw();
 
 	// Create the drop spawn order list.
 	// This specifies the order of the positions along the sky axis to make the drops fall from.
@@ -121,6 +129,7 @@ void ObjectFallLayer::setWind(int32_t factor) {
 	}
 	// All drops from this point on will now be created with this wind.
 	// But changing the wind later won't affect drops that were already created.
+	forceRedraw();
 }
 
 void ObjectFallLayer::setBaseDrop(RenderImage *newBaseDrop) {
@@ -129,6 +138,7 @@ void ObjectFallLayer::setBaseDrop(RenderImage *newBaseDrop) {
 	baseDrop = newBaseDrop;
 	dropW    = newBaseDrop->w;
 	dropH    = newBaseDrop->h;
+	forceRedraw();
 }
 
 void ObjectFallLayer::setBaseDrop(SDL_Color &colour, uint32_t w, uint32_t h) {
@@ -143,6 +153,7 @@ void ObjectFallLayer::setBaseDrop(SDL_Color &colour, uint32_t w, uint32_t h) {
 	gpu.clear(baseDrop->target, colour.r, colour.g, colour.b, colour.a);
 	dropW = baseDrop->w;
 	dropH = baseDrop->h;
+	forceRedraw();
 }
 
 void ObjectFallLayer::setPause(bool state) {
@@ -153,23 +164,83 @@ void ObjectFallLayer::setPause(bool state) {
 	old_drops.set(drops);
 	if (sprite && sprite->exists)
 		ons.backupState(sprite);
+	forceRedraw();
 }
 
 void ObjectFallLayer::setBlend(BlendModeId mode) {
 	blendMode = mode;
+	forceRedraw();
 }
 
 void ObjectFallLayer::coverScreen() {
 	uint32_t num = height / dropH * 3;
 	for (uint32_t i = 0; i < num; i++)
-		update(true);
+		updateDrops(true, 1.0, true);
+	forceRedraw();
 }
 
 bool ObjectFallLayer::update(bool old) {
-	if ((paused[FormerScene] && old) || (paused[CurrentScene] && !old))
+	if (collectTelemetry)
+		++telemetry.updateCalls;
+	const size_t scene = sceneIndex(old);
+	if (paused[scene]) {
+		if (!forceNextUpdate[scene]) {
+			if (collectTelemetry)
+				++telemetry.pausedSkips;
+			return false;
+		}
+		forceNextUpdate[scene] = false;
+		if (collectTelemetry)
+			++telemetry.pausedRedraws;
 		return true;
+	}
 
-	auto &rdrops = (old && old_drops.has()) ? old_drops.get() : drops;
+	const double scale = movementScale();
+	const bool forcedRedraw = forceNextUpdate[scene];
+	if (collectTelemetry) {
+		if (forcedRedraw)
+			++telemetry.immediateRedraws;
+		else
+			++telemetry.authoredStepRedraws;
+	}
+	forceNextUpdate[scene] = false;
+	return updateDrops(old, scale);
+}
+
+double ObjectFallLayer::movementScale() const {
+	if (!usesScriptFramePacing()) {
+		return 1.0;
+	}
+
+	const double scale = ons.currentScriptFrameDeltaScale();
+	return scale > 0.0 ? scale : 1.0;
+}
+
+bool ObjectFallLayer::usesScriptFramePacing() const {
+	return sprite && sprite->duration_list &&
+	       sprite->current_cell >= 0 && sprite->current_cell < sprite->num_of_cells &&
+	       sprite->duration_list[sprite->current_cell] < 0;
+}
+
+size_t ObjectFallLayer::sceneIndex(bool old) const {
+	return (old && old_drops.has()) ? FormerScene : CurrentScene;
+}
+
+void ObjectFallLayer::forceRedraw() {
+	if (collectTelemetry)
+		++telemetry.forcedRedrawRequests;
+	forceNextUpdate[CurrentScene] = true;
+	forceNextUpdate[FormerScene]  = true;
+}
+
+bool ObjectFallLayer::updateDrops(bool old, double movementScale, bool ignorePause) {
+	const size_t scene = sceneIndex(old);
+	if (paused[scene] && !ignorePause)
+		return false;
+
+	auto &rdrops       = scene == FormerScene ? old_drops.get() : drops;
+	if (collectTelemetry)
+		++telemetry.updateDropsCalls;
 
 	// Firstly, remove the drops that have dropped offscreen (past their jMax)
 	for (auto it = rdrops.begin(); it != rdrops.end();) {
@@ -184,7 +255,7 @@ bool ObjectFallLayer::update(bool old) {
 
 	// Secondly, move the drops
 	for (auto &drop : rdrops) {
-		drop.j += dropSpeed + dropSpeed * drop.r;
+		drop.j += (dropSpeed + dropSpeed * drop.r) * movementScale;
 	}
 
 	// Thirdly, add the necessary drops
@@ -238,10 +309,125 @@ bool ObjectFallLayer::update(bool old) {
 		d.angle       = transform.factor * -transFactor;
 		d.sin         = transform.sin;
 		d.cos         = transform.cos;
+		cacheDropGeometry(d);
 		rdrops.push_back(d);
 	}
 
 	return true;
+}
+
+void ObjectFallLayer::cacheDropGeometry(Drop &drop) const {
+	constexpr float pi     = 3.14159265358979323846f;
+	const float halfW      = drop.w * 0.5f;
+	const float halfH      = drop.h * 0.5f;
+	const float radians    = drop.angle * pi / 180.0f;
+	const float cosA       = std::cos(radians);
+	const float sinA       = std::sin(radians);
+	const float local[4][2]{{-halfW, -halfH}, {halfW, -halfH}, {-halfW, halfH}, {halfW, halfH}};
+
+	for (int i = 0; i < 4; ++i) {
+		const float localX = local[i][0];
+		const float localY = local[i][1];
+		drop.cornerX[i]    = localX * cosA - localY * sinA;
+		drop.cornerY[i]    = localX * sinA + localY * cosA;
+	}
+}
+
+void ObjectFallLayer::renderDrops(RenderTarget *target, RenderRect &clip, float x, float y, std::vector<Drop> &rdrops) {
+	if (clip.w == 0 || clip.h == 0 || rdrops.empty())
+		return;
+
+	if (collectTelemetry) {
+		++telemetry.refreshCalls;
+		telemetry.dropsRendered += rdrops.size();
+	}
+
+	if (target == ons.screen_target) {
+		if (collectTelemetry)
+			++telemetry.screenFallbackRefreshes;
+		for (auto &drop : rdrops) {
+			auto v = (drop.pos() - drop.top).rotate(-drop.sin, drop.cos) + drop.originalTop;
+			gpu.copyGPUImage(baseDrop, nullptr, &clip, target, v.x + x, v.y + y,
+			                 drop.w / static_cast<float>(baseDrop->w), drop.h / static_cast<float>(baseDrop->h), drop.angle, true);
+		}
+		return;
+	}
+	if (collectTelemetry)
+		++telemetry.triangleBatchRefreshes;
+
+	if (!(target->use_clip_rect && target->clip_rect.x == clip.x && target->clip_rect.y == clip.y &&
+	      target->clip_rect.w == clip.w && target->clip_rect.h == clip.h)) {
+		GPU_SetClipRect(target, clip);
+	}
+
+	batchVertices.clear();
+	batchIndices.clear();
+	batchVertices.reserve(rdrops.size() * 4);
+	batchIndices.reserve(rdrops.size() * 6);
+
+	const float clipRight  = clip.x + clip.w;
+	const float clipBottom = clip.y + clip.h;
+	gpu.setBlendMode(baseDrop);
+	const SDL_Color color = baseDrop->color;
+	const float r         = color.r / 255.0f;
+	const float g         = color.g / 255.0f;
+	const float b         = color.b / 255.0f;
+	const float a         = color.a / 255.0f;
+
+	auto flushBatch = [&]() {
+		if (batchIndices.empty())
+			return;
+		GPU_TelemetryScope telemetryScope("objectfall_triangle_batch");
+		GPU_TriangleBatchRGBA(baseDrop, target,
+		                      static_cast<unsigned short>(batchVertices.size()),
+		                      batchVertices.data(),
+		                      static_cast<unsigned int>(batchIndices.size()),
+		                      batchIndices.data());
+		batchVertices.clear();
+		batchIndices.clear();
+	};
+
+	for (auto &drop : rdrops) {
+		// Transform the drop's coordinate system back into xy coordinates
+		auto v = (drop.pos() - drop.top).rotate(-drop.sin, drop.cos) + drop.originalTop;
+		const float centerX = v.x + x;
+		const float centerY = v.y + y;
+
+		float minX = std::numeric_limits<float>::max();
+		float minY = std::numeric_limits<float>::max();
+		float maxX = std::numeric_limits<float>::lowest();
+		float maxY = std::numeric_limits<float>::lowest();
+		float xy[4][2]{};
+		for (int i = 0; i < 4; ++i) {
+			xy[i][0] = centerX + drop.cornerX[i];
+			xy[i][1] = centerY + drop.cornerY[i];
+			minX     = std::min(minX, xy[i][0]);
+			minY     = std::min(minY, xy[i][1]);
+			maxX     = std::max(maxX, xy[i][0]);
+			maxY     = std::max(maxY, xy[i][1]);
+		}
+		if (maxX < clip.x || maxY < clip.y || minX > clipRight || minY > clipBottom)
+			continue;
+
+		if (batchVertices.size() + 4 > 60000)
+			flushBatch();
+
+		const uint16_t base = static_cast<uint16_t>(batchVertices.size());
+		const float uv[4][2]{{0.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 1.0f}, {1.0f, 1.0f}};
+		for (int i = 0; i < 4; ++i) {
+			batchVertices.push_back({xy[i][0], xy[i][1], r, g, b, a, uv[i][0], uv[i][1]});
+		}
+		const uint16_t indices[6]{
+		    base,
+		    static_cast<uint16_t>(base + 1),
+		    static_cast<uint16_t>(base + 2),
+		    static_cast<uint16_t>(base + 2),
+		    static_cast<uint16_t>(base + 1),
+		    static_cast<uint16_t>(base + 3),
+		};
+		batchIndices.insert(batchIndices.end(), indices, indices + 6);
+	}
+	flushBatch();
 }
 
 void ObjectFallLayer::refresh(RenderTarget *target, RenderRect &clip, float x, float y, bool /*centre_coordinates*/, int rm, float /*scalex*/, float /*scaley*/) {
@@ -251,12 +437,38 @@ void ObjectFallLayer::refresh(RenderTarget *target, RenderRect &clip, float x, f
 	if (clip.w == 0 || clip.h == 0 || rdrops.empty())
 		return;
 
-	for (auto &drop : rdrops) {
-		// Transform the drop's coordinate system back into xy coordinates
-		auto v = (drop.pos() - drop.top).rotate(-drop.sin, drop.cos) + drop.originalTop;
-		gpu.copyGPUImage(baseDrop, nullptr, &clip, target, v.x + x, v.y + y,
-		                 drop.w / static_cast<float>(baseDrop->w), drop.h / static_cast<float>(baseDrop->h), drop.angle, true);
-	}
+	renderDrops(target, clip, x, y, rdrops);
+}
+
+bool ObjectFallLayer::telemetryEnabled() const {
+	const char *value = onsSDLGetEnv("ONS_SDL3_GPU_TELEMETRY");
+	return value && *value && std::strcmp(value, "0") != 0;
+}
+
+void ObjectFallLayer::printTelemetry() const {
+	if (!collectTelemetry || telemetryPrinted || telemetry.updateCalls == 0)
+		return;
+	telemetryPrinted = true;
+
+	const int layerNo = sprite ? sprite->layer_no : -1;
+	sendToLog(LogLevel::Info,
+	          "ObjectFall telemetry: layer=%d update_calls=%llu skipped_fractional_updates=%llu "
+	          "paused_redraws=%llu paused_skips=%llu immediate_redraws=%llu authored_step_redraws=%llu "
+	          "update_drops_calls=%llu refresh_calls=%llu triangle_batch_refreshes=%llu "
+	          "screen_fallback_refreshes=%llu drops_rendered=%llu forced_redraw_requests=%llu\n",
+	          layerNo,
+	          static_cast<unsigned long long>(telemetry.updateCalls),
+	          static_cast<unsigned long long>(telemetry.skippedFractionalUpdates),
+	          static_cast<unsigned long long>(telemetry.pausedRedraws),
+	          static_cast<unsigned long long>(telemetry.pausedSkips),
+	          static_cast<unsigned long long>(telemetry.immediateRedraws),
+	          static_cast<unsigned long long>(telemetry.authoredStepRedraws),
+	          static_cast<unsigned long long>(telemetry.updateDropsCalls),
+	          static_cast<unsigned long long>(telemetry.refreshCalls),
+	          static_cast<unsigned long long>(telemetry.triangleBatchRefreshes),
+	          static_cast<unsigned long long>(telemetry.screenFallbackRefreshes),
+	          static_cast<unsigned long long>(telemetry.dropsRendered),
+	          static_cast<unsigned long long>(telemetry.forcedRedrawRequests));
 }
 
 void ObjectFallLayer::commit() {

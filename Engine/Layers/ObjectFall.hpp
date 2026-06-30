@@ -79,13 +79,24 @@ public:
 	BlendModeId blendingMode(int /*rm*/) override {
 		return blendMode;
 	}
+	void printTelemetry() const override;
 	void commit() override;
 	std::unordered_map<std::string, DynamicPropertyInterface> properties() override;
 
 private:
+	bool updateDrops(bool old, double movementScale, bool ignorePause = false);
+	double movementScale() const;
+	bool usesScriptFramePacing() const;
+	size_t sceneIndex(bool old) const;
+	void forceRedraw();
+	bool telemetryEnabled() const;
+
 	static size_t constexpr CurrentScene = 0;
 	static size_t constexpr FormerScene  = 1;
 	bool paused[2]{false, false};
+	bool forceNextUpdate[2]{true, true};
+	bool collectTelemetry{false};
+	mutable bool telemetryPrinted{false};
 	RenderImage *baseDrop{nullptr};   // drop image used as a base
 	uint32_t dropW{baseDropWidth};  // actual drop width set by script
 	uint32_t dropH{baseDropHeight}; // actual drop height set by script
@@ -114,12 +125,34 @@ private:
 
 	struct Drop {
 		double i{0}, j{0}, jMax{0}, w{0}, h{0}, angle{0}, sin{0}, cos{0}, r{0};
+		float cornerX[4]{};
+		float cornerY[4]{};
 		MathVector<float> originalTop, top;
 		MathVector<float> pos() {
 			return MathVector<float>(i, j);
 		}
 	};
+	void cacheDropGeometry(Drop &drop) const;
 
 	std::vector<Drop> drops;
 	cmp::optional<std::vector<Drop>> old_drops;
+	std::vector<GPU_TriangleBatchVertex> batchVertices;
+	std::vector<uint16_t> batchIndices;
+
+	void renderDrops(RenderTarget *target, RenderRect &clip, float x, float y, std::vector<Drop> &rdrops);
+
+	struct Telemetry {
+		uint64_t updateCalls{0};
+		uint64_t skippedFractionalUpdates{0};
+		uint64_t pausedRedraws{0};
+		uint64_t pausedSkips{0};
+		uint64_t immediateRedraws{0};
+		uint64_t authoredStepRedraws{0};
+		uint64_t updateDropsCalls{0};
+		uint64_t refreshCalls{0};
+		uint64_t triangleBatchRefreshes{0};
+		uint64_t screenFallbackRefreshes{0};
+		uint64_t dropsRendered{0};
+		uint64_t forcedRedrawRequests{0};
+	} telemetry;
 };

@@ -246,6 +246,10 @@ public:
 	// BigImage
 	bool is_big_image{false};
 	std::shared_ptr<GPUBigImage> big_image;
+	RenderImage *big_image_cell_cache{nullptr};
+	int big_image_cell_cache_cell{-1};
+	int big_image_cell_cache_w{0};
+	int big_image_cell_cache_h{0};
 
 	Clock clock;
 	Camera camera;
@@ -303,6 +307,7 @@ public:
 	void setImage(RenderImage *image);
 	void setSurface(SDL_Surface *surface);
 	void setBigImage(GPUBigImage *image);
+	void clearBigImageCellCache();
 
 	/* For effects etc */
 	void backupState();

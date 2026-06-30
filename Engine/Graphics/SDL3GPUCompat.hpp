@@ -253,9 +253,21 @@ struct GPU_Renderer {
 	SDL_GPUPresentMode present_mode;
 };
 
+struct GPU_TriangleBatchVertex {
+	float x;
+	float y;
+	float r;
+	float g;
+	float b;
+	float a;
+	float s;
+	float t;
+};
+
 GPU_RendererID SDLCALL GPU_MakeRendererID(const char *name, GPU_RendererEnum renderer, int major_version, int minor_version);
 void SDLCALL GPU_SetPreInitFlags(GPU_InitFlagEnum GPU_flags);
 GPU_Target *SDLCALL GPU_InitRendererByID(GPU_RendererID renderer_request, Uint16 w, Uint16 h, GPU_WindowFlagEnum SDL_flags);
+void SDLCALL GPU_PrintTelemetry(void);
 void SDLCALL GPU_Quit(void);
 void SDLCALL GPU_SetDebugLevel(GPU_DebugLevelEnum level);
 GPU_Renderer *SDLCALL GPU_GetCurrentRenderer(void);
@@ -293,6 +305,7 @@ void SDLCALL GPU_BlitRotate(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *ta
 void SDLCALL GPU_BlitScale(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float x, float y, float scaleX, float scaleY);
 void SDLCALL GPU_BlitTransform(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float x, float y, float degrees, float scaleX, float scaleY);
 void SDLCALL GPU_TriangleBatch(GPU_Image *image, GPU_Target *target, unsigned short num_vertices, float *values, unsigned int num_indices, unsigned short *indices, GPU_BatchFlagEnum flags);
+void SDLCALL GPU_TriangleBatchRGBA(GPU_Image *image, GPU_Target *target, unsigned short num_vertices, const GPU_TriangleBatchVertex *vertices, unsigned int num_indices, const unsigned short *indices);
 void SDLCALL GPU_FlushBlitBuffer(void);
 void SDLCALL GPU_Flip(GPU_Target *target);
 void SDLCALL GPU_RectangleFilled2(GPU_Target *target, GPU_Rect rect, SDL_Color color);

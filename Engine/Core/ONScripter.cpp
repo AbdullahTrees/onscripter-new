@@ -2803,6 +2803,11 @@ void ONScripter::requestQuit(ExitType code) {
 	}
 
 	if (canExit) {
+		printFramePacingTelemetry();
+		printLipsTelemetry();
+		printBigImageCellCacheTelemetry();
+		printLayerTelemetry();
+		GPU_PrintTelemetry();
 		cleanLabel();
 		ctrl.quit(code == ExitType::Error ? -1 : 0);
 	} else {

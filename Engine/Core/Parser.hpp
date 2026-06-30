@@ -375,6 +375,7 @@ protected:
 	}
 
 	void deleteLayerInfo();
+	void printLayerTelemetry() const;
 	int video_layer{-1};
 
 	/* ---------------------------------------- */

@@ -45,16 +45,7 @@ GPU_InitFlagEnum pendingPreinitFlags{GPU_DEFAULT_INIT_FLAGS};
 char shaderMessage[256]{"SDL3_GPU compatibility layer is active"};
 Uint32 nextShaderObject{1};
 
-struct SDL3GPUVertex {
-	float x;
-	float y;
-	float r;
-	float g;
-	float b;
-	float a;
-	float s;
-	float t;
-};
+using SDL3GPUVertex = GPU_TriangleBatchVertex;
 
 struct SDL3GPUShaderBytecode {
 	const Uint8 *code{nullptr};
@@ -214,6 +205,8 @@ struct SDL3GPUNativeBlitBatch {
 		SDL_GPUSampler *sampler{nullptr};
 		Uint32 firstIndex{0};
 		Uint32 indexCount{0};
+		Uint32 vertexCount{0};
+		std::string telemetrySource;
 	};
 
 	GPU_Target *target{nullptr};
@@ -263,6 +256,12 @@ struct SDL3GPUTransferTelemetry {
 	Uint64 readbackBytes{0};
 };
 
+struct SDL3GPUFixedDrawTelemetry {
+	std::string source;
+	Uint64 nativeFixedDraws{0};
+	Uint64 nativeFixedVertices{0};
+};
+
 struct SDL3GPUTelemetry {
 	bool initialized{false};
 	bool enabled{false};
@@ -280,10 +279,14 @@ struct SDL3GPUTelemetry {
 	Uint64 cpuBlitPixels{0};
 	Uint64 cpuShaderDraws{0};
 	Uint64 cpuShaderPixels{0};
+	Uint64 blockingGPUWaits{0};
+	Uint64 nativeBlitCulls{0};
+	Uint64 nativeBlitClips{0};
 	Uint64 nativeShaderCompiles{0};
 	Uint64 compatibilityShaderCompiles{0};
 	std::array<SDL3GPUShaderTelemetry, static_cast<size_t>(SDL3GPUShaderKind::Count)> shaders{};
 	std::vector<SDL3GPUTransferTelemetry> transfers;
+	std::vector<SDL3GPUFixedDrawTelemetry> fixedDraws;
 };
 
 SDL_GPUShader *texturedVertexShader{nullptr};
@@ -365,13 +368,37 @@ void noteCommandBufferSubmitted() {
 }
 
 void noteBlockingGPUWait() {
+	if (telemetryEnabled()) {
+		++telemetry.blockingGPUWaits;
+		telemetry.hasData = true;
+	}
 	submittedCommandBuffersSinceIdle = 0;
+}
+
+Uint64 maxQueuedCommandBuffersBeforeWait() {
+	static bool initialized = false;
+	static Uint64 value     = 512;
+	if (initialized)
+		return value;
+
+	initialized       = true;
+	const char *limit = onsSDLGetEnv("ONS_SDL3_GPU_MAX_QUEUED_COMMAND_BUFFERS");
+	if (!limit || !*limit)
+		return value;
+
+	char *end = nullptr;
+	const auto parsed = std::strtoull(limit, &end, 10);
+	if (end != limit)
+		value = parsed;
+	return value;
 }
 
 void throttleGPUSubmissionBacklog() {
 	if (!rendererState.device)
 		return;
-	constexpr Uint64 maxQueuedCommandBuffers = 8;
+	const Uint64 maxQueuedCommandBuffers = maxQueuedCommandBuffersBeforeWait();
+	if (maxQueuedCommandBuffers == 0)
+		return;
 	++submittedCommandBuffersSinceIdle;
 	if (submittedCommandBuffersSinceIdle < maxQueuedCommandBuffers)
 		return;
@@ -403,7 +430,7 @@ std::string normalizedTelemetrySource(const char *source) {
 
 std::string currentTelemetrySource(const char *fallback) {
 	if (!telemetrySourceStack.empty())
-		return telemetrySourceStack.front();
+		return telemetrySourceStack.back();
 	return normalizedTelemetrySource(fallback);
 }
 
@@ -415,6 +442,16 @@ SDL3GPUTransferTelemetry &transferTelemetryForSource(const std::string &source) 
 	telemetry.transfers.emplace_back();
 	telemetry.transfers.back().source = source;
 	return telemetry.transfers.back();
+}
+
+SDL3GPUFixedDrawTelemetry &fixedDrawTelemetryForSource(const std::string &source) {
+	for (auto &stats : telemetry.fixedDraws) {
+		if (stats.source == source)
+			return stats;
+	}
+	telemetry.fixedDraws.emplace_back();
+	telemetry.fixedDraws.back().source = source;
+	return telemetry.fixedDraws.back();
 }
 
 void noteTextureUpload(Uint64 bytes, const char *source = nullptr) {
@@ -458,11 +495,32 @@ void noteShaderCompilation(SDL3GPUShaderKind kind, bool native) {
 	telemetry.hasData = true;
 }
 
-void noteNativeFixedDraw(Uint64 vertices) {
+void noteNativeFixedDrawForSource(const std::string &source, Uint64 vertices) {
 	if (!telemetryEnabled())
 		return;
 	++telemetry.nativeFixedDraws;
 	telemetry.nativeFixedVertices += vertices;
+	auto &fixedDraw = fixedDrawTelemetryForSource(source.empty() ? currentTelemetrySource("native_fixed_draw") : source);
+	++fixedDraw.nativeFixedDraws;
+	fixedDraw.nativeFixedVertices += vertices;
+	telemetry.hasData = true;
+}
+
+void noteNativeFixedDraw(Uint64 vertices) {
+	noteNativeFixedDrawForSource(std::string{}, vertices);
+}
+
+void noteNativeBlitCull() {
+	if (!telemetryEnabled())
+		return;
+	++telemetry.nativeBlitCulls;
+	telemetry.hasData = true;
+}
+
+void noteNativeBlitClip() {
+	if (!telemetryEnabled())
+		return;
+	++telemetry.nativeBlitClips;
 	telemetry.hasData = true;
 }
 
@@ -1848,7 +1906,8 @@ void printAndResetTelemetry() {
 	          "readbacks=%llu readback_bytes=%llu native_fixed_draws=%llu native_fixed_vertices=%llu "
 	          "native_shader_compiles=%llu compatibility_shader_compiles=%llu native_shader_draws=%llu "
 	          "native_shader_vertices=%llu cpu_blit_draws=%llu cpu_blit_pixels=%llu "
-	          "cpu_shader_draws=%llu cpu_shader_pixels=%llu live_images=%llu "
+	          "cpu_shader_draws=%llu cpu_shader_pixels=%llu blocking_gpu_waits=%llu "
+	          "native_blit_culls=%llu native_blit_clips=%llu live_images=%llu "
 	          "live_texture_bytes=%llu live_cpu_pixel_bytes=%llu\n",
 	          static_cast<unsigned long long>(telemetry.commandBuffersSubmitted),
 	          static_cast<unsigned long long>(telemetry.textureUploads),
@@ -1865,6 +1924,9 @@ void printAndResetTelemetry() {
 	          static_cast<unsigned long long>(telemetry.cpuBlitPixels),
 	          static_cast<unsigned long long>(telemetry.cpuShaderDraws),
 	          static_cast<unsigned long long>(telemetry.cpuShaderPixels),
+	          static_cast<unsigned long long>(telemetry.blockingGPUWaits),
+	          static_cast<unsigned long long>(telemetry.nativeBlitCulls),
+	          static_cast<unsigned long long>(telemetry.nativeBlitClips),
 	          static_cast<unsigned long long>(liveTextureImages.size()),
 	          static_cast<unsigned long long>(liveTextureBytes),
 	          static_cast<unsigned long long>(livePixelBytes));
@@ -1881,6 +1943,18 @@ void printAndResetTelemetry() {
 		          static_cast<unsigned long long>(stats.textureUploadBytes),
 		          static_cast<unsigned long long>(stats.readbacks),
 		          static_cast<unsigned long long>(stats.readbackBytes));
+	}
+
+	for (const auto &stats : telemetry.fixedDraws) {
+		if (stats.nativeFixedDraws == 0)
+			continue;
+
+		sendToLog(LogLevel::Info,
+		          "SDL3_GPU fixed draw telemetry: source=%s native_fixed_draws=%llu "
+		          "native_fixed_vertices=%llu\n",
+		          stats.source.c_str(),
+		          static_cast<unsigned long long>(stats.nativeFixedDraws),
+		          static_cast<unsigned long long>(stats.nativeFixedVertices));
 	}
 
 	for (size_t i = 0; i < static_cast<size_t>(SDL3GPUShaderKind::Count); ++i) {
@@ -3889,6 +3963,67 @@ SDL_Rect targetScissor(const GPU_Target *target) {
 	return scissor;
 }
 
+bool blitBoundsOutsideScissor(float x0, float y0, float x1, float y1, const SDL_Rect &scissor) {
+	if (scissor.w <= 0 || scissor.h <= 0)
+		return true;
+
+	const float left   = std::min(x0, x1);
+	const float right  = std::max(x0, x1);
+	const float top    = std::min(y0, y1);
+	const float bottom = std::max(y0, y1);
+	return right <= static_cast<float>(scissor.x) ||
+	       left >= static_cast<float>(scissor.x + scissor.w) ||
+	       bottom <= static_cast<float>(scissor.y) ||
+	       top >= static_cast<float>(scissor.y + scissor.h);
+}
+
+bool clipAxisAlignedBlitToScissor(float &x0, float &y0, float &x1, float &y1,
+                                  float &u0, float &v0, float &u1, float &v1,
+                                  const SDL_Rect &scissor) {
+	if (blitBoundsOutsideScissor(x0, y0, x1, y1, scissor)) {
+		noteNativeBlitCull();
+		return false;
+	}
+
+	if (x0 >= x1 || y0 >= y1)
+		return true;
+
+	const float originalX0 = x0;
+	const float originalY0 = y0;
+	const float originalX1 = x1;
+	const float originalY1 = y1;
+	const float scissorX0  = static_cast<float>(scissor.x);
+	const float scissorY0  = static_cast<float>(scissor.y);
+	const float scissorX1  = static_cast<float>(scissor.x + scissor.w);
+	const float scissorY1  = static_cast<float>(scissor.y + scissor.h);
+	const float clippedX0  = std::max(x0, scissorX0);
+	const float clippedY0  = std::max(y0, scissorY0);
+	const float clippedX1  = std::min(x1, scissorX1);
+	const float clippedY1  = std::min(y1, scissorY1);
+
+	if (clippedX0 == x0 && clippedY0 == y0 && clippedX1 == x1 && clippedY1 == y1)
+		return true;
+
+	const float invW = 1.0f / (x1 - x0);
+	const float invH = 1.0f / (y1 - y0);
+	const float oldU0 = u0;
+	const float oldV0 = v0;
+	const float oldU1 = u1;
+	const float oldV1 = v1;
+	u0 = oldU0 + (oldU1 - oldU0) * ((clippedX0 - x0) * invW);
+	u1 = oldU0 + (oldU1 - oldU0) * ((clippedX1 - x0) * invW);
+	v0 = oldV0 + (oldV1 - oldV0) * ((clippedY0 - y0) * invH);
+	v1 = oldV0 + (oldV1 - oldV0) * ((clippedY1 - y0) * invH);
+	x0 = clippedX0;
+	y0 = clippedY0;
+	x1 = clippedX1;
+	y1 = clippedY1;
+
+	if (x0 != originalX0 || y0 != originalY0 || x1 != originalX1 || y1 != originalY1)
+		noteNativeBlitClip();
+	return true;
+}
+
 bool renderNativeProgramIndexedTriangles(const SDL3GPUProgramObject &program,
                                          GPU_Image *image, GPU_Target *target,
                                          const SDL3GPUVertex *vertices, Uint32 numVertices,
@@ -4364,7 +4499,8 @@ bool flushNativeBlitBatchOnly() {
 	const bool submitted = submitGPUCommandBuffer(commands);
 
 	if (submitted) {
-		noteNativeFixedDraw(nativeBlitBatch.vertices.size());
+		for (const auto &group : nativeBlitBatch.drawGroups)
+			noteNativeFixedDrawForSource(group.telemetrySource, group.vertexCount);
 		nativeBlitBatch.targetImage->pixels_dirty = true;
 		nativeBlitBatch.targetImage->has_mipmaps  = false;
 	}
@@ -4427,16 +4563,19 @@ bool prepareNativeBlitBatch(GPU_Image *image, GPU_Target *target, SDL_GPUGraphic
 	return true;
 }
 
-void appendNativeBlitDrawGroup(SDL_GPUTexture *sourceTexture, SDL_GPUSampler *sampler, Uint32 firstIndex, Uint32 indexCount) {
+void appendNativeBlitDrawGroup(SDL_GPUTexture *sourceTexture, SDL_GPUSampler *sampler, Uint32 firstIndex, Uint32 indexCount, Uint32 vertexCount) {
+	const std::string telemetrySource = telemetryEnabled() ? currentTelemetrySource("native_fixed_draw") : std::string{};
 	if (!nativeBlitBatch.drawGroups.empty()) {
 		auto &last = nativeBlitBatch.drawGroups.back();
 		if (last.sourceTexture == sourceTexture && last.sampler == sampler &&
-		    last.firstIndex + last.indexCount == firstIndex) {
+		    last.firstIndex + last.indexCount == firstIndex &&
+		    last.telemetrySource == telemetrySource) {
 			last.indexCount += indexCount;
+			last.vertexCount += vertexCount;
 			return;
 		}
 	}
-	nativeBlitBatch.drawGroups.push_back(SDL3GPUNativeBlitBatch::DrawGroup{sourceTexture, sampler, firstIndex, indexCount});
+	nativeBlitBatch.drawGroups.push_back(SDL3GPUNativeBlitBatch::DrawGroup{sourceTexture, sampler, firstIndex, indexCount, vertexCount, telemetrySource});
 }
 
 void appendNativeBlitQuadIndices(Uint16 base) {
@@ -4455,7 +4594,7 @@ bool queueNativeBlit(GPU_Image *image, GPU_Target *target, SDL_GPUGraphicsPipeli
 	nativeBlitBatch.vertices.insert(nativeBlitBatch.vertices.end(), vertices.begin(), vertices.end());
 	const Uint32 firstIndex = static_cast<Uint32>(nativeBlitBatch.indices.size());
 	appendNativeBlitQuadIndices(base);
-	appendNativeBlitDrawGroup(image->texture, sampler, firstIndex, 6);
+	appendNativeBlitDrawGroup(image->texture, sampler, firstIndex, 6, 4);
 	return true;
 }
 
@@ -4474,13 +4613,13 @@ bool queueNativeBlitRect(GPU_Image *image, GPU_Target *target, SDL_GPUGraphicsPi
 	nativeBlitBatch.vertices.push_back(SDL3GPUVertex{x1, y1, r, g, b, a, u1, v1});
 	const Uint32 firstIndex = static_cast<Uint32>(nativeBlitBatch.indices.size());
 	appendNativeBlitQuadIndices(base);
-	appendNativeBlitDrawGroup(image->texture, sampler, firstIndex, 6);
+	appendNativeBlitDrawGroup(image->texture, sampler, firstIndex, 6, 4);
 	return true;
 }
 
 bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float x, float y,
                 float degrees, float scaleX, float scaleY) {
-	if (!image || scaleX == 0.0f || scaleY == 0.0f)
+	if (!image || !target || scaleX == 0.0f || scaleY == 0.0f)
 		return false;
 
 	SDL3GPUProgramObject *program = activeProgramObject();
@@ -4512,6 +4651,11 @@ bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float 
 
 	const float halfW = srcW * scaleX * 0.5f;
 	const float halfH = srcH * scaleY * 0.5f;
+	const float rawX0 = x - halfW;
+	const float rawY0 = y - halfH;
+	const float rawX1 = x + halfW;
+	const float rawY1 = y + halfH;
+	const SDL_Rect scissor = targetScissor(target);
 
 	if (activeNativeProgram) {
 		auto vertexAt = [&](float px, float py, float u, float v) {
@@ -4520,11 +4664,15 @@ bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float 
 
 		std::array<SDL3GPUVertex, 4> vertices{};
 		if (degrees == 0.0f) {
+			if (blitBoundsOutsideScissor(rawX0, rawY0, rawX1, rawY1, scissor)) {
+				noteNativeBlitCull();
+				return true;
+			}
 			vertices = {
-			    vertexAt(x - halfW, y - halfH, u0, v0),
-			    vertexAt(x + halfW, y - halfH, u1, v0),
-			    vertexAt(x - halfW, y + halfH, u0, v1),
-			    vertexAt(x + halfW, y + halfH, u1, v1)};
+			    vertexAt(rawX0, rawY0, u0, v0),
+			    vertexAt(rawX1, rawY0, u1, v0),
+			    vertexAt(rawX0, rawY1, u0, v1),
+			    vertexAt(rawX1, rawY1, u1, v1)};
 		} else {
 			constexpr float pi = 3.14159265358979323846f;
 			const float radians = degrees * pi / 180.0f;
@@ -4541,6 +4689,20 @@ bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float 
 			    transform(halfW, -halfH, u1, v0),
 			    transform(-halfW, halfH, u0, v1),
 			    transform(halfW, halfH, u1, v1)};
+			float boundsX0 = vertices[0].x;
+			float boundsY0 = vertices[0].y;
+			float boundsX1 = vertices[0].x;
+			float boundsY1 = vertices[0].y;
+			for (const auto &vertex : vertices) {
+				boundsX0 = std::min(boundsX0, vertex.x);
+				boundsY0 = std::min(boundsY0, vertex.y);
+				boundsX1 = std::max(boundsX1, vertex.x);
+				boundsY1 = std::max(boundsY1, vertex.y);
+			}
+			if (blitBoundsOutsideScissor(boundsX0, boundsY0, boundsX1, boundsY1, scissor)) {
+				noteNativeBlitCull();
+				return true;
+			}
 		}
 		std::array<Uint16, 6> indices{{0, 1, 2, 2, 1, 3}};
 		return renderNativeIndexedTriangles(image, target, vertices.data(), static_cast<Uint32>(vertices.size()),
@@ -4569,11 +4731,26 @@ bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float 
 	viewport.min_depth = 0.0f;
 	viewport.max_depth = 1.0f;
 
-	const SDL_Rect scissor = targetScissor(target);
 	if (degrees == 0.0f) {
+		float clippedX0 = rawX0;
+		float clippedY0 = rawY0;
+		float clippedX1 = rawX1;
+		float clippedY1 = rawY1;
+		float clippedU0 = u0;
+		float clippedV0 = v0;
+		float clippedU1 = u1;
+		float clippedV1 = v1;
+		if (scaleX > 0.0f && scaleY > 0.0f) {
+			if (!clipAxisAlignedBlitToScissor(clippedX0, clippedY0, clippedX1, clippedY1,
+			                                  clippedU0, clippedV0, clippedU1, clippedV1, scissor))
+				return true;
+		} else if (blitBoundsOutsideScissor(clippedX0, clippedY0, clippedX1, clippedY1, scissor)) {
+			noteNativeBlitCull();
+			return true;
+		}
 		return queueNativeBlitRect(image, target, pipeline, sampler, viewport, scissor,
-		                           x - halfW, y - halfH, x + halfW, y + halfH,
-		                           u0, v0, u1, v1, r, g, b, a);
+		                           clippedX0, clippedY0, clippedX1, clippedY1,
+		                           clippedU0, clippedV0, clippedU1, clippedV1, r, g, b, a);
 	}
 
 	constexpr float pi = 3.14159265358979323846f;
@@ -4592,6 +4769,20 @@ bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float 
 	    transform(halfW, -halfH, u1, v0),
 	    transform(-halfW, halfH, u0, v1),
 	    transform(halfW, halfH, u1, v1)};
+	float boundsX0 = vertices[0].x;
+	float boundsY0 = vertices[0].y;
+	float boundsX1 = vertices[0].x;
+	float boundsY1 = vertices[0].y;
+	for (const auto &vertex : vertices) {
+		boundsX0 = std::min(boundsX0, vertex.x);
+		boundsY0 = std::min(boundsY0, vertex.y);
+		boundsX1 = std::max(boundsX1, vertex.x);
+		boundsY1 = std::max(boundsY1, vertex.y);
+	}
+	if (blitBoundsOutsideScissor(boundsX0, boundsY0, boundsX1, boundsY1, scissor)) {
+		noteNativeBlitCull();
+		return true;
+	}
 	return queueNativeBlit(image, target, pipeline, sampler, viewport, scissor, vertices);
 }
 
@@ -4948,6 +5139,12 @@ void SDLCALL GPU_Quit(void) {
 		SDL_DestroyGPUDevice(rendererState.device);
 		rendererState.device = nullptr;
 	}
+}
+
+void SDLCALL GPU_PrintTelemetry(void) {
+	if (rendererState.device)
+		flushNativeBlitBatch();
+	printAndResetTelemetry();
 }
 
 void SDLCALL GPU_SetDebugLevel(GPU_DebugLevelEnum level) {
@@ -5511,6 +5708,16 @@ void SDLCALL GPU_TriangleBatch(GPU_Image *image, GPU_Target *target, unsigned sh
 
 	if (!renderNativeIndexedTriangles(image, target, triangleBatchVertices.data(), num_vertices, indices, num_indices))
 		setUnsupported("GPU_TriangleBatch native draw");
+}
+
+void SDLCALL GPU_TriangleBatchRGBA(GPU_Image *image, GPU_Target *target, unsigned short num_vertices,
+                                   const GPU_TriangleBatchVertex *vertices, unsigned int num_indices,
+                                   const unsigned short *indices) {
+	if (!image || !vertices || !indices || num_vertices == 0 || num_indices == 0)
+		return;
+
+	if (!renderNativeIndexedTriangles(image, target, vertices, num_vertices, indices, num_indices))
+		setUnsupported("GPU_TriangleBatchRGBA native draw");
 }
 
 void SDLCALL GPU_FlushBlitBuffer(void) {
