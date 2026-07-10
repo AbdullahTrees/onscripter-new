@@ -1,6 +1,6 @@
 # onscripter-new Project Status
 
-Updated: 2026-07-09
+Updated: 2026-07-10
 
 This file consolidates the former compilation guide, dependency audit, and SDL3 performance audit into one maintenance document for the current `onscripter-new` release branch.
 
@@ -4926,7 +4926,7 @@ waits, asynchronous Discord IPC to eliminate possible 250-750 ms main-thread
 stalls, pooled media packet/frame wrappers, and retained z-band compositing for
 the measured rain-driven regular-sprite redraw volume. Retained rain
 compositing was selected for the dedicated Slot 10 prototype documented below;
-the other higher-risk proposals remain unimplemented.
+at that point, the other higher-risk proposals remained unimplemented.
 
 A controlled `-O2` build experiment was rejected. Compared with the existing
 `-Os` executable it increased the stripped Windows binary from 14,768,128 to
@@ -5028,6 +5028,282 @@ both artifacts. Final SHA-256 values are
 for `onscripter-new-windows-x86_64.zip` and
 `22A3E1E69AE2C2EF752952931789455595A0F71C1DFB11B4B2A88C3998838C74`
 for `onscripter-new-android.apk`.
+
+### 2026-07-10 Fence-Based GPU Submission Back-Pressure
+
+The second higher-risk follow-up replaces the SDL3_GPU backend's periodic
+whole-device `SDL_WaitForGPUIdle()` barrier with in-order fence checkpoints.
+The original safety cap prevented an old D3D12 command-buffer backlog from
+driving private memory past 6 GB, but idling every GPU queue at the cap also
+stopped unrelated later work and produced visible pacing pressure in active
+rain scenes.
+
+Normal submissions now acquire a fence every 32 command buffers, or at the
+configured backlog cap when it is smaller than 32. Completed checkpoints are
+polled only when another checkpoint is submitted. If the unretired backlog
+reaches the cap, the CPU waits for only the oldest checkpoint and then releases
+any later checkpoints that have also completed; newer GPU work remains in
+flight. Synchronous readback fences retire all older tracked checkpoints after
+their own wait completes, and shutdown releases remaining fence handles without
+adding a device-idle barrier.
+
+The `ONS_SDL3_GPU_MAX_QUEUED_COMMAND_BUFFERS` override and its `0` disable
+semantics are preserved. The initial checkpoint implementation retained the
+512-command default; the RAM-bound follow-up below subsequently lowers it to
+64 and guarantees a periodic fence wait. Aggregate telemetry adds
+`submission_fences`, `submission_fence_waits`, and
+`submission_backlog_peak` so runtime runs can distinguish safety-throttle waits
+from readback waits and verify the bound directly.
+
+Focused UCRT64 synthetic runs completed successfully. With the cap forced to
+8, 771 command buffers produced 80 sparse checkpoint fences, 80 checkpoint
+waits, and a backlog peak of exactly 8. With the cap set to 0, the same workload
+produced zero checkpoint fences, zero checkpoint waits, and a zero tracked
+backlog peak. Both runs exited normally with zero CPU blit or shader fallback.
+
+Verification: a full UCRT64 `make -B -f
+DerivedData/MinGW-x86_64/Makefile -j8` rebuild completed and linked without
+warning output. Incremental Android `x86_64` and `arm64-v8a` builds also linked.
+The final default-cap 300-iteration SDL3 benchmark wrote
+`sdl3-benchmark-fence-backpressure-final.csv` and recorded
+`blit_256_batched_submit` at 0.386 us,
+`triangle_batch_1024_quads_submit` at 44.447 us, and
+`readback_full_completed` at 1724.210 us. Its 1,863 submissions acquired 47
+checkpoint fences, reached a backlog peak of 64, and required no submission
+fence wait; its 306 blocking waits were synchronous benchmark readbacks. The
+matching Music Box run wrote `musicbox-benchmark-fence-backpressure-final.txt`,
+recorded `musicbox_full_frame_reordered` at 30.447 us/frame, and also stayed at
+a 64-command peak with no submission wait. The rebuilt local Windows executable
+has SHA-256
+`2CD0EFAB58BCC17D3FDD455D0BDC702ECB76B14E140A451D662C50D8CA2AB824`.
+The initial engine-only verification did not perform a manual in-game pass,
+game-folder copy, or script repack.
+
+Game-folder/manual follow-up: the rebuilt executable was copied to
+`D:\Umineko Project\onscripter-new.exe` and hash-verified against the local
+build at the same SHA-256 above. A visible pass loaded bookmark 10, held the
+saved scene, advanced through Natsuhi/Genji character and dialogue changes,
+and exercised the pause and bookmark-load transitions. The FPS overlay sampled
+137.0-144.1 FPS while held and returned to 142-144 FPS after transitions. The
+observed background, character ordering, facial animation, textbox/HUD, and
+transitions rendered correctly; the user reported that everything looked good.
+The process was no longer running at the follow-up log check. The run was not
+launched with `--use-logfile` or `--sdl3-gpu-telemetry`, so it created no new
+game-folder log. Windows Application events contained no matching warning,
+error, or Windows Error Reporting entry, and no recent matching crash dump was
+present. No script repack was required.
+
+Telemetry follow-up: a second user-driven game-folder run launched the copied
+executable with `--use-logfile --sdl3-gpu-telemetry`, reached both ObjectFall
+layers, and quit normally after 10,996 frames. The log at
+`C:\ProgramData\ONScripter-RU\out.txt` recorded 190,906 command buffers and
+5,960 sparse submission fences with zero submission-fence waits; the tracked
+backlog peaked at 64, well below the default 512 cap. All eight blocking GPU
+waits matched the eight explicit readbacks. Native rendering recorded 200,236
+fixed draws and 3,308 shader draws with zero CPU blit or shader fallback.
+
+Retained rain composed 6,202 frames with 6,155 cache hits, 47 cache builds, 48
+static fallbacks, and 38 sprite invalidations, a 99.2% hit rate within composed
+frames. Both active ObjectFall instances used native triangle batches with zero
+screen fallback while rendering 3,262,000 drops in total. Frame pacing averaged
+6.048 ms over all frames; the displayed-frame sample averaged 7.323 ms, with
+loading/transition outliers included in its 272.518 ms maximum. `err.txt`
+contained only the existing script release-date notice. The existing crash
+reporter feature-code 22 and unavailable Discord IPC notices also matched prior
+clean runs. Windows Application events contained no matching warning, error, or
+Windows Error Reporting entry, and no new crash dump was present.
+
+### 2026-07-10 Media Packet/Frame Wrapper Pooling
+
+The third higher-risk follow-up removes the per-item heap churn around FFmpeg
+media wrappers. `Controller` now owns separate bounded pools for decoded
+`MediaFrame` objects and demuxed `AVPacket` objects. Custom smart-pointer
+deleters return wrappers to those pools at every existing ownership boundary,
+including queue reset, normal video consumption, audio-buffer handoff, demux
+early returns, and controller shutdown. Recycling releases each wrapper's
+retained FFmpeg frame or packet references, SDL surface or audio payload, plane
+storage, and metadata before the wrapper becomes available again.
+
+Pool capacity is derived from the existing queue bounds with four slots for
+in-flight decoder/consumer work. Desktop builds retain at most 66 frame
+wrappers and 79 packet wrappers; the existing smaller mobile queue constants
+produce limits of 36 and 40. The pools persist across sequential media
+playbacks, use short SDL spin-lock sections only around cache push/pop, and are
+destroyed after media threads stop. Queue capacity, EOF sentinels, packet/frame
+ordering, and decoded payload lifetime remain unchanged.
+
+When `ONS_SDL3_GPU_TELEMETRY` or `--sdl3-gpu-telemetry` is enabled, shutdown
+now reports frame and packet acquisitions, allocations, reuse, returns,
+discards, cache peaks, and capacities. The counters are bypassed when telemetry
+is disabled, so the default playback path does not add per-item atomic counter
+traffic.
+
+Two 30-second Umineko Project smoke runs used the rebuilt local executable with
+`--use-logfile --sdl3-gpu-telemetry`, one on the default hardware conversion
+path and one with `--hwdecoder off --hwconvert off`. Both exited normally with
+identical wrapper results: 249 decoded video-frame acquisitions required 14
+allocations and reused pooled wrappers 235 times; 289 packet acquisitions
+required 27 allocations and reused pooled wrappers 262 times. Every acquired
+wrapper returned, no pool discard occurred, and the frame/packet cache peaks
+were 14/27 against capacities of 66/79. Relative to allocating one wrapper per
+item, those runs reduced frame-wrapper allocations by 94.4% and packet-wrapper
+allocations by 90.7%. Archived logs are
+`media-wrapper-pool-hardware.out.txt` and
+`media-wrapper-pool-software.out.txt` under
+`DerivedData/MinGW-x86_64`.
+
+A generated AVI fixture separately exercised the embedded audio decoder, which
+the game's menu video does not use. It acquired 13 video frames and 49 decoded
+MP3 audio frames, returned all 62 frame wrappers, and recorded zero discards.
+Its 88 packet acquisitions also all returned, with 12-14 packet reuses across
+repeat runs. The fixture exited normally, `err.txt` was empty, and the archived
+output is `media-pool-test/media-wrapper-pool-embedded-audio.out.txt` under the
+same derived-data directory.
+
+Verification: a full UCRT64 `make -B -f
+DerivedData/MinGW-x86_64/Makefile -j8` rebuild completed and linked without
+warning output. Incremental Android `x86_64` and `arm64-v8a` builds also linked.
+The final SDL3 benchmark wrote `sdl3-benchmark-media-wrapper-pool-final.csv`;
+representative results were `texture_upload_640x480` at 417.761 us,
+`blit_256_batched_submit` at 0.289 us,
+`triangle_batch_1024_quads_submit` at 51.847 us, and
+`readback_full_completed` at 1840.523 us. The matching Music Box benchmark
+recorded `musicbox_full_frame_reordered` at 31.945 us/frame. Both benchmark
+runs exited normally. The rebuilt Windows executable has SHA-256
+`03246C7DD69146934D671F02FD333BB887BB5B0F36525394CECDAE44EB7EE3B0`.
+The rebuilt executable was copied to `D:\Umineko Project\onscripter-new.exe`
+and hash-verified against the local build. No script repack was required.
+
+Game-folder telemetry follow-up: a user-driven run launched the copied
+executable with `--use-logfile --sdl3-gpu-telemetry` and exited normally after
+18,738 frames. The media pools serviced 3,057 decoded video-frame acquisitions
+with 14 allocations and 3,043 reuses, and 3,058 packet acquisitions with 27
+allocations and 3,031 reuses. All acquired wrappers returned, both discard
+counts were zero, and the frame/packet cache peaks remained 14/27 against the
+66/79 limits. This reduced wrapper allocation counts by 99.5% for frames and
+99.1% for packets relative to one allocation per item. The game video did not
+use the embedded audio decoder; that path remains covered by the generated MP3
+fixture above.
+
+The same run submitted 66,043 GPU command buffers through 2,058 sparse fences,
+reached a backlog peak of 64, and required zero submission-fence waits. All 13
+blocking GPU waits matched the 13 explicit readbacks. Rendering recorded 23,186
+native fixed draws and 7,634 native shader draws with zero CPU blit or shader
+fallback. Frame pacing averaged 6.972 ms against a 6.945 ms target; 21 frames
+overshot the scheduler target and the maximum 178.625 ms sample included
+loading/transition work. Retained rain was not exercised: all 68 attempts were
+ineligible because the target state had no active retained-rain layout.
+
+`err.txt` contained normal libass initialization/font-selection messages and
+the existing script release-date notice, with no media, GPU, or crash error.
+The archived logs are `media-wrapper-pool-manual.out.txt` and
+`media-wrapper-pool-manual.err.txt` under `DerivedData/MinGW-x86_64`.
+
+### 2026-07-10 GPU Submission RAM Bound Follow-Up
+
+A controlled process/GPU-memory comparison reproduced the reported RAM
+regression and isolated it from the retained-rain and media-wrapper work. Two
+identical 35-second hidden game-folder runs compared the June 30 executable
+with the fence-back-pressure build. The older whole-device-idle build peaked at
+2,453.4 MiB private memory, 1,875.8 MiB working set, and 1,397.4 MiB GPU
+commitment. The fence build reached 9,058.6 MiB private memory, 7,909.7 MiB
+working set, and 5,917.7 MiB GPU commitment. Both rendered the same startup
+path with about 6,800 command buffers, 1,186 uploads totaling 95.4 MB, and
+roughly 236 MB of live textures. Retained rain had zero bands and no media was
+decoded in this comparison, ruling out both new retained caches.
+
+The cause was backend-deferred command/upload allocation. Polling and releasing
+a signaled GPU fence correctly proved that work was complete, but on this
+Windows Vulkan driver it did not force deferred shared allocations to retire.
+The initial fence policy therefore reported only a 64-command logical backlog
+and zero waits while process and GPU-committed memory climbed by multiple
+gigabytes.
+
+Submission back-pressure now tracks command buffers since an actual fence wait
+independently from nonblocking fence retirement. Every 64 normal submissions by
+default, the newest checkpoint is acquired and waited; that checkpoint covers
+all older submissions, after which their tracked fences are released together.
+This bounds backend-retained allocations without restoring
+`SDL_WaitForGPUIdle()` or waiting for unrelated work submitted later. A
+successful synchronous readback wait also resets the periodic bound. The
+`ONS_SDL3_GPU_MAX_QUEUED_COMMAND_BUFFERS` override remains available and `0`
+still disables checkpoints and periodic waits.
+
+Cap experiments established the synchronization/memory tradeoff. The original
+query-first cap of 64 still peaked at 7,880.6 MiB private memory with zero
+submission waits. Caps of 8 and 16 reduced private peaks to 846.1 and 927.4 MiB
+but required 843 and 421 submission waits over the 35-second path. The final
+independent periodic-64 policy required only 106 waits over 6,831 command
+buffers while peaking at 976.2 MiB private memory, 472.6 MiB working set, and
+588.7 MiB GPU commitment. Against the regressed fence build, those are
+reductions of 89.2%, 94.0%, and 90.1%, respectively.
+
+A 120-second default-policy run then exercised 22,017 command buffers, 5,119
+texture uploads totaling 4.46 GB, and 1,356 decoded video frames. Peak private
+memory stayed at 1,180.4 MiB and ended at 1,015.7 MiB; working set peaked at
+694.7 MiB and GPU commitment at 620.7 MiB. Its 343 periodic fence waits averaged
+2.9 per second, frame pacing averaged 6.994 ms against a 6.945 ms target, all
+media wrappers returned with zero discards, and rendering recorded zero CPU
+blit or shader fallback. `err.txt` contained only the existing release-date and
+normal libass initialization/font-selection messages.
+
+Verification: a full UCRT64 rebuild completed and linked, and incremental
+Android `x86_64` and `arm64-v8a` builds linked. A forced
+`ONS_SDL3_GPU_MAX_QUEUED_COMMAND_BUFFERS=0` benchmark recorded zero submission
+fences, zero submission waits, and a zero backlog peak. The final 300-iteration
+SDL3 benchmark wrote `sdl3-benchmark-ram-retirement-final.csv`; representative
+results were `texture_upload_full_submit` at 304.166 us,
+`blit_256_batched_submit` at 0.251 us,
+`triangle_batch_1024_quads_submit` at 47.441 us, and
+`readback_full_completed` at 1696.726 us. The matching Music Box benchmark
+recorded `musicbox_full_frame_reordered` at 29.465 us/frame. Both exited
+normally. The rebuilt Windows executable has SHA-256
+`4F01DAF5F0D3EB26D4607A668A13E41ACD080E129AF4B8DCBFE551B3988BF893`.
+The rebuilt executable was copied to `D:\Umineko Project\onscripter-new.exe`
+and hash-verified against the local build. A visible manual validation has not
+yet been performed for this follow-up; no script repack is required.
+
+### 2026-07-10 README and 1.0 Release Packaging
+
+The root `README.md` was rewritten for players and project visitors. It now
+leads with what `onscripter-new` is, why an Umineko Project player would use it,
+and where to download it. The ONScripter-RU comparison describes practical
+differences in purpose, graphics, performance, game-specific polish, platform
+focus, and intended audience. Installation, requirements, save compatibility,
+and the copyrighted-data boundary now appear before the short contributor
+build section; detailed toolchain and audit history remains linked here instead
+of dominating the landing page.
+
+The 1.0 release was staged under `DerivedData/Release/v1.0` with a user-facing
+changelog. The Windows archive contains the current `onscripter-new.exe`, the
+unchanged verified packed `en.file`, install notes, and the five maintained
+textbox-preview assets. `Scripts/quickdroid.tool --release` cleanly rebuilt
+both Android native ABIs before Gradle assembled the release APK.
+
+Android signing was corrected before publication. The existing public APK
+history used newly generated temporary certificates; the v2026.07.09 and first
+1.0 packaging attempt therefore had different signer digests and could not
+support an in-place update. A persistent 1.0 release key now lives outside the
+repository at `C:\Users\Timmy\.onscripter-new\android-release.keystore`; its
+password is stored with current-user Windows DPAPI protection in
+`android-release-credential.xml`. The final APK uses signer SHA-256
+`7228fe05eddf2449607ddf03b38c573017f1523e63d6883a432a0871b3fdcafa`.
+Release notes tell pre-1.0 Android users to back up data and perform a one-time
+uninstall/reinstall. Future releases can update normally when signed with this
+identity.
+
+Packaging verification: `unzip -t` validated all Windows archive entries, and
+the packed executable/script hashes match their build sources exactly.
+`sha256sum -c` validated both release artifacts. `apksigner` verified APK
+Signature Scheme v2; `aapt` reported package
+`org.umineko_project.onscripter_ru`, version `1.0`, minimum API 34, target API
+36, only `android.permission.VIBRATE`, and native ABIs `arm64-v8a` and
+`x86_64`. Final artifact SHA-256 values are:
+
+```text
+f087aafb747007ed6bfb83450d6617ee7f29453b547674febf8d01c82e619741  onscripter-new-windows-x86_64.zip
+3ce8c47af19f8c627f8ec96197c66a5695bd6dfc8abf2de020dcebc24dff9e3b  onscripter-new-android.apk
+```
 
 ## Findings
 

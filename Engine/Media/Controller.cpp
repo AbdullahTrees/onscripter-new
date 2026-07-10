@@ -13,8 +13,26 @@
 
 #include "Support/SDLCompat.hpp"
 
-#include <stdexcept>
 #include <cassert>
+#include <cstring>
+#include <stdexcept>
+
+namespace {
+bool mediaPoolTelemetryEnabled() {
+	const char *value = onsSDLGetEnv("ONS_SDL3_GPU_TELEMETRY");
+	if (!value || !*value)
+		return false;
+	return std::strcmp(value, "0") != 0 &&
+	       std::strcmp(value, "false") != 0 && std::strcmp(value, "FALSE") != 0 &&
+	       std::strcmp(value, "off") != 0 && std::strcmp(value, "OFF") != 0;
+}
+
+void updateTelemetryPeak(std::atomic<Uint64> &peak, Uint64 value) {
+	Uint64 current = peak.load(std::memory_order_relaxed);
+	while (current < value &&
+	       !peak.compare_exchange_weak(current, value, std::memory_order_relaxed, std::memory_order_relaxed)) {}
+}
+}
 
 MediaProcController media;
 
@@ -22,32 +40,221 @@ int MediaProcController::ownInit() {
 	av_log_set_level(AV_LOG_QUIET);
 	av_log_set_callback(logLine);
 	HardwareDecoderIFace::reg();
+	mediaPoolTelemetryActive = mediaPoolTelemetryEnabled();
 	audioSpec = AudioSpec();
 	return audioSpec.init(ons.audio_format);
 }
 
 int MediaProcController::ownDeinit() {
 	resetState();
+	printMediaPoolTelemetry();
+	clearMediaPools();
 	return 0;
 }
 
-MediaProcController::MediaFrame::~MediaFrame() {
+void MediaProcController::MediaFrame::reset() {
 	if (surface) {
 		if (media.imagePool) {
 			media.imagePool->giveImage(surface);
 		} else {
 			SDL_FreeSurface(surface);
 		}
+		surface = nullptr;
 	}
 
-	dataDeleter(data);
+	if (dataDeleter)
+		dataDeleter(data);
+	data = nullptr;
+	dataDeleter = defaultDeleter;
 	if (avFrame)
 		av_frame_free(&avFrame);
 	if (ownsPlanes)
 		for (auto &p : planes) freearr(&p);
 
-	planesCnt = 0;
-	srcFormat = AV_PIX_FMT_NONE;
+	std::fill(std::begin(planes), std::end(planes), nullptr);
+	std::fill(std::begin(linesize), std::end(linesize), 0);
+	planesCnt   = 0;
+	dataSize    = 0;
+	isLastFrame = false;
+	frameNumber = 0;
+	msTimeStamp = 0;
+	srcFormat   = AV_PIX_FMT_NONE;
+	ownsPlanes  = true;
+}
+
+MediaProcController::MediaFrame::~MediaFrame() {
+	reset();
+}
+
+void MediaProcController::MediaFrameDeleter::operator()(MediaFrame *frame) const {
+	if (!frame)
+		return;
+	if (owner)
+		owner->recycleMediaFrame(frame);
+	else
+		delete frame;
+}
+
+void MediaProcController::MediaPacketDeleter::operator()(AVPacket *packet) const {
+	if (!packet)
+		return;
+	if (owner)
+		owner->recycleMediaPacket(packet);
+	else
+		av_packet_free(&packet);
+}
+
+MediaProcController::~MediaProcController() {
+	clearMediaPools();
+}
+
+MediaProcController::MediaFramePtr MediaProcController::acquireMediaFrame(MediaEntries entry) {
+	if (mediaPoolTelemetryActive) {
+		mediaPoolTelemetry.frameAcquires.fetch_add(1, std::memory_order_relaxed);
+		if (entry == VideoEntry)
+			mediaPoolTelemetry.videoFrameAcquires.fetch_add(1, std::memory_order_relaxed);
+		else if (entry == AudioEntry)
+			mediaPoolTelemetry.audioFrameAcquires.fetch_add(1, std::memory_order_relaxed);
+	}
+
+	MediaFrame *frame = nullptr;
+	SDL_AtomicLock(&mediaFramePoolLock);
+	if (mediaFramePoolSize > 0) {
+		frame = mediaFramePool[--mediaFramePoolSize];
+		mediaFramePool[mediaFramePoolSize] = nullptr;
+	}
+	SDL_AtomicUnlock(&mediaFramePoolLock);
+
+	if (frame) {
+		if (mediaPoolTelemetryActive)
+			mediaPoolTelemetry.frameReuses.fetch_add(1, std::memory_order_relaxed);
+	} else {
+		frame = new MediaFrame();
+		if (mediaPoolTelemetryActive)
+			mediaPoolTelemetry.frameAllocations.fetch_add(1, std::memory_order_relaxed);
+	}
+	return MediaFramePtr(frame, MediaFrameDeleter{this});
+}
+
+MediaProcController::MediaPacketPtr MediaProcController::acquireMediaPacket() {
+	if (mediaPoolTelemetryActive)
+		mediaPoolTelemetry.packetAcquires.fetch_add(1, std::memory_order_relaxed);
+
+	AVPacket *packet = nullptr;
+	SDL_AtomicLock(&mediaPacketPoolLock);
+	if (mediaPacketPoolSize > 0) {
+		packet = mediaPacketPool[--mediaPacketPoolSize];
+		mediaPacketPool[mediaPacketPoolSize] = nullptr;
+	}
+	SDL_AtomicUnlock(&mediaPacketPoolLock);
+
+	if (packet) {
+		if (mediaPoolTelemetryActive)
+			mediaPoolTelemetry.packetReuses.fetch_add(1, std::memory_order_relaxed);
+	} else {
+		packet = av_packet_alloc();
+		if (packet && mediaPoolTelemetryActive)
+			mediaPoolTelemetry.packetAllocations.fetch_add(1, std::memory_order_relaxed);
+	}
+	return MediaPacketPtr(packet, MediaPacketDeleter{this});
+}
+
+void MediaProcController::recycleMediaFrame(MediaFrame *frame) {
+	if (!frame)
+		return;
+	frame->reset();
+	if (mediaPoolTelemetryActive)
+		mediaPoolTelemetry.frameReturns.fetch_add(1, std::memory_order_relaxed);
+
+	bool cached = false;
+	SDL_AtomicLock(&mediaFramePoolLock);
+	if (mediaFramePoolSize < mediaFramePool.size()) {
+		mediaFramePool[mediaFramePoolSize++] = frame;
+		cached = true;
+		if (mediaPoolTelemetryActive)
+			updateTelemetryPeak(mediaPoolTelemetry.framePoolPeak, mediaFramePoolSize);
+	}
+	SDL_AtomicUnlock(&mediaFramePoolLock);
+
+	if (!cached) {
+		if (mediaPoolTelemetryActive)
+			mediaPoolTelemetry.frameDiscards.fetch_add(1, std::memory_order_relaxed);
+		delete frame;
+	}
+}
+
+void MediaProcController::recycleMediaPacket(AVPacket *packet) {
+	if (!packet)
+		return;
+	av_packet_unref(packet);
+	if (mediaPoolTelemetryActive)
+		mediaPoolTelemetry.packetReturns.fetch_add(1, std::memory_order_relaxed);
+
+	bool cached = false;
+	SDL_AtomicLock(&mediaPacketPoolLock);
+	if (mediaPacketPoolSize < mediaPacketPool.size()) {
+		mediaPacketPool[mediaPacketPoolSize++] = packet;
+		cached = true;
+		if (mediaPoolTelemetryActive)
+			updateTelemetryPeak(mediaPoolTelemetry.packetPoolPeak, mediaPacketPoolSize);
+	}
+	SDL_AtomicUnlock(&mediaPacketPoolLock);
+
+	if (!cached) {
+		if (mediaPoolTelemetryActive)
+			mediaPoolTelemetry.packetDiscards.fetch_add(1, std::memory_order_relaxed);
+		av_packet_free(&packet);
+	}
+}
+
+void MediaProcController::clearMediaPools() {
+	SDL_AtomicLock(&mediaFramePoolLock);
+	while (mediaFramePoolSize > 0) {
+		MediaFrame *frame = mediaFramePool[--mediaFramePoolSize];
+		mediaFramePool[mediaFramePoolSize] = nullptr;
+		delete frame;
+	}
+	SDL_AtomicUnlock(&mediaFramePoolLock);
+
+	SDL_AtomicLock(&mediaPacketPoolLock);
+	while (mediaPacketPoolSize > 0) {
+		AVPacket *packet = mediaPacketPool[--mediaPacketPoolSize];
+		mediaPacketPool[mediaPacketPoolSize] = nullptr;
+		av_packet_free(&packet);
+	}
+	SDL_AtomicUnlock(&mediaPacketPoolLock);
+}
+
+void MediaProcController::printMediaPoolTelemetry() {
+	if (!mediaPoolTelemetryActive ||
+	    (mediaPoolTelemetry.frameAcquires.load(std::memory_order_relaxed) == 0 &&
+	     mediaPoolTelemetry.packetAcquires.load(std::memory_order_relaxed) == 0))
+		return;
+
+	sendToLog(LogLevel::Info,
+	          "Media wrapper pool telemetry: frame_acquires=%llu video_frame_acquires=%llu audio_frame_acquires=%llu "
+	          "frame_allocations=%llu frame_reuses=%llu frame_returns=%llu frame_discards=%llu "
+	          "frame_pool_peak=%llu frame_pool_cached=%llu frame_pool_capacity=%llu "
+	          "packet_acquires=%llu packet_allocations=%llu packet_reuses=%llu packet_returns=%llu "
+	          "packet_discards=%llu packet_pool_peak=%llu packet_pool_cached=%llu packet_pool_capacity=%llu\n",
+	          static_cast<unsigned long long>(mediaPoolTelemetry.frameAcquires.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.videoFrameAcquires.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.audioFrameAcquires.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.frameAllocations.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.frameReuses.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.frameReturns.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.frameDiscards.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.framePoolPeak.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaFramePoolSize),
+	          static_cast<unsigned long long>(MediaFramePoolCapacity),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.packetAcquires.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.packetAllocations.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.packetReuses.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.packetReturns.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.packetDiscards.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPoolTelemetry.packetPoolPeak.load(std::memory_order_relaxed)),
+	          static_cast<unsigned long long>(mediaPacketPoolSize),
+	          static_cast<unsigned long long>(MediaPacketPoolCapacity));
 }
 
 int MediaProcController::AudioSpec::init(const SDL_AudioSpec &spec) {
@@ -364,14 +571,14 @@ void MediaProcController::resetFrameQueues(int vidStart, int vidEnd) {
 	// Cleanup the queues
 	auto &vidQueue = async.loadFramesQueue[VideoEntry].results;
 	if (!vidQueue.empty()) {
-		std::for_each(std::begin(vidQueue) + vidStart, std::end(vidQueue) - vidEnd, [](void *&elem) {
-			delete static_cast<MediaFrame *>(elem);
+		std::for_each(std::begin(vidQueue) + vidStart, std::end(vidQueue) - vidEnd, [this](void *&elem) {
+			recycleMediaFrame(static_cast<MediaFrame *>(elem));
 		});
 		vidQueue.erase(std::begin(vidQueue) + vidStart, std::end(vidQueue) - vidEnd); /* Leave last available frame */
 	}
 
 	for (auto &elem : async.loadFramesQueue[AudioEntry].results) {
-		delete static_cast<MediaFrame *>(elem);
+		recycleMediaFrame(static_cast<MediaFrame *>(elem));
 	}
 	async.loadFramesQueue[AudioEntry].results.clear();
 
@@ -465,7 +672,7 @@ void MediaProcController::applySubtitles(MediaFrame &frame) {
 
 // Decoder stuff
 
-bool MediaProcController::Decoder::enqueueFrame(MediaEntries index, std::unique_ptr<MediaFrame> vf) {
+bool MediaProcController::Decoder::enqueueFrame(MediaEntries index, MediaFramePtr vf) {
 	if (!vf || vf->has()) {
 		bool exiting = false;
 		while (!onsWaitSemaphoreTimeout(media.frameQueueSem[index], 10)) {
@@ -500,7 +707,7 @@ bool MediaProcController::Decoder::receiveAvailableFrames(MediaEntries index) {
 			return true;
 		}
 
-		auto vf = std::make_unique<MediaFrame>();
+		auto vf = media.acquireMediaFrame(index);
 		processFrame(*vf);
 		av_frame_unref(frame);
 
@@ -554,7 +761,7 @@ void MediaProcController::Decoder::decodeFrame(MediaEntries index) {
 		}
 
 		bool flushDecoder = false;
-		cmp::unique_ptr_del<AVPacket> packet(media.demux->obtainPacket(index, flushDecoder), MediaDemux::freePacket);
+		auto packet = media.demux->obtainPacket(index, flushDecoder);
 
 		bool decodeOk = false;
 		if (flushDecoder) {
@@ -628,8 +835,8 @@ const AVCodec *MediaProcController::Decoder::findCodec(AVCodecContext *context) 
 	return codec;
 }
 
-std::unique_ptr<MediaProcController::MediaFrame> MediaProcController::advanceVideoFrames(int &framesToAdvance, bool &endOfFile) {
-	std::unique_ptr<MediaFrame> frame = nullptr;
+MediaProcController::MediaFramePtr MediaProcController::advanceVideoFrames(int &framesToAdvance, bool &endOfFile) {
+	MediaFramePtr frame(nullptr, MediaFrameDeleter{this});
 
 	AsyncInstructionQueue &vidQueue = async.loadFramesQueue[VideoEntry];
 	bool canSkipThisFrame           = false;
@@ -648,7 +855,7 @@ std::unique_ptr<MediaProcController::MediaFrame> MediaProcController::advanceVid
 			return nullptr;
 		}
 
-		frame = std::unique_ptr<MediaFrame>(static_cast<MediaFrame *>(vidQueue.results.front()));
+		frame = MediaFramePtr(static_cast<MediaFrame *>(vidQueue.results.front()), MediaFrameDeleter{this});
 		vidQueue.results.pop_front();
 		canSkipThisFrame = !vidQueue.results.empty() &&
 		                   !(vidQueue.results.size() == 1 &&
@@ -689,7 +896,7 @@ cmp::unique_ptr_del<uint8_t[]> MediaProcController::advanceAudioChunks(size_t &b
 		buffSz = frame->dataSize;
 		cmp::unique_ptr_del<uint8_t[]> ret(frame->data, frame->dataDeleter);
 		frame->data = nullptr;
-		delete frame;
+		recycleMediaFrame(frame);
 		return ret;
 	}
 

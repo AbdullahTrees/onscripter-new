@@ -64,8 +64,21 @@ public:
 		MediaFrame()                   = default;
 		MediaFrame(const MediaFrame &) = delete;
 		MediaFrame &operator=(const MediaFrame &) = delete;
+		void reset();
 		~MediaFrame();
 	};
+
+	struct MediaFrameDeleter {
+		MediaProcController *owner{nullptr};
+		void operator()(MediaFrame *frame) const;
+	};
+	using MediaFramePtr = std::unique_ptr<MediaFrame, MediaFrameDeleter>;
+
+	struct MediaPacketDeleter {
+		MediaProcController *owner{nullptr};
+		void operator()(AVPacket *packet) const;
+	};
+	using MediaPacketPtr = std::unique_ptr<AVPacket, MediaPacketDeleter>;
 
 	struct HardwareDecoderIFace {
 		static const std::unordered_set<int> hardwareAcceleratedFormats;
@@ -128,10 +141,7 @@ protected:
 		bool prepare(int videoStream = InvalidStream, int audioStream = InvalidStream, int subtitleStream = InvalidStream);
 		bool resetPacketQueue();
 
-		AVPacket *obtainPacket(MediaEntries index, bool &cacheReadStarted);
-		static void freePacket(AVPacket *packet) {
-			av_packet_free(&packet);
-		}
+		MediaPacketPtr obtainPacket(MediaEntries index, bool &cacheReadStarted);
 		void demultiplexStreams(long double videoTimeBase);
 
 		bool packetQueueSpacesAvailable(MediaEntries entry) {
@@ -161,7 +171,7 @@ protected:
 		SDL_semaphore *packetQueueSemSpaces[2]{nullptr, nullptr}; // semaphores used to control packetQueue[x] free space (AVFrames)
 		SDL_semaphore *packetQueueSemData[2]{nullptr, nullptr};   // semaphores used to inform about the data in packetQueue[x] (AVFrames)
 
-		void pushPacket(MediaEntries id, AVPacket *packet, int read_result, bool &demultiplexingComplete, long double videoTimeBase);
+		void pushPacket(MediaEntries id, MediaPacketPtr packet, int read_result, bool &demultiplexingComplete, long double videoTimeBase);
 	};
 
 	class Decoder {
@@ -180,7 +190,7 @@ protected:
 		Decoder(AVCodecContext *context, const AVCodec *codec, int stream)
 		    : codecContext(context), codec(codec), stream(stream) {}
 
-		bool enqueueFrame(MediaEntries index, std::unique_ptr<MediaFrame> frame);
+		bool enqueueFrame(MediaEntries index, MediaFramePtr frame);
 		bool receiveAvailableFrames(MediaEntries index);
 		bool sendPacket(MediaEntries index, AVPacket *packet);
 
@@ -308,6 +318,27 @@ private:
 	static constexpr size_t VideoFrameBufferSize  = 12;
 #endif
 	static constexpr size_t AudioPacketBufferSize = VideoPacketBufferSize * 2;
+	// Queue limits plus decoder/consumer in-flight wrappers. The pools stay
+	// bounded while retaining every wrapper that a valid queue schedule can use.
+	static constexpr size_t MediaFramePoolCapacity = VideoFrameBufferSize + AudioPacketBufferSize + 4;
+	static constexpr size_t MediaPacketPoolCapacity = VideoPacketBufferSize + AudioPacketBufferSize + 4;
+
+	struct MediaPoolTelemetry {
+		std::atomic<Uint64> frameAcquires{0};
+		std::atomic<Uint64> videoFrameAcquires{0};
+		std::atomic<Uint64> audioFrameAcquires{0};
+		std::atomic<Uint64> frameAllocations{0};
+		std::atomic<Uint64> frameReuses{0};
+		std::atomic<Uint64> frameReturns{0};
+		std::atomic<Uint64> frameDiscards{0};
+		std::atomic<Uint64> framePoolPeak{0};
+		std::atomic<Uint64> packetAcquires{0};
+		std::atomic<Uint64> packetAllocations{0};
+		std::atomic<Uint64> packetReuses{0};
+		std::atomic<Uint64> packetReturns{0};
+		std::atomic<Uint64> packetDiscards{0};
+		std::atomic<Uint64> packetPoolPeak{0};
+	};
 
 	static void logLine(void *inst, int level, const char *fmt, va_list args);
 
@@ -315,6 +346,14 @@ private:
 
 	AudioSpec audioSpec;
 	std::unique_ptr<TempImagePool> imagePool{nullptr}; // image pool of SDL_Surfaces for video frames
+	std::array<MediaFrame *, MediaFramePoolCapacity> mediaFramePool{};
+	std::array<AVPacket *, MediaPacketPoolCapacity> mediaPacketPool{};
+	size_t mediaFramePoolSize{0};
+	size_t mediaPacketPoolSize{0};
+	SDL_SpinLock mediaFramePoolLock{0};
+	SDL_SpinLock mediaPacketPoolLock{0};
+	MediaPoolTelemetry mediaPoolTelemetry;
+	bool mediaPoolTelemetryActive{false};
 
 	AVFormatContext *formatContext{nullptr}; // ff format context
 
@@ -326,7 +365,6 @@ private:
 	std::atomic<int> decoderWorkerCount{0}; // equals number of unfinished workers (i.e. 0 when all are done)
 
 	std::array<long double, VideoPacketBufferSize> initVideoTimecodes; // video timecodes grabbed from the beginning of the file
-	std::deque<AVPacket *> packetQueue[2];                             // ff packet queues (video, audio)
 
 	std::unique_ptr<Decoder> decoders[3];
 	std::unique_ptr<MediaDemux> demux;
@@ -339,6 +377,12 @@ private:
 	void resetDemuxer();
 	void resetDecoders();
 	void resetFrameQueues(int vidStart = 0, int vidEnd = 0);
+	MediaFramePtr acquireMediaFrame(MediaEntries entry);
+	MediaPacketPtr acquireMediaPacket();
+	void recycleMediaFrame(MediaFrame *frame);
+	void recycleMediaPacket(AVPacket *packet);
+	void clearMediaPools();
+	void printMediaPoolTelemetry();
 
 public:
 	bool loadVideo(const char *filename, unsigned audioStream, unsigned subtitleStream);
@@ -349,7 +393,7 @@ public:
 	void resetState();
 	void demultiplexStreams();
 	void decodeFrames(MediaEntries entry);
-	std::unique_ptr<MediaFrame> advanceVideoFrames(int &framesToAdvance, bool &endOfFile);
+	MediaFramePtr advanceVideoFrames(int &framesToAdvance, bool &endOfFile);
 	cmp::unique_ptr_del<uint8_t[]> advanceAudioChunks(size_t &buffSz);
 	void getVideoTimecodes(size_t &counter, AVPacket *packet, long double videoTimeBase);
 	bool finish(bool needLastFrame);
@@ -379,6 +423,7 @@ public:
 
 	MediaProcController()
 	    : BaseController(this) {}
+	~MediaProcController() override;
 };
 
 extern MediaProcController media;

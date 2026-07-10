@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -280,6 +281,9 @@ struct SDL3GPUTelemetry {
 	Uint64 cpuShaderDraws{0};
 	Uint64 cpuShaderPixels{0};
 	Uint64 blockingGPUWaits{0};
+	Uint64 submissionFences{0};
+	Uint64 submissionFenceWaits{0};
+	Uint64 submissionBacklogPeak{0};
 	Uint64 nativeBlitCulls{0};
 	Uint64 nativeBlitClips{0};
 	Uint64 nativeShaderCompiles{0};
@@ -287,6 +291,11 @@ struct SDL3GPUTelemetry {
 	std::array<SDL3GPUShaderTelemetry, static_cast<size_t>(SDL3GPUShaderKind::Count)> shaders{};
 	std::vector<SDL3GPUTransferTelemetry> transfers;
 	std::vector<SDL3GPUFixedDrawTelemetry> fixedDraws;
+};
+
+struct SDL3GPUSubmissionFence {
+	SDL_GPUFence *fence{nullptr};
+	Uint64 commandBuffers{0};
 };
 
 SDL_GPUShader *texturedVertexShader{nullptr};
@@ -308,7 +317,12 @@ std::unordered_map<Uint32, SDL3GPUProgramObject> programObjects;
 std::unordered_map<int, Uint32> uniformLocationOwners;
 std::unordered_set<GPU_Image *> liveTextureImages;
 Uint64 nextLiveTextureTelemetryBytes{256ull * 1024ull * 1024ull};
-Uint64 submittedCommandBuffersSinceIdle{0};
+std::deque<SDL3GPUSubmissionFence> submissionFences;
+Uint64 unretiredCommandBuffers{0};
+Uint64 commandBuffersSinceSubmissionFence{0};
+// Completed-fence polling alone does not force every backend to release its
+// deferred command/upload allocations. Track actual waits independently.
+Uint64 commandBuffersSinceSubmissionWait{0};
 int nextUniformLocation{1};
 #if defined(ONS_USE_SDL3_SHADERCROSS)
 bool shaderCrossInitialized{false};
@@ -372,12 +386,11 @@ void noteBlockingGPUWait() {
 		++telemetry.blockingGPUWaits;
 		telemetry.hasData = true;
 	}
-	submittedCommandBuffersSinceIdle = 0;
 }
 
 Uint64 maxQueuedCommandBuffersBeforeWait() {
 	static bool initialized = false;
-	static Uint64 value     = 512;
+	static Uint64 value     = 64;
 	if (initialized)
 		return value;
 
@@ -393,33 +406,128 @@ Uint64 maxQueuedCommandBuffersBeforeWait() {
 	return value;
 }
 
+Uint64 submissionFenceInterval(Uint64 maxQueuedCommandBuffers) {
+	constexpr Uint64 DefaultInterval = 32;
+	return std::min(DefaultInterval, maxQueuedCommandBuffers);
+}
+
+void noteSubmissionBacklog() {
+	if (!telemetryEnabled())
+		return;
+	telemetry.submissionBacklogPeak = std::max(telemetry.submissionBacklogPeak, unretiredCommandBuffers);
+	telemetry.hasData = true;
+}
+
+void retireOldestSubmissionFence() {
+	if (submissionFences.empty())
+		return;
+
+	const SDL3GPUSubmissionFence completed = submissionFences.front();
+	submissionFences.pop_front();
+	SDL_ReleaseGPUFence(rendererState.device, completed.fence);
+	unretiredCommandBuffers -= std::min(unretiredCommandBuffers, completed.commandBuffers);
+}
+
+void reapCompletedSubmissionFences() {
+	while (!submissionFences.empty() && SDL_QueryGPUFence(rendererState.device, submissionFences.front().fence))
+		retireOldestSubmissionFence();
+}
+
+void retireSubmissionBacklogAfterCompletedFence() {
+	while (!submissionFences.empty())
+		retireOldestSubmissionFence();
+	unretiredCommandBuffers = 0;
+	commandBuffersSinceSubmissionFence = 0;
+	commandBuffersSinceSubmissionWait = 0;
+}
+
+void releaseSubmissionFences() {
+	while (!submissionFences.empty()) {
+		SDL_ReleaseGPUFence(rendererState.device, submissionFences.front().fence);
+		submissionFences.pop_front();
+	}
+	unretiredCommandBuffers = 0;
+	commandBuffersSinceSubmissionFence = 0;
+	commandBuffersSinceSubmissionWait = 0;
+}
+
 void throttleGPUSubmissionBacklog() {
 	if (!rendererState.device)
 		return;
+
 	const Uint64 maxQueuedCommandBuffers = maxQueuedCommandBuffersBeforeWait();
 	if (maxQueuedCommandBuffers == 0)
 		return;
-	++submittedCommandBuffersSinceIdle;
-	if (submittedCommandBuffersSinceIdle < maxQueuedCommandBuffers)
+
+	const bool submittedCheckpoint = commandBuffersSinceSubmissionFence == 0;
+	const bool periodicWaitRequired = commandBuffersSinceSubmissionWait >= maxQueuedCommandBuffers;
+	if (!submittedCheckpoint && !periodicWaitRequired)
 		return;
-	SDL_WaitForGPUIdle(rendererState.device);
-	noteBlockingGPUWait();
+
+	if (periodicWaitRequired && !submissionFences.empty()) {
+		// The newest checkpoint covers all earlier submissions. Waiting for it
+		// bounds backend-retained memory without idling unrelated later work.
+		SDL_GPUFence *fence = submissionFences.back().fence;
+		const bool waited = SDL_WaitForGPUFences(rendererState.device, true, &fence, 1);
+		noteBlockingGPUWait();
+		if (telemetryEnabled()) {
+			++telemetry.submissionFenceWaits;
+			telemetry.hasData = true;
+		}
+		if (waited)
+			retireSubmissionBacklogAfterCompletedFence();
+		return;
+	}
+
+	reapCompletedSubmissionFences();
 }
 
 bool submitGPUCommandBuffer(SDL_GPUCommandBuffer *commands) {
-	const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
-	if (submitted) {
-		noteCommandBufferSubmitted();
+	const Uint64 maxQueuedCommandBuffers = maxQueuedCommandBuffersBeforeWait();
+	const Uint64 fenceInterval = maxQueuedCommandBuffers == 0 ? 0 : submissionFenceInterval(maxQueuedCommandBuffers);
+	const bool acquireFence = fenceInterval != 0 &&
+	                          (commandBuffersSinceSubmissionFence + 1 >= fenceInterval ||
+	                           commandBuffersSinceSubmissionWait + 1 >= maxQueuedCommandBuffers);
+
+	SDL_GPUFence *fence = nullptr;
+	if (acquireFence) {
+		fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
+		if (!fence)
+			return false;
+	} else if (!SDL_SubmitGPUCommandBuffer(commands)) {
+		return false;
+	}
+
+	noteCommandBufferSubmitted();
+	if (maxQueuedCommandBuffers != 0) {
+		++unretiredCommandBuffers;
+		++commandBuffersSinceSubmissionFence;
+		++commandBuffersSinceSubmissionWait;
+		if (fence) {
+			submissionFences.push_back({fence, commandBuffersSinceSubmissionFence});
+			commandBuffersSinceSubmissionFence = 0;
+			if (telemetryEnabled()) {
+				++telemetry.submissionFences;
+				telemetry.hasData = true;
+			}
+		}
+		noteSubmissionBacklog();
 		throttleGPUSubmissionBacklog();
 	}
-	return submitted;
+	return true;
 }
 
 SDL_GPUFence *submitGPUCommandBufferAndAcquireFence(SDL_GPUCommandBuffer *commands) {
 	SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
 	if (fence) {
 		noteCommandBufferSubmitted();
-		throttleGPUSubmissionBacklog();
+		if (maxQueuedCommandBuffersBeforeWait() != 0) {
+			++unretiredCommandBuffers;
+			++commandBuffersSinceSubmissionFence;
+			++commandBuffersSinceSubmissionWait;
+			noteSubmissionBacklog();
+			throttleGPUSubmissionBacklog();
+		}
 	}
 	return fence;
 }
@@ -1907,6 +2015,7 @@ void printAndResetTelemetry() {
 	          "native_shader_compiles=%llu compatibility_shader_compiles=%llu native_shader_draws=%llu "
 	          "native_shader_vertices=%llu cpu_blit_draws=%llu cpu_blit_pixels=%llu "
 	          "cpu_shader_draws=%llu cpu_shader_pixels=%llu blocking_gpu_waits=%llu "
+	          "submission_fences=%llu submission_fence_waits=%llu submission_backlog_peak=%llu "
 	          "native_blit_culls=%llu native_blit_clips=%llu live_images=%llu "
 	          "live_texture_bytes=%llu live_cpu_pixel_bytes=%llu\n",
 	          static_cast<unsigned long long>(telemetry.commandBuffersSubmitted),
@@ -1925,6 +2034,9 @@ void printAndResetTelemetry() {
 	          static_cast<unsigned long long>(telemetry.cpuShaderDraws),
 	          static_cast<unsigned long long>(telemetry.cpuShaderPixels),
 	          static_cast<unsigned long long>(telemetry.blockingGPUWaits),
+	          static_cast<unsigned long long>(telemetry.submissionFences),
+	          static_cast<unsigned long long>(telemetry.submissionFenceWaits),
+	          static_cast<unsigned long long>(telemetry.submissionBacklogPeak),
 	          static_cast<unsigned long long>(telemetry.nativeBlitCulls),
 	          static_cast<unsigned long long>(telemetry.nativeBlitClips),
 	          static_cast<unsigned long long>(liveTextureImages.size()),
@@ -2531,6 +2643,8 @@ bool downloadImage(GPU_Image *image, const char *telemetrySource = "ensure_pixel
 
 	const bool waited = SDL_WaitForGPUFences(rendererState.device, true, &fence, 1);
 	noteBlockingGPUWait();
+	if (waited)
+		retireSubmissionBacklogAfterCompletedFence();
 	SDL_ReleaseGPUFence(rendererState.device, fence);
 	if (!waited)
 		return false;
@@ -4965,6 +5079,8 @@ bool downloadImageToSurface(GPU_Image *image, SDL_Surface *surface) {
 
 	const bool waited = SDL_WaitForGPUFences(rendererState.device, true, &fence, 1);
 	noteBlockingGPUWait();
+	if (waited)
+		retireSubmissionBacklogAfterCompletedFence();
 	SDL_ReleaseGPUFence(rendererState.device, fence);
 	if (!waited)
 		return false;
@@ -5109,6 +5225,8 @@ void SDLCALL GPU_Quit(void) {
 	if (rendererState.device)
 		flushNativeBlitBatch();
 	printAndResetTelemetry();
+	if (rendererState.device)
+		releaseSubmissionFences();
 
 	if (rendererState.current_context_target) {
 		auto *target = rendererState.current_context_target;
