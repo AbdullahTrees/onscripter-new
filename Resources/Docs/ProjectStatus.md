@@ -5269,10 +5269,11 @@ The root `README.md` was rewritten for players and project visitors. It now
 leads with what `onscripter-new` is, why an Umineko Project player would use it,
 and where to download it. The ONScripter-RU comparison describes practical
 differences in purpose, graphics, performance, game-specific polish, platform
-focus, and intended audience. Installation, requirements, save compatibility,
-and the copyrighted-data boundary now appear before the short contributor
-build section; detailed toolchain and audit history remains linked here instead
-of dominating the landing page.
+focus, and intended audience, while making clear that both engines are closely
+tied to Umineko Project. Installation, requirements, save compatibility, and
+the copyrighted-data boundary now appear before the short contributor build
+section; detailed toolchain and audit history remains linked here instead of
+dominating the landing page.
 
 The 1.0 release was staged under `DerivedData/Release/v1.0` with a user-facing
 changelog. The Windows archive contains the current `onscripter-new.exe`, the

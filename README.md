@@ -36,15 +36,17 @@ different priorities:
 
 | | ONScripter-RU | onscripter-new |
 | --- | --- | --- |
-| **Purpose** | A general ONScripter-family engine with broad legacy compatibility. | A focused engine for current Umineko Project releases. |
+| **Purpose** | The original customized engine behind Umineko Project, with its established compatibility and behavior. | A modern continuation focused on current Umineko Project releases. |
 | **Graphics** | Retains older rendering paths for wider compatibility. | Uses SDL3 and Vulkan, with native shaders and GPU-accelerated video conversion. |
 | **Performance** | Favors established behavior across many scripts and platforms. | Tunes rendering, rain, text, menus, saves, media, and memory use around Umineko Project. |
 | **Game experience** | Stays close to the upstream engine and original project UI. | Includes maintained Umineko-specific interface, script, control, and quality-of-life fixes. |
 | **Platforms** | Supports a wider range of older systems and build configurations. | Provides modern 64-bit Windows and Android packages, with other platforms available to build from source. |
-| **Best choice when…** | You need a general-purpose or older-system ONScripter-RU build. | You want the maintained modern engine and release package for Umineko Project. |
+| **Best choice when…** | You need the original engine, its broader historical configurations, or an older-system build. | You want the maintained modern engine and release package for Umineko Project. |
 
-`onscripter-new` is therefore not intended as a universal replacement for
-ONScripter-RU. It is the more specialized option.
+Both engines are closely tied to Umineko Project. `onscripter-new` is not a
+clean-sheet replacement; it trades some of ONScripter-RU's older platform and
+renderer flexibility for a smaller, modern stack and more active optimization
+of the current game package.
 
 ## Installation
 
