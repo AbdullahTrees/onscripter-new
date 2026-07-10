@@ -1,6 +1,6 @@
 # onscripter-new Project Status
 
-Updated: 2026-06-30
+Updated: 2026-07-09
 
 This file consolidates the former compilation guide, dependency audit, and SDL3 performance audit into one maintenance document for the current `onscripter-new` release branch.
 
@@ -2473,7 +2473,7 @@ SDL3 source-tagged runtime telemetry:
 # SDL3 Performance Audit
 
 Date: 2026-06-02
-Updated: 2026-06-17
+Updated: 2026-07-09
 
 This audit covers the SDL3 default renderer path, with emphasis on
 `Engine/Graphics/SDL3GPUCompat.cpp` because that layer currently adapts the
@@ -4890,6 +4890,144 @@ regenerated and validated for both artifacts with SHA-256
 `224751f353e2d4096c1e8ed52ad63acd0b85bcd58d6f5038a81a94f244ac49f4` for
 `onscripter-new-android.apk`. No post-release manual benchmark or runtime
 visual pass was run.
+
+### 2026-07-09 Whole-Codebase CPU and Allocation Pass
+
+Three independent read-only audits reviewed the whole source tree from
+algorithmic/hot-path, allocation/cache, and renderer/platform perspectives.
+The implemented set deliberately excludes compositor and threading redesigns
+that could not be validated safely in this pass:
+
+- Empty scheduled-image job polls now check an atomic pending-work flag before
+  acquiring `CombinedImagePool::access`. Existing Slot 10 telemetry recorded
+  60,712,181 frame-tail spin polls, so this removes millions of empty SDL
+  spinlock acquisitions without changing the one-millisecond pacing guard.
+  Queue push, matching-request removal, generation, and clear paths maintain
+  the flag under the existing pool lock. Pool clearing also now always clears
+  the pending request vector under that lock instead of conditionally testing
+  the current spinlock value.
+- Constant-refresh event dispatch now asks each action a direct
+  `handlesEvent()` predicate. It no longer constructs and copies an
+  `unordered_set` for every event/action pair. The common input-event test is
+  a switch, user-wait checks scan the locked action registry in place, and
+  `currentAction()` copies only the selected shared pointer instead of copying
+  the complete registry twice. Postponed callbacks are moved into their queue.
+- Decoded-image cache sets maintain exact incremental byte totals. Cache-budget
+  checks and largest-set selection no longer rescan every cached surface after
+  each insertion and eviction. LRU removal now erases its stored list iterator
+  directly instead of linearly searching the key list.
+- The per-frame libusb service returns immediately when startup did not retain
+  any native USB controller. SDL gamepad/joystick hotplug remains unchanged;
+  this only skips a zero-timeout libusb pump that had no native consumer.
+
+The audits also retained several larger opportunities for focused work:
+fence-based SDL3_GPU submission back-pressure instead of global device-idle
+waits, asynchronous Discord IPC to eliminate possible 250-750 ms main-thread
+stalls, pooled media packet/frame wrappers, and retained z-band compositing for
+the measured rain-driven regular-sprite redraw volume. Retained rain
+compositing was selected for the dedicated Slot 10 prototype documented below;
+the other higher-risk proposals remain unimplemented.
+
+A controlled `-O2` build experiment was rejected. Compared with the existing
+`-Os` executable it increased the stripped Windows binary from 14,768,128 to
+15,339,008 bytes (3.9%) and was neutral-to-worse in the maintained synthetic
+workloads, including a one-run Music Box result of 25.795 us versus 23.231 us.
+The configure default therefore remains `-Os`.
+
+Verification: a full UCRT64 `make -B -j8` rebuild completed and linked without
+warning output. Three fresh before/after 300-iteration runs kept the maintained
+benchmarks effectively neutral, as expected because they do not exercise the
+event pump, empty frame-tail job poll, cache-budget turnover, or no-controller
+libusb path. `musicbox_full_frame_reordered` averaged 26.060 us before and
+26.132 us after; `triangle_batch_1024_quads_submit` averaged 42.132 us before
+and 41.689 us after. The rebuilt executable was copied to
+`D:\Umineko Project\onscripter-new.exe` and hash-verified at SHA-256
+`2F8C3626D930DEBE4A60AE5D56D6344B022BB0B85D814891D52A1D853807B310`.
+No scripted-data repack or manual in-game visual/audio pass was required for
+this engine-only pass.
+
+### 2026-07-09 Retained Rain Z-Band Compositing
+
+The first higher-risk follow-up implements retained scene compositing for
+ObjectFall rain without changing HUD composition. The renderer detects up to
+four eligible ObjectFall sprites and caches the static scene as opaque and
+transparent full-canvas z-bands around them. A retained frame copies the
+opaque band, draws each rain layer dynamically, and overlays the following
+static band. The existing full HUD path in `combineWithCamera()` remains
+unchanged.
+
+The band builder preserves the script's exact draw order across the background,
+pre-tachi scene range, tachi block, spriteset 0, later spritesets, and sprites
+sharing the same effective z-order. This matters for Slot 10: the script sets
+`humanz 998`, `hudz 749`, and overrides rain sprite 975 to static sprite 995's
+z-order. The cache therefore records sprite 995 before rain 975 at the shared
+z-level instead of assuming that retained layers occupy otherwise empty z
+levels. Per-frame detection uses a fixed four-element array, so the steady
+retained path does not allocate a temporary layer vector.
+
+Safety is intentionally conservative. Retention falls back to the original
+scene renderer during transitions, pre-screen rendering, sprite-range motion,
+SAYA rendering, transparent or incomplete backgrounds, uncommitted spritesets,
+animated tachi, unsupported scene layers, unsafe foreground blend modes, rain
+crossing a spriteset/tachi boundary, or retained texture demand above 96 MiB.
+Static sprite, tachi, background, post-effect, spriteset-property, window, and
+camera-center changes invalidate the cache. ObjectFall's own dirty rectangles
+do not. The first frame after a real static change uses the original renderer;
+the next eligible rain frame rebuilds full bands before retention resumes.
+Explicit z-order overrides participate in invalidation. The feature defaults
+on and can be disabled for comparison or compatibility with
+`ONS_RETAINED_RAIN_COMPOSITING=0`.
+
+Shutdown telemetry now prints `Retained rain telemetry:` with attempts,
+composed frames, cache hits/builds, fallback reasons, invalidation sources,
+band blits, and dynamic rain draws. An enabled manual Slot 10 run recorded
+5,628 composed frames, 5,519 hits, 109 builds, 111 static fallbacks, 89 real
+static-sprite invalidations, and zero CPU blit or shader fallback. The user
+repeatedly checked the retained scene, same-z rain/static ordering, character
+sprites, dialogue, and HUD and reported correct visible output.
+
+A controlled same-binary Slot 10 comparison loaded the same save and held the
+rain scene for 25 seconds per mode. With retention disabled, ObjectFall
+produced 2,885 refreshes, 100,875 command buffers, 85,908 native fixed draws,
+and 200 blocking GPU waits. With retention enabled, it produced 3,220
+refreshes (+11.6%) while totals fell to 93,243 command buffers (-7.6%), 83,361
+fixed draws (-3.0%), and 185 blocking waits (-7.5%). Normalized by ObjectFall
+refresh, command buffers fell from 34.97 to 28.96 (-17.2%) and fixed draws from
+29.78 to 25.89 (-13.1%). The enabled run composed 3,102 retained frames with
+3,077 hits, 25 builds, 25 static fallbacks, and 23 invalidations: a 99.2% hit
+rate after eligible cache decisions. CPU fallback remained zero in both runs.
+
+Verification: a full UCRT64 `make -B -j8` rebuild completed and linked without
+warning output. Final 300-iteration maintained benchmarks recorded
+`musicbox_full_frame_reordered` at 35.669 us/frame,
+`blit_256_batched_submit` at 0.617 us,
+`triangle_batch_1024_quads_submit` at 41.415 us, and
+`readback_full_completed` at 1621.470 us; these workloads do not exercise the
+retained rain path. The final executable was copied to
+`D:\Umineko Project\onscripter-new.exe` and hash-verified at SHA-256
+`81B9A4487D6474214F3C42BFA6F6DDABDF094D59295F5884659256D5F49542EF`.
+No script repack was required.
+
+Release packaging follow-up: local `v2026.07.09` artifacts were prepared under
+`DerivedData\Release\v2026.07.09`. The Windows x86_64 archive contains the
+final retained-rain/whole-codebase performance executable, unchanged current
+packed `en.file`, install notes, and the five maintained loose textbox preview
+assets. The executable inside the package retains SHA-256
+`81B9A4487D6474214F3C42BFA6F6DDABDF094D59295F5884659256D5F49542EF`;
+the packed script retains SHA-256
+`9F413AE360B0C93319A0396D1B58BEC8CF80E60BBDD3E0108F9D1CE4D855F1E3`.
+
+`Scripts\quickdroid.tool --release` rebuilt and linked the current shared
+source for both Android `arm64-v8a` and `x86_64`, then assembled the combined
+release APK. The APK verifies with Signature Scheme v2, package id
+`org.umineko_project.onscripter_ru`, label `onscripter-new`, min SDK 34,
+target SDK 36, only `android.permission.VIBRATE`, and both native ABIs. The
+Windows archive passed `unzip -t`; `SHA256SUMS.txt` passed `sha256sum -c` for
+both artifacts. Final SHA-256 values are
+`70243AEF9F9D08823118D0EC4930B7E69514125E4DC94E58E98290F215D5F0EB`
+for `onscripter-new-windows-x86_64.zip` and
+`22A3E1E69AE2C2EF752952931789455595A0F71C1DFB11B4B2A88C3998838C74`
+for `onscripter-new-android.apk`.
 
 ## Findings
 

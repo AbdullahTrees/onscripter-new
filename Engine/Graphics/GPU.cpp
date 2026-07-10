@@ -1562,6 +1562,7 @@ RenderImage *CombinedImagePool::get(int w, int h, int channels, bool store) {
 				++itR;
 			}
 		}
+		hasPending.store(!toDo.empty(), std::memory_order_release);
 		SDL_AtomicUnlock(&access);
 	}
 
@@ -1603,6 +1604,9 @@ RenderImage *CombinedImagePool::get(int w, int h, int channels, bool store) {
 }
 
 bool CombinedImagePool::generate() {
+	if (!hasPending.load(std::memory_order_acquire))
+		return false;
+
 	SDL_AtomicLock(&access);
 	if (!toDo.empty()) {
 		int w = toDo[0].w, h = toDo[0].h;
@@ -1610,6 +1614,7 @@ bool CombinedImagePool::generate() {
 		gpu.createImage(w, h, 4, true);
 		return true;
 	}
+	hasPending.store(false, std::memory_order_release);
 	SDL_AtomicUnlock(&access);
 	return false;
 }

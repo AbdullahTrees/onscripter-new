@@ -360,8 +360,8 @@ public:
 	class TextRenderingMonitorAction : public TypedConstantRefreshAction<TextRenderingMonitorAction> {
 	public:
 		int lastCompletedSegment{-1};
-		std::unordered_set<int> handledEvents() override {
-			return inputEventList;
+		bool handlesEvent(Uint32 eventType) const override {
+			return isInputEvent(eventType);
 		}
 		int eventMode() override;
 		bool expired() override;

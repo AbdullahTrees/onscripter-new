@@ -119,10 +119,24 @@ class LRUCachedSet : public CachedSet<SETELEM, KEY> {
 protected:
 	int capacity = 0;
 	LRUCache<KEY, std::shared_ptr<SETELEM>, std::unordered_map> elemCache;
+	size_t cachedBytes{0};
 
 public:
 	void add(const KEY &keyname, const std::shared_ptr<SETELEM> &elem) {
+		if (elemCache.size() == 0) {
+			elemCache.set(keyname, elem);
+			return;
+		}
+
+		if (const auto *existing = elemCache.peek(keyname)) {
+			cachedBytes -= cachedElementApproxBytes(*existing);
+		} else if (elemCache.count() == elemCache.size()) {
+			const auto *oldest = elemCache.oldest();
+			assert(oldest);
+			cachedBytes -= cachedElementApproxBytes(*oldest);
+		}
 		elemCache.set(keyname, elem);
+		cachedBytes += cachedElementApproxBytes(elem);
 	}
 	std::shared_ptr<SETELEM> get(const KEY &keyname) {
 		try {
@@ -135,24 +149,27 @@ public:
 		}
 	}
 	void remove(const KEY &keyname) {
+		if (const auto *existing = elemCache.peek(keyname))
+			cachedBytes -= cachedElementApproxBytes(*existing);
 		elemCache.remove(keyname);
 	}
 	void clear() {
 		elemCache.resize(0);        // evict all elements
 		elemCache.resize(capacity); // make it capable of holding the original capacity again
+		cachedBytes = 0;
 		                            // (lru cache has no clear() method)
 	}
 	size_t count() const {
 		return elemCache.count();
 	}
 	size_t approxBytes() const {
-		size_t bytes = 0;
-		elemCache.for_each_value([&bytes](const KEY &, const std::shared_ptr<SETELEM> &elem) {
-			bytes += cachedElementApproxBytes(elem);
-		});
-		return bytes;
+		return cachedBytes;
 	}
 	bool evictOne() {
+		const auto *oldest = elemCache.oldest();
+		if (!oldest)
+			return false;
+		cachedBytes -= cachedElementApproxBytes(*oldest);
 		return elemCache.evict_one();
 	}
 	LRUCachedSet(int capacity)
@@ -162,11 +179,14 @@ public:
 template <typename SETELEM, typename KEY = std::string>
 class UnlimitedCachedSet : public CachedSet<SETELEM, KEY> {
 protected:
-	std::unordered_map<std::string, std::shared_ptr<SETELEM>> elemCache;
+	std::unordered_map<KEY, std::shared_ptr<SETELEM>> elemCache;
+	size_t cachedBytes{0};
 
 public:
 	void add(const KEY &keyname, const std::shared_ptr<SETELEM> &elem) {
-		elemCache.emplace(keyname, elem);
+		const auto result = elemCache.emplace(keyname, elem);
+		if (result.second)
+			cachedBytes += cachedElementApproxBytes(elem);
 	}
 	std::shared_ptr<SETELEM> get(const KEY &keyname) {
 		auto iterator = elemCache.find(keyname);
@@ -180,25 +200,26 @@ public:
 	void remove(const KEY &keyname) {
 		auto iterator = elemCache.find(keyname);
 		if (iterator != elemCache.end()) {
+			cachedBytes -= cachedElementApproxBytes(iterator->second);
 			elemCache.erase(iterator);
 		}
 	}
 	void clear() {
 		elemCache.clear();
+		cachedBytes = 0;
 	}
 	size_t count() const {
 		return elemCache.size();
 	}
 	size_t approxBytes() const {
-		size_t bytes = 0;
-		for (const auto &entry : elemCache)
-			bytes += cachedElementApproxBytes(entry.second);
-		return bytes;
+		return cachedBytes;
 	}
 	bool evictOne() {
 		if (elemCache.empty())
 			return false;
-		elemCache.erase(elemCache.begin());
+		auto entry = elemCache.begin();
+		cachedBytes -= cachedElementApproxBytes(entry->second);
+		elemCache.erase(entry);
 		return true;
 	}
 	UnlimitedCachedSet() = default;

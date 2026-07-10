@@ -26,22 +26,23 @@ std::vector<std::shared_ptr<ConstantRefreshAction>> getConstantRefreshActions() 
 	return ons.registeredCRActions;
 }
 
-// Called from event loop, so already locked.
+// Copy only the requested action while the registry is locked.
 std::shared_ptr<ConstantRefreshAction> currentAction(unsigned int handler) {
-	if (handler >= getConstantRefreshActions().size())
+	Lock lock(&ons.registeredCRActions);
+	if (handler >= ons.registeredCRActions.size())
 		return nullptr;
-	return getConstantRefreshActions()[handler];
+	return ons.registeredCRActions[handler];
 }
 
-void addToPostponedEventChanges(const std::function<void()> &f) {
-	postponedEventChanges.push_back(f);
+void addToPostponedEventChanges(std::function<void()> f) {
+	postponedEventChanges.emplace_back(std::move(f));
 }
 
-void addToPostponedEventChanges(const char *str, const std::function<void()> &f) {
+void addToPostponedEventChanges(const char *str, std::function<void()> f) {
 	if (postponedEventChangeLabels.contains(str))
 		return;
 	postponedEventChangeLabels.insert(str);
-	addToPostponedEventChanges(f);
+	addToPostponedEventChanges(std::move(f));
 }
 
 void ConstantRefreshAction::onExpired() {
@@ -109,15 +110,17 @@ void QueuedSoundAction::onExpired() {
 // They SHOULD NOT BE USED for anything except triggering an assert or error condition -- do not use for behavior logic!
 bool isWaitingForUserInput() {
 	Lock lock(&ons.registeredCRActions);
-	return !fetchConstantRefreshActions<ButtonWaitAction>().empty();
+	return std::any_of(ons.registeredCRActions.begin(), ons.registeredCRActions.end(), [](const auto &action) {
+		return dynamic_cast<ButtonWaitAction *>(action.get()) != nullptr;
+	});
 }
 bool isWaitingForUserInterrupt() {
 	Lock lock(&ons.registeredCRActions);
-	if (!fetchConstantRefreshActions<WaitAction>().empty())
-		return true;
-	if (!fetchConstantRefreshActions<DelayAction>().empty())
-		return true;
-	if (!fetchConstantRefreshActions<WaitVoiceAction>().empty())
-		return true;
-	return !fetchConstantRefreshActions<DialogueController::TextRenderingMonitorAction>().empty();
+	return std::any_of(ons.registeredCRActions.begin(), ons.registeredCRActions.end(), [](const auto &action) {
+		auto *ptr = action.get();
+		return dynamic_cast<WaitAction *>(ptr) != nullptr ||
+		       dynamic_cast<DelayAction *>(ptr) != nullptr ||
+		       dynamic_cast<WaitVoiceAction *>(ptr) != nullptr ||
+		       dynamic_cast<DialogueController::TextRenderingMonitorAction *>(ptr) != nullptr;
+	});
 }

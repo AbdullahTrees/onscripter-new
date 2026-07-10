@@ -21,6 +21,7 @@
 #include <string>
 #include <map>
 #include <cstdio>
+#include <cstring>
 
 void ONScripter::loadImageIntoCache(int id, const std::string &filename_str, bool allow_rgb) {
 	bool has_alpha;
@@ -618,6 +619,10 @@ void ONScripter::makeWarpedTarget(RenderTarget *target, RenderRect clip, bool /*
 
 //Adds to correct dirty rect by z level
 void ONScripter::dirtyRectForZLevel(int num, RenderRect &rect) {
+	AnimationInfo *sprite = &sprite_info[num];
+	const int zOrder = sprite->has_z_order_override ? sprite->z_order_override : num;
+	if (zOrder > z_order_hud && !isRetainedSceneLayer(sprite))
+		markRetainedRainSceneStaticDirty("zlevel");
 	DirtyRect *dirty = (num <= z_order_hud) ? &before_dirty_rect_hud : &before_dirty_rect_scene;
 	dirty->add(rect);
 	dirty = (num <= z_order_hud) ? &dirty_rect_hud : &dirty_rect_scene;
@@ -635,6 +640,9 @@ void ONScripter::dirtySpriteRect(int num, bool lsp2, bool before) {
 	DirtyRect *dirty   = (num <= z_order_hud) ? (before ? &before_dirty_rect_hud : &dirty_rect_hud) : (before ? &before_dirty_rect_scene : &dirty_rect_scene);
 	AnimationInfo *spr = lsp2 ? &sprite2_info[num] : &sprite_info[num];
 	spr                = (before && spr->old_ai) ? spr->old_ai : spr;
+	const int zOrder = spr->has_z_order_override ? spr->z_order_override : num;
+	if (zOrder > z_order_hud && !isRetainedSceneLayer(spr))
+		markRetainedRainSceneStaticDirty("sprite");
 	RenderRect toAdd{0, 0, 0, 0};
 
 	if (spr->parentImage.no != -1) {
@@ -719,6 +727,8 @@ int ONScripter::getAIno(AnimationInfo *info, bool &lsp2) {
 }
 
 void ONScripter::fillCanvas(bool after, bool before) {
+	if (after || before)
+		markRetainedRainSceneStaticDirty("canvas");
 	if (after) {
 		dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 		dirty_rect_hud.fill(window.canvas_width, window.canvas_height);
@@ -808,6 +818,374 @@ void ONScripter::drawSpritesBetween(int upper_inclusive, int lower_exclusive, Re
 	}
 }
 
+void ONScripter::drawSceneForeground(RenderTarget *target, RenderRect &scriptClip, int refreshMode) {
+	for (int i = 0; i < 3; i++) {
+		AnimationInfo *tc = tachi_info[human_order[2 - i]].oldNew(refreshMode);
+		if (tc->exists)
+			drawToGPUTarget(target, tc, refreshMode, &scriptClip);
+	}
+	drawSceneSpritesets(target, scriptClip, refreshMode, 0);
+}
+
+void ONScripter::drawSceneSpritesets(RenderTarget *target, RenderRect &scriptClip, int refreshMode, int firstSpritesetNo) {
+	if (firstSpritesetNo > 0 && !z_order_spritesets.contains(firstSpritesetNo))
+		return;
+
+	for (int spritesetNo = firstSpritesetNo;; spritesetNo++) {
+		int startZ = spritesetNo == 0 ? z_order_ld : z_order_spritesets[spritesetNo];
+		auto nextSpriteset = z_order_spritesets.find(spritesetNo + 1);
+		int endZ = nextSpriteset != z_order_spritesets.end() ? nextSpriteset->second : z_order_hud;
+		if (spritesetNo == 0 || spritesets[spritesetNo].isEnabled(refreshMode & REFRESH_BEFORESCENE_MODE)) {
+			if (spritesets[spritesetNo].isNullTransform()) {
+				if (spritesetNo != 0)
+					gpu.clearWholeTarget(target, 0, 0, 0, 255);
+				drawSpritesBetween(startZ, endZ, target, &scriptClip, refreshMode);
+			} else {
+				auto &ssim = refreshMode & REFRESH_BEFORESCENE_MODE ? spritesets[spritesetNo].im : spritesets[spritesetNo].imAfterscene;
+				if (!ssim.image) {
+					RenderImage *spritesetImage = gpu.getCanvasImage();
+					if (spritesetNo != 0)
+						gpu.clearWholeTarget(spritesetImage->target, 0, 0, 0, 255);
+					RenderRect fullRect = full_script_clip;
+					drawSpritesBetween(startZ, endZ, spritesetImage->target, &fullRect, refreshMode);
+					ssim = GPUTransformableCanvasImage(spritesetImage);
+				}
+				drawSpritesetToGPUTarget(target, &spritesets[spritesetNo], &scriptClip, refreshMode);
+			}
+		}
+		if (endZ == z_order_hud)
+			break;
+	}
+}
+
+bool ONScripter::retainedRainCompositingEnabled() const {
+	const char *value = onsSDLGetEnv("ONS_RETAINED_RAIN_COMPOSITING");
+	return !value || !*value || std::strcmp(value, "0") != 0;
+}
+
+bool ONScripter::isRetainedSceneLayer(const AnimationInfo *sprite) {
+	if (!sprite || sprite->trans_mode != AnimationInfo::TRANS_LAYER || sprite->layer_no < 0)
+		return false;
+	auto *layer = getLayer<Layer>(sprite->layer_no, false);
+	return layer && layer->supportsRetainedSceneCompositing();
+}
+
+void ONScripter::markRetainedRainSceneStaticDirty(const char *source) {
+	auto &cache = retainedRainSceneCache;
+	if (!cache.staticSceneDirty) {
+		++cache.invalidations;
+		if (std::strcmp(source, "sprite") == 0)
+			++cache.spriteInvalidations;
+		else if (std::strcmp(source, "zlevel") == 0)
+			++cache.zLevelInvalidations;
+		else if (std::strcmp(source, "canvas") == 0)
+			++cache.canvasInvalidations;
+		else
+			++cache.explicitInvalidations;
+	}
+	cache.staticSceneDirty = true;
+	cache.valid            = false;
+}
+
+void ONScripter::clearRetainedRainSceneCache() {
+	auto &cache = retainedRainSceneCache;
+	for (RenderImage *band : cache.bands) {
+		if (band)
+			gpu.freeImage(band);
+	}
+	cache.bands.clear();
+	cache.layers.clear();
+	cache.width            = 0;
+	cache.height           = 0;
+	cache.centerX          = 0;
+	cache.centerY          = 0;
+	cache.valid            = false;
+	cache.staticSceneDirty = true;
+}
+
+bool ONScripter::tryRetainedRainScene(RenderTarget *target, RenderRect &scriptClip, int refreshMode) {
+	auto &cache = retainedRainSceneCache;
+	++cache.attempts;
+
+	auto ineligible = [&](uint64_t &reason) {
+		++cache.ineligibleFallbacks;
+		++reason;
+		cache.valid            = false;
+		cache.staticSceneDirty = true;
+		return false;
+	};
+
+	if (!retainedRainCompositingEnabled()) {
+		if (!cache.bands.empty())
+			clearRetainedRainSceneCache();
+		return ineligible(cache.disabledFallbacks);
+	}
+
+	if (!target || !target->image || target->w != window.canvas_width || target->h != window.canvas_height ||
+	    effect_current || pre_screen_render || spriteRangeMotion.active || !queueAnimationInfo.empty() ||
+	    (refreshMode & REFRESH_SAYA_MODE)) {
+		return ineligible(cache.targetStateFallbacks);
+	}
+
+	AnimationInfo *background = bg_info.oldNew(refreshMode);
+	if (!background || !background->exists || bg_info.old_ai || background->trans < 255 ||
+	    background->blending_mode != BlendModeId::NORMAL ||
+	    background->pos.x > 0 || background->pos.y > 0 ||
+	    background->pos.x + background->pos.w < window.script_width ||
+	    background->pos.y + background->pos.h < window.script_height) {
+		return ineligible(cache.backgroundFallbacks);
+	}
+
+	for (AnimationInfo &tachi : tachi_info) {
+		if (tachi.old_ai || (tachi.exists && tachi.visible &&
+		                     (tachi.is_animatable || tachi.camera.isMoving() || tachi.spriteTransforms.warpAmplitude != 0)))
+			return ineligible(cache.tachiFallbacks);
+	}
+	for (auto &spriteset : spritesets) {
+		if (spriteset.second.isUncommitted())
+			return ineligible(cache.spritesetFallbacks);
+	}
+
+	std::array<RetainedRainLayer, 4> layers{};
+	size_t layerCount = 0;
+	for (int zOrder : spriteZLevelIndices) {
+		if (zOrder <= z_order_hud)
+			break;
+		auto &level = spriteZLevels[zOrder];
+		AnimationInfo *retainedLayer = nullptr;
+		for (AnimationInfo *sprite : level) {
+			if (!isRetainedSceneLayer(sprite))
+				continue;
+			if (retainedLayer) {
+				if (cache.layerLayoutFallbacks == 0)
+					sendToLog(LogLevel::Info, "Retained rain layout rejection: multiple retained layers at z=%d\n", zOrder);
+				return ineligible(cache.layerLayoutFallbacks);
+			}
+			retainedLayer = sprite;
+		}
+		if (retainedLayer) {
+			if (layerCount == layers.size()) {
+				if (cache.layerLayoutFallbacks == 0)
+					sendToLog(LogLevel::Info, "Retained rain layout rejection: more than four layers\n");
+				return ineligible(cache.layerLayoutFallbacks);
+			}
+			layers[layerCount++] = {retainedLayer, zOrder, retainedLayer->type == SPRITE_LSP2};
+		}
+	}
+
+	if (layerCount == 0) {
+		if (!cache.bands.empty())
+			clearRetainedRainSceneCache();
+		return ineligible(cache.noRainFallbacks);
+	}
+
+	const int firstRainZ = layers[0].zOrder;
+	const bool rainBeforeTachi = firstRainZ > z_order_ld;
+	const auto spritesetOne = z_order_spritesets.find(1);
+	const int spritesetZeroEnd = spritesetOne != z_order_spritesets.end() ? spritesetOne->second : z_order_hud;
+	for (size_t i = 0; i < layerCount; ++i) {
+		const RetainedRainLayer &layer = layers[i];
+		const bool inSameRegion = rainBeforeTachi ? layer.zOrder > z_order_ld :
+		                                               layer.zOrder <= z_order_ld && layer.zOrder > spritesetZeroEnd;
+		if (!inSameRegion) {
+			if (cache.layerLayoutFallbacks == 0)
+				sendToLog(LogLevel::Info,
+				          "Retained rain layout rejection: split region first=%d rejected=%d humanz=%d spriteset0_end=%d\n",
+				          firstRainZ, layer.zOrder, z_order_ld, spritesetZeroEnd);
+			return ineligible(cache.layerLayoutFallbacks);
+		}
+	}
+	if (rainBeforeTachi) {
+		for (AnimationInfo &tachi : tachi_info) {
+			if (tachi.exists && tachi.visible && tachi.blending_mode != BlendModeId::NORMAL)
+				return ineligible(cache.unsafeBlendFallbacks);
+		}
+	}
+
+	for (int zOrder : spriteZLevelIndices) {
+		if (zOrder <= z_order_hud)
+			break;
+		bool afterFirstRain = zOrder < firstRainZ;
+		for (AnimationInfo *sprite : spriteZLevels[zOrder]) {
+			if (isRetainedSceneLayer(sprite)) {
+				const bool captured = std::any_of(layers.begin(), layers.begin() + layerCount,
+				                                  [sprite](const RetainedRainLayer &layer) { return layer.sprite == sprite; });
+				if (!captured) {
+					if (cache.layerLayoutFallbacks == 0)
+						sendToLog(LogLevel::Info, "Retained rain layout rejection: uncaptured retained layer z=%d id=%d\n", zOrder, sprite->id);
+					return ineligible(cache.layerLayoutFallbacks);
+				}
+				if (sprite == layers[0].sprite)
+					afterFirstRain = true;
+				continue;
+			}
+			if (sprite->trans_mode == AnimationInfo::TRANS_LAYER)
+				return ineligible(cache.unsupportedLayerFallbacks);
+			if (afterFirstRain && sprite->blending_mode != BlendModeId::NORMAL)
+				return ineligible(cache.unsafeBlendFallbacks);
+		}
+	}
+
+	const bool sameLayers = cache.layers.size() == layerCount &&
+	                        std::equal(layers.begin(), layers.begin() + layerCount, cache.layers.begin());
+	const bool layoutChanged = cache.width != target->w || cache.height != target->h ||
+	                           cache.centerX != camera.center_pos.x || cache.centerY != camera.center_pos.y || !sameLayers;
+	if (layoutChanged) {
+		if (cache.valid)
+			++cache.invalidations;
+		cache.valid   = false;
+		cache.layers.assign(layers.begin(), layers.begin() + layerCount);
+		cache.centerX = camera.center_pos.x;
+		cache.centerY = camera.center_pos.y;
+	}
+
+	if (cache.staticSceneDirty) {
+		cache.valid            = false;
+		cache.staticSceneDirty = false;
+		++cache.staticFallbacks;
+		return false;
+	}
+
+	const size_t requiredBands = layerCount + 1;
+	constexpr size_t maxRetainedBytes = 96ULL * 1024 * 1024;
+	const size_t retainedBytes = requiredBands * static_cast<size_t>(target->w) * static_cast<size_t>(target->h) * 4;
+	if (retainedBytes > maxRetainedBytes)
+		return ineligible(cache.memoryFallbacks);
+
+	if (cache.bands.size() != requiredBands || cache.width != target->w || cache.height != target->h) {
+		for (RenderImage *band : cache.bands) {
+			if (band)
+				gpu.freeImage(band);
+		}
+		cache.bands.clear();
+		cache.bands.reserve(requiredBands);
+		for (size_t i = 0; i < requiredBands; ++i) {
+			RenderImage *band = gpu.createImage(static_cast<uint16_t>(target->w), static_cast<uint16_t>(target->h), 4);
+			GPU_GetTarget(band);
+			GPU_SetBlending(band, true);
+			GPU_SetRGBA(band, 255, 255, 255, 255);
+			cache.bands.push_back(band);
+		}
+		cache.width  = target->w;
+		cache.height = target->h;
+		cache.centerX = camera.center_pos.x;
+		cache.centerY = camera.center_pos.y;
+		cache.valid  = false;
+	}
+
+	if (!cache.valid) {
+		RenderRect fullClip = full_script_clip;
+		auto drawLevelSiblings = [&](RenderTarget *bandTarget, const RetainedRainLayer &layer, bool beforeRetained) {
+			bool retainedSeen = false;
+			for (AnimationInfo *sprite : spriteZLevels[layer.zOrder]) {
+				if (sprite == layer.sprite) {
+					retainedSeen = true;
+					continue;
+				}
+				if (retainedSeen != beforeRetained)
+					drawToGPUTarget(bandTarget, sprite, refreshMode, &fullClip, sprite->type == SPRITE_LSP2);
+			}
+		};
+
+		gpu.clearWholeTarget(cache.bands[0]->target, 0, 0, 0, 255);
+		drawToGPUTarget(cache.bands[0]->target, background, refreshMode, &fullClip);
+		if (rainBeforeTachi) {
+			drawSpritesBetween(MAX_SPRITE_NUM - 1, layers[0].zOrder, cache.bands[0]->target, &fullClip, refreshMode);
+		} else {
+			drawSpritesBetween(MAX_SPRITE_NUM - 1, z_order_ld, cache.bands[0]->target, &fullClip, refreshMode);
+			for (int i = 0; i < 3; i++) {
+				AnimationInfo *tc = tachi_info[human_order[2 - i]].oldNew(refreshMode);
+				if (tc->exists)
+					drawToGPUTarget(cache.bands[0]->target, tc, refreshMode, &fullClip);
+			}
+			drawSpritesBetween(z_order_ld, layers[0].zOrder, cache.bands[0]->target, &fullClip, refreshMode);
+		}
+		drawLevelSiblings(cache.bands[0]->target, layers[0], true);
+
+		for (size_t i = 0; i < layerCount; ++i) {
+			RenderImage *band = cache.bands[i + 1];
+			gpu.clearWholeTarget(band->target, 0, 0, 0, 0);
+			drawLevelSiblings(band->target, layers[i], false);
+			const int lower = i + 1 < layerCount ? layers[i + 1].zOrder :
+			                                                   rainBeforeTachi ? z_order_ld : spritesetZeroEnd;
+			drawSpritesBetween(layers[i].zOrder - 1, lower, band->target, &fullClip, refreshMode);
+			if (i + 1 < layerCount)
+				drawLevelSiblings(band->target, layers[i + 1], true);
+			if (i + 1 == layerCount) {
+				if (rainBeforeTachi)
+					drawSceneForeground(band->target, fullClip, refreshMode);
+				else
+					drawSceneSpritesets(band->target, fullClip, refreshMode, 1);
+			}
+		}
+		GPU_FlushBlitBuffer();
+		cache.valid = true;
+		++cache.cacheBuilds;
+	} else {
+		++cache.cacheHits;
+	}
+
+	RenderRect canvasClip = scriptClip;
+	canvasClip.x += camera.center_pos.x;
+	canvasClip.y += camera.center_pos.y;
+
+	GPU_TelemetryScope cacheScope("retained_rain_composite");
+	const GPU_bool baseBlending = cache.bands[0]->use_blending;
+	GPU_SetBlending(cache.bands[0], false);
+	gpu.copyGPUImage(cache.bands[0], nullptr, &canvasClip, target);
+	GPU_SetBlending(cache.bands[0], baseBlending);
+	++cache.bandBlits;
+
+	for (size_t i = 0; i < layerCount; ++i) {
+		drawToGPUTarget(target, layers[i].sprite, refreshMode, &scriptClip, layers[i].lsp2);
+		gpu.copyGPUImage(cache.bands[i + 1], nullptr, &canvasClip, target);
+		++cache.rainDraws;
+		++cache.bandBlits;
+	}
+
+	++cache.composedFrames;
+	return true;
+}
+
+void ONScripter::printRetainedRainSceneTelemetry() const {
+	const char *value = onsSDLGetEnv("ONS_SDL3_GPU_TELEMETRY");
+	if ((!value || !*value || std::strcmp(value, "0") == 0) || retainedRainSceneCache.telemetryPrinted || retainedRainSceneCache.attempts == 0)
+		return;
+
+	const auto &cache = retainedRainSceneCache;
+	cache.telemetryPrinted = true;
+	sendToLog(LogLevel::Info,
+	          "Retained rain telemetry: attempts=%llu composed_frames=%llu cache_hits=%llu cache_builds=%llu "
+	          "static_fallbacks=%llu ineligible_fallbacks=%llu invalidations=%llu band_blits=%llu rain_draws=%llu "
+	          "bands=%zu layers=%zu valid=%d disabled=%llu target_state=%llu background=%llu tachi=%llu "
+	          "spriteset=%llu layer_layout=%llu no_rain=%llu unsupported_layer=%llu unsafe_blend=%llu memory=%llu "
+	          "invalidation_sprite=%llu invalidation_zlevel=%llu invalidation_canvas=%llu invalidation_explicit=%llu\n",
+	          static_cast<unsigned long long>(cache.attempts),
+	          static_cast<unsigned long long>(cache.composedFrames),
+	          static_cast<unsigned long long>(cache.cacheHits),
+	          static_cast<unsigned long long>(cache.cacheBuilds),
+	          static_cast<unsigned long long>(cache.staticFallbacks),
+	          static_cast<unsigned long long>(cache.ineligibleFallbacks),
+	          static_cast<unsigned long long>(cache.invalidations),
+	          static_cast<unsigned long long>(cache.bandBlits),
+	          static_cast<unsigned long long>(cache.rainDraws),
+	          cache.bands.size(), cache.layers.size(), cache.valid ? 1 : 0,
+	          static_cast<unsigned long long>(cache.disabledFallbacks),
+	          static_cast<unsigned long long>(cache.targetStateFallbacks),
+	          static_cast<unsigned long long>(cache.backgroundFallbacks),
+	          static_cast<unsigned long long>(cache.tachiFallbacks),
+	          static_cast<unsigned long long>(cache.spritesetFallbacks),
+	          static_cast<unsigned long long>(cache.layerLayoutFallbacks),
+	          static_cast<unsigned long long>(cache.noRainFallbacks),
+	          static_cast<unsigned long long>(cache.unsupportedLayerFallbacks),
+	          static_cast<unsigned long long>(cache.unsafeBlendFallbacks),
+	          static_cast<unsigned long long>(cache.memoryFallbacks),
+	          static_cast<unsigned long long>(cache.spriteInvalidations),
+	          static_cast<unsigned long long>(cache.zLevelInvalidations),
+	          static_cast<unsigned long long>(cache.canvasInvalidations),
+	          static_cast<unsigned long long>(cache.explicitInvalidations));
+}
+
 // This function rebuilds the game screen and blits it to the target.
 void ONScripter::refreshSceneTo(RenderTarget *target, RenderRect *passed_script_clip_dst, int refresh_mode) {
 
@@ -843,48 +1221,13 @@ void ONScripter::refreshSceneTo(RenderTarget *target, RenderRect *passed_script_
 		if (doClipping(&script_clip_dst, passed_script_clip_dst))
 			return;
 
-	AnimationInfo *bg = bg_info.oldNew(rm);
-	if (bg->exists)
-		drawToGPUTarget(target, bg, rm, &script_clip_dst);
+	if (!tryRetainedRainScene(target, script_clip_dst, rm)) {
+		AnimationInfo *bg = bg_info.oldNew(rm);
+		if (bg->exists)
+			drawToGPUTarget(target, bg, rm, &script_clip_dst);
 
-	drawSpritesBetween(MAX_SPRITE_NUM - 1, z_order_ld, target, &script_clip_dst, rm);
-
-	for (int i = 0; i < 3; i++) {
-		AnimationInfo *tc = tachi_info[human_order[2 - i]].oldNew(rm);
-		if (tc->exists)
-			drawToGPUTarget(target, tc, rm, &script_clip_dst);
-	}
-
-	//Spritesets
-	for (int spritesetNo = 0;; spritesetNo++) {
-		int startZ = spritesetNo == 0 ? z_order_ld : z_order_spritesets[spritesetNo];
-		auto nextSpriteset = z_order_spritesets.find(spritesetNo + 1);
-		int endZ           = nextSpriteset != z_order_spritesets.end() ? nextSpriteset->second : z_order_hud;
-		//sendToLog(LogLevel::Info, "(in refresh:) spritesets[%i].enable=%i\n", spritesetNo, spritesets[spritesetNo].enable);
-		if (spritesetNo == 0 || spritesets[spritesetNo].isEnabled(rm & REFRESH_BEFORESCENE_MODE)) { // spriteset 0 is always active (?)
-			if (spritesets[spritesetNo].isNullTransform()) {
-				if (spritesetNo != 0)
-					gpu.clearWholeTarget(target, 0, 0, 0, 255);
-				// If the spriteset's properties are all default, just blit all the elements individually straight onto the target for efficiency
-				drawSpritesBetween(startZ, endZ, target, &script_clip_dst, rm);
-			} else {
-				// Make the spriteset's image, if it doesn't exist
-				// (if it does exist, it will be up-to-date, because the image is deleted by cleanSpritesetCache if spriteset or any of its elements change)
-				auto &ssim = rm & REFRESH_BEFORESCENE_MODE ? spritesets[spritesetNo].im : spritesets[spritesetNo].imAfterscene;
-				if (!ssim.image) {
-					RenderImage *spritesetImage = gpu.getCanvasImage();
-					if (spritesetNo != 0)
-						gpu.clearWholeTarget(spritesetImage->target, 0, 0, 0, 255); // give black bg to all spritesets except 0 (0 would just be illogical, it would prevent bg and ld entirely)
-					RenderRect full_rect = full_script_clip;
-					drawSpritesBetween(startZ, endZ, spritesetImage->target, &full_rect, rm);
-					(rm & REFRESH_BEFORESCENE_MODE ? spritesets[spritesetNo].im : spritesets[spritesetNo].imAfterscene) = GPUTransformableCanvasImage(spritesetImage);
-				}
-				// draw the spriteset to target
-				drawSpritesetToGPUTarget(target, &spritesets[spritesetNo], &script_clip_dst, rm);
-			}
-		}
-		if (endZ == z_order_hud)
-			break;
+		drawSpritesBetween(MAX_SPRITE_NUM - 1, z_order_ld, target, &script_clip_dst, rm);
+		drawSceneForeground(target, script_clip_dst, rm);
 	}
 
 	//Apply nega in the end of normal rebuild

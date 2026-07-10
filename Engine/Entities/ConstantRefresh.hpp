@@ -41,31 +41,35 @@ enum {
 	                    REFRESH_CURSOR_MODE
 };
 
-const std::unordered_set<int> inputEventList{
-    SDL_MOUSEWHEEL,
-    SDL_FINGERDOWN,
-    SDL_FINGERUP,
-    ONS_MULTIGESTURE_EVENT,
-    SDL_MOUSEBUTTONDOWN,
-    SDL_MOUSEBUTTONUP,
-    SDL_KEYDOWN,
-    SDL_KEYUP,
-    SDL_JOYHATMOTION,
-    SDL_JOYBUTTONDOWN,
-    SDL_JOYBUTTONUP,
-    SDL_JOYAXISMOTION
+inline bool isInputEvent(Uint32 eventType) {
+	switch (eventType) {
+		case SDL_MOUSEWHEEL:
+		case SDL_FINGERDOWN:
+		case SDL_FINGERUP:
+		case ONS_MULTIGESTURE_EVENT:
+		case SDL_MOUSEBUTTONDOWN:
+		case SDL_MOUSEBUTTONUP:
+		case SDL_KEYDOWN:
+		case SDL_KEYUP:
+		case SDL_JOYHATMOTION:
+		case SDL_JOYBUTTONDOWN:
+		case SDL_JOYBUTTONUP:
+		case SDL_JOYAXISMOTION:
 #if ONS_USE_SDL3
-    ,
-    SDL_EVENT_GAMEPAD_BUTTON_DOWN,
-    SDL_EVENT_GAMEPAD_BUTTON_UP,
-    SDL_EVENT_GAMEPAD_AXIS_MOTION
+		case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+		case SDL_EVENT_GAMEPAD_BUTTON_UP:
+		case SDL_EVENT_GAMEPAD_AXIS_MOTION:
 #endif
-};
+			return true;
+		default:
+			return false;
+	}
+}
 
 extern std::deque<std::function<void()>> postponedEventChanges;     // contains fns to make changes to global state, put to while processing each event
 extern std::unordered_set<const char *> postponedEventChangeLabels; // contains unique labels to prevent multiple adding of events that should be run only once
-void addToPostponedEventChanges(const std::function<void()> &f);
-void addToPostponedEventChanges(const char *str, const std::function<void()> &f);
+void addToPostponedEventChanges(std::function<void()> f);
+void addToPostponedEventChanges(const char *str, std::function<void()> f);
 
 // abstract base class
 class ConstantRefreshAction {
@@ -92,8 +96,8 @@ public:
 	virtual bool suspendsDialogue() {
 		return createdDuringDialogueInline;
 	}
-	virtual std::unordered_set<int> handledEvents() {
-		return std::unordered_set<int>();
+	virtual bool handlesEvent(Uint32) const {
+		return false;
 	}
 	virtual void initialize();
 	virtual ~ConstantRefreshAction() = default;
@@ -137,8 +141,8 @@ template <class T>
 class AbstractWaitAction : public TypedConstantRefreshAction<T> {
 public:
 	int advanceProperties{0};
-	std::unordered_set<int> handledEvents() override {
-		return inputEventList;
+	bool handlesEvent(Uint32 eventType) const override {
+		return isInputEvent(eventType);
 	}
 	bool expired() override {
 		return this->clock.expired();
@@ -158,10 +162,8 @@ class WaitVoiceAction : public TypedConstantRefreshAction<WaitVoiceAction> {
 	bool countDownStarted{false};
 
 public:
-	std::unordered_set<int> handledEvents() override {
-		std::unordered_set<int> set{inputEventList};
-		set.insert(ONS_CHUNK_EVENT);
-		return set;
+	bool handlesEvent(Uint32 eventType) const override {
+		return isInputEvent(eventType) || eventType == ONS_CHUNK_EVENT;
 	}
 	uint32_t voiceDelayMs{0};
 	bool expired() override;
@@ -171,9 +173,6 @@ class QueuedSoundAction : public TypedConstantRefreshAction<QueuedSoundAction> {
 	bool countDownStarted{false};
 
 public:
-	std::unordered_set<int> handledEvents() override {
-		return std::unordered_set<int>();
-	}
 	int32_t ch{-1};
 	uint32_t soundDelayMs{0};
 	// Keep this as a raw callback because queued sounds only need a plain completion hook.
@@ -201,12 +200,9 @@ public:
 		return timer_set && clock.expired();
 	}
 	void onExpired() override;
-	std::unordered_set<int> handledEvents() override {
-		auto ret = AbstractWaitAction::handledEvents();
-		ret.insert(SDL_MOUSEMOTION);
+	bool handlesEvent(Uint32 eventType) const override {
 		//FIXME: design-wise there should be some condition (WAIT_VOICE_MODE?)
-		ret.insert(ONS_CHUNK_EVENT);
-		return ret;
+		return isInputEvent(eventType) || eventType == SDL_MOUSEMOTION || eventType == ONS_CHUNK_EVENT;
 	}
 };
 
@@ -218,12 +214,9 @@ public:
 	bool suspendsDialogue() override {
 		return false;
 	}
-	std::unordered_set<int> handledEvents() override {
-		auto ret = inputEventList;
-		ret.insert(SDL_MOUSEMOTION);
+	bool handlesEvent(Uint32 eventType) const override {
 		//FIXME: design-wise there should be some condition (WAIT_VOICE_MODE?)
-		ret.insert(ONS_CHUNK_EVENT);
-		return ret;
+		return isInputEvent(eventType) || eventType == SDL_MOUSEMOTION || eventType == ONS_CHUNK_EVENT;
 	}
 	bool expired() override { return false; }
 	void keepAlive() { terminated = false; }

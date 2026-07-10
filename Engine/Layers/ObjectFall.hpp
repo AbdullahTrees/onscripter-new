@@ -79,6 +79,9 @@ public:
 	BlendModeId blendingMode(int /*rm*/) override {
 		return blendMode;
 	}
+	bool supportsRetainedSceneCompositing() const override {
+		return true;
+	}
 	void printTelemetry() const override;
 	void commit() override;
 	std::unordered_map<std::string, DynamicPropertyInterface> properties() override;

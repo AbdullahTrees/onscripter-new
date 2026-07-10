@@ -522,6 +522,7 @@ int ONScripter::spritesetPosCommand() {
 	int no               = script_h.readInt();
 	spritesets[no].pos.x = script_h.readInt();
 	spritesets[no].pos.y = script_h.readInt();
+	markRetainedRainSceneStaticDirty();
 	dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 	// technically only the rect of canvas_width x canvas_height *offset by spriteset pos* needs filling.
 	// That might make it a little less. But generally these three operations are a little expensive.
@@ -532,6 +533,7 @@ int ONScripter::spritesetMaskCommand() {
 	// Parameters: spriteset number; mask sprite number
 	int no                          = script_h.readInt();
 	spritesets[no].maskSpriteNumber = script_h.readInt();
+	markRetainedRainSceneStaticDirty();
 	dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 	return RET_CONTINUE;
 }
@@ -545,6 +547,7 @@ int ONScripter::spritesetEnableCommand() {
 	spritesets[no].setEnable(enable);
 	spritesets[no].id = no;
 	//sendToLog(LogLevel::Info, "spritesets[%i].enable=%i\n", no, enable);
+	markRetainedRainSceneStaticDirty();
 	dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 	return RET_CONTINUE;
 }
@@ -553,6 +556,7 @@ int ONScripter::spritesetBlurCommand() {
 	// Parameters: spriteset number; blur factor (may be as high as... 4000? or more?)
 	int no              = script_h.readInt();
 	spritesets[no].blur = script_h.readInt();
+	markRetainedRainSceneStaticDirty();
 	dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 	return RET_CONTINUE;
 }
@@ -561,6 +565,7 @@ int ONScripter::spritesetAlphaCommand() {
 	// Parameters: spriteset number; alpha out of 255
 	int no               = script_h.readInt();
 	spritesets[no].trans = script_h.readInt();
+	markRetainedRainSceneStaticDirty();
 	dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 	return RET_CONTINUE;
 }
@@ -3316,6 +3321,7 @@ int ONScripter::blurCommand() {
 	blur_mode[BeforeScene] = blur_mode[AfterScene];
 	blur_mode[AfterScene]  = script_h.readInt();
 
+	markRetainedRainSceneStaticDirty();
 	dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 
 	return RET_CONTINUE;

@@ -1536,6 +1536,7 @@ public:
 	int evaluateBuiltInCommand(const char *cmd);
 	void flush(int refresh_mode, RenderRect *scene_rect = nullptr, RenderRect *hud_rect = nullptr, bool clear_dirty_flag = true, bool direct_flag = false, bool wait_for_cr = false);
 	void flushDirect(RenderRect &scene_rect, RenderRect &hud_rect, int refresh_mode);
+	void markRetainedRainSceneStaticDirty(const char *source = "explicit");
 	float effectiveRefreshRate() const;
 	double currentScriptFrameDeltaScale() const;
 	int game_fps{0};
@@ -1544,6 +1545,54 @@ public:
 
 private:
 	void combineWithCamera(RenderImage *scene, RenderImage *hud, RenderTarget *dst, RenderRect &scene_rect, RenderRect &hud_rect, int refresh_mode);
+	struct RetainedRainLayer {
+		AnimationInfo *sprite{nullptr};
+		int zOrder{-1};
+		bool lsp2{false};
+		bool operator==(const RetainedRainLayer &) const = default;
+	};
+	struct RetainedRainSceneCache {
+		std::vector<RenderImage *> bands;
+		std::vector<RetainedRainLayer> layers;
+		int width{0};
+		int height{0};
+		int centerX{0};
+		int centerY{0};
+		bool valid{false};
+		bool staticSceneDirty{true};
+		mutable bool telemetryPrinted{false};
+		uint64_t attempts{0};
+		uint64_t composedFrames{0};
+		uint64_t cacheHits{0};
+		uint64_t cacheBuilds{0};
+		uint64_t staticFallbacks{0};
+		uint64_t ineligibleFallbacks{0};
+		uint64_t disabledFallbacks{0};
+		uint64_t targetStateFallbacks{0};
+		uint64_t backgroundFallbacks{0};
+		uint64_t tachiFallbacks{0};
+		uint64_t spritesetFallbacks{0};
+		uint64_t layerLayoutFallbacks{0};
+		uint64_t noRainFallbacks{0};
+		uint64_t unsupportedLayerFallbacks{0};
+		uint64_t unsafeBlendFallbacks{0};
+		uint64_t memoryFallbacks{0};
+		uint64_t invalidations{0};
+		uint64_t spriteInvalidations{0};
+		uint64_t zLevelInvalidations{0};
+		uint64_t canvasInvalidations{0};
+		uint64_t explicitInvalidations{0};
+		uint64_t bandBlits{0};
+		uint64_t rainDraws{0};
+	};
+	RetainedRainSceneCache retainedRainSceneCache;
+	bool retainedRainCompositingEnabled() const;
+	bool isRetainedSceneLayer(const AnimationInfo *sprite);
+	void clearRetainedRainSceneCache();
+	bool tryRetainedRainScene(RenderTarget *target, RenderRect &scriptClip, int refreshMode);
+	void drawSceneForeground(RenderTarget *target, RenderRect &scriptClip, int refreshMode);
+	void drawSceneSpritesets(RenderTarget *target, RenderRect &scriptClip, int refreshMode, int firstSpritesetNo);
+	void printRetainedRainSceneTelemetry() const;
 	bool constant_refresh_executed{false};
 	bool pre_screen_render{false};
 	int constant_refresh_mode{REFRESH_NONE_MODE};

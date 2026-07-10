@@ -25,6 +25,7 @@
 #include <vector>
 #include <iostream>
 #include <array>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -91,21 +92,22 @@ public:
 		}
 
 		existent.clear();
-		if (access) {
-			SDL_AtomicLock(&access);
-			toDo.clear();
-			SDL_AtomicUnlock(&access);
-		}
+		SDL_AtomicLock(&access);
+		toDo.clear();
+		hasPending.store(false, std::memory_order_release);
+		SDL_AtomicUnlock(&access);
 	}
 	void push(RenderRect &&rect) {
 		SDL_AtomicLock(&access);
 		toDo.push_back(rect);
+		hasPending.store(true, std::memory_order_release);
 		SDL_AtomicUnlock(&access);
 	}
 	bool generate();
 
 private:
 	SDL_SpinLock access{0};
+	std::atomic_bool hasPending{false};
 	std::vector<RenderRect> toDo;
 	std::vector<RenderImage *> requested;
 };

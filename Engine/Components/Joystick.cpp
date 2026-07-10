@@ -1337,6 +1337,9 @@ libusb_context *JoystickController::getUsbContext() {
 
 void JoystickController::handleUsbEvents() {
 #ifdef USE_LIBUSB
+	if (nativeControllers.empty())
+		return;
+
 	if (usbContext) {
 		struct timeval tv {};
 		libusb_handle_events_timeout_completed(usbContext, &tv, nullptr);

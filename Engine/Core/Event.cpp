@@ -1901,8 +1901,7 @@ void ONScripter::runEventLoop() {
 			if (handler == registeredCRActions.size()) {
 				event_mode = defaultEventMode;
 				if (isWaitingForUserInput() || isWaitingForUserInterrupt()) {
-					auto got = inputEventList.find(event->type);
-					if (got != inputEventList.end()) {
+					if (isInputEvent(event->type)) {
 						// There should be more, I think
 						assert(!((event_mode & WAIT_BUTTON_MODE) || ((event_mode & WAIT_INPUT_MODE) && !effect_current)));
 						continue;
@@ -1911,7 +1910,7 @@ void ONScripter::runEventLoop() {
 			} else {
 				const auto &action = registeredCRActions[handler];
 				event_mode         = action->eventMode();
-				if (!action->handledEvents().contains(event->type)) {
+				if (!action->handlesEvent(event->type)) {
 					// this event type is not handled by this handler
 					continue;
 				}
@@ -2111,6 +2110,7 @@ void ONScripter::runEventLoop() {
 						// Your app is interactive and getting CPU again.
 						window.setActiveState(true);
 						allow_rendering = true;
+						markRetainedRainSceneStaticDirty();
 						before_dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 						sendToLog(LogLevel::Info, "Left background\n");
 						break;
@@ -2163,6 +2163,7 @@ void ONScripter::runEventLoop() {
 						// At least Linux specific: We are showing some window part that was hidden before
 						else if (onsWindowEventType(event->window) == SDL_WINDOWEVENT_EXPOSED || onsWindowEventType(event->window) == SDL_WINDOWEVENT_MOVED) {
 							// Now that we have commands like textoff2 we are not allowed to recklessly update hud
+							markRetainedRainSceneStaticDirty();
 							before_dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 							//fillCanvas(false, true);
 						}

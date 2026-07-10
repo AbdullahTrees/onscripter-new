@@ -1292,6 +1292,7 @@ void ONScripter::reset() {
 
 void ONScripter::resetSub() {
 	int i;
+	clearRetainedRainSceneCache();
 
 	// Kill all <del>humans</del> threads
 
@@ -2806,6 +2807,7 @@ void ONScripter::requestQuit(ExitType code) {
 		printFramePacingTelemetry();
 		printLipsTelemetry();
 		printBigImageCellCacheTelemetry();
+		printRetainedRainSceneTelemetry();
 		printLayerTelemetry();
 		GPU_PrintTelemetry();
 		cleanLabel();
@@ -2817,6 +2819,7 @@ void ONScripter::requestQuit(ExitType code) {
 
 void ONScripter::cleanImages() {
 	//GPU Cleanup
+	clearRetainedRainSceneCache();
 
 	for (RenderImage **varPtr : {&accumulation_gpu, &hud_gpu,
 	                           &text_gpu, &window_gpu, &screenshot_gpu, &draw_gpu, &draw_screen_gpu,

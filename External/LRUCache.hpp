@@ -109,6 +109,19 @@ public:
 		return cache.empty();
 	}
 
+	const ItemType *peek(const KeyType &key) const {
+		const auto i = cache.find(key);
+		return i == cache.end() ? nullptr : &i->second.first;
+	}
+
+	const ItemType *oldest() const {
+		if (lru.empty())
+			return nullptr;
+		const auto i = cache.find(lru.front());
+		assert(i != cache.end());
+		return &i->second.first;
+	}
+
 	template <typename Fn>
 	void for_each_value(Fn &&fn) const {
 		for (const auto &entry : cache)
@@ -208,8 +221,8 @@ public:
 		if (destruct_pointers)
 			Pointer<ItemType>::Delete(i->second.first);
 	
+		lru.erase(i->second.second);
 		cache.erase(i);
-		lru.remove(key);
 	}
 	
 	

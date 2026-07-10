@@ -543,6 +543,7 @@ int ONScripter::talCommand() {
 
 		backupState(&tachi_info[no]);
 		tachi_info[no].trans = trans;
+		markRetainedRainSceneStaticDirty();
 		dirty_rect_scene.add(tachi_info[no].pos);
 	}
 
@@ -1468,6 +1469,7 @@ int ONScripter::negaCommand() {
 	nega_mode[BeforeScene] = nega_mode[AfterScene];
 	nega_mode[AfterScene]  = script_h.readInt();
 
+	markRetainedRainSceneStaticDirty();
 	dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 
 	return RET_CONTINUE;
@@ -1706,6 +1708,7 @@ int ONScripter::monocroCommand() {
 		monocro_color[AfterScene] = {color.x, color.y, color.z, 0xFF};
 	}
 
+	markRetainedRainSceneStaticDirty();
 	dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 
 	return RET_CONTINUE;
@@ -2100,8 +2103,10 @@ int ONScripter::ldCommand() {
 
 	if (no >= 0) {
 		buf = script_h.readStr();
-		if (tachi_info[no].gpu_image)
+		if (tachi_info[no].gpu_image) {
+			markRetainedRainSceneStaticDirty();
 			dirty_rect_scene.add(tachi_info[no].pos);
+		}
 		backupState(&tachi_info[no]);
 		tachi_info[no].setImageName(buf);
 		parseTaggedString(&tachi_info[no]);
@@ -2118,6 +2123,7 @@ int ONScripter::ldCommand() {
 			tachi_info[no].pos.y -= tachi_info[no].pos.h;
 			tachi_info[no].orig_pos.x -= tachi_info[no].orig_pos.w / 2;
 			tachi_info[no].orig_pos.y -= tachi_info[no].orig_pos.h;
+			markRetainedRainSceneStaticDirty();
 			dirty_rect_scene.add(tachi_info[no].pos);
 		}
 	}
@@ -2258,6 +2264,7 @@ int ONScripter::humanorderCommand() {
 	for (i = 0; i < 3; i++)
 		if (tachi_info[i].gpu_image) {
 			backupState(&tachi_info[i]);
+			markRetainedRainSceneStaticDirty();
 			dirty_rect_scene.add(tachi_info[i].pos);
 		}
 
@@ -3241,16 +3248,19 @@ int ONScripter::clCommand() {
 	char loc = script_h.readName()[0];
 
 	if (loc == 'l' || loc == 'a') {
+		markRetainedRainSceneStaticDirty();
 		dirty_rect_scene.add(tachi_info[0].pos);
 		backupState(&tachi_info[0]);
 		tachi_info[0].remove();
 	}
 	if (loc == 'c' || loc == 'a') {
+		markRetainedRainSceneStaticDirty();
 		dirty_rect_scene.add(tachi_info[1].pos);
 		backupState(&tachi_info[1]);
 		tachi_info[1].remove();
 	}
 	if (loc == 'r' || loc == 'a') {
+		markRetainedRainSceneStaticDirty();
 		dirty_rect_scene.add(tachi_info[2].pos);
 		backupState(&tachi_info[2]);
 		tachi_info[2].remove();
@@ -3846,6 +3856,7 @@ int ONScripter::bgCommand() {
 	script_h.setStr(&bg_info.file_name, buf);
 
 	createBackground();
+	markRetainedRainSceneStaticDirty();
 	dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 
 	EffectLink *el = parseEffect(true);

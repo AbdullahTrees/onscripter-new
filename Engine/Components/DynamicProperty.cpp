@@ -555,6 +555,7 @@ void DynamicPropertyController::DynamicSpritesetProperty::setValue(double value)
 		case SPRITESET_PROPERTY_ROTATION_ANGLE: ons.spritesets[spriteset_number].rot = value; break;
 	}
 	//We may be in REFRESH_BEFORESCENE_MODE (addSpritesetProperty), but non-0-duration properties imply both before/after changes.
+	ons.markRetainedRainSceneStaticDirty();
 	ons.dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 	ons.before_dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 	if (!controller->batchingApply)

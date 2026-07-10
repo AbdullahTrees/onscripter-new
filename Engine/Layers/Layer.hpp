@@ -59,6 +59,9 @@ public:
 	virtual BlendModeId blendingMode(int /*rm*/) {
 		return BlendModeId::NORMAL;
 	}
+	virtual bool supportsRetainedSceneCompositing() const {
+		return false;
+	}
 	// Layer-specific properties
 	virtual std::unordered_map<std::string, DynamicPropertyInterface> properties() {
 		return {};
