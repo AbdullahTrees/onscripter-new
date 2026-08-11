@@ -1,6 +1,0 @@
-diff -rupN a/Makefile.in b/Makefile.in
---- a/Makefile.in
-+++ b/Makefile.in
-@@ -96 +96 @@
--noinst_PROGRAMS = showimage$(EXEEXT) showanim$(EXEEXT)
-+noinst_PROGRAMS =

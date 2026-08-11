@@ -8,6 +8,7 @@
  */
 
 #include "External/Compatibility.hpp"
+#include "Engine/Core/CommandLine.hpp"
 #include "Engine/Core/ONScripter.hpp"
 #include "Engine/Readers/Direct.hpp"
 #include "Support/FileIO.hpp"
@@ -32,7 +33,10 @@ void *__wrap_SDL_LoadObject(const char *sofile);
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <limits>
 #include <new>
+#include <string_view>
+#include <vector>
 
 ControllerCollection ctrl;
 
@@ -50,6 +54,10 @@ static void initFileIO() {
 #ifdef WIN32
 void *__wrap_SDL_LoadObject(const char *sofile) {
 	initFileIO();
+	if (!sofile)
+		return nullptr;
+	if (std::strchr(sofile, '/') || std::strchr(sofile, '\\'))
+		return __real_SDL_LoadObject(sofile);
 
 	auto lookupdir = std::string(FileIO::getLaunchDir()) + std::string("dlls") + DELIMITER;
 	if (FileIO::accessFile(lookupdir + sofile, FileType::File)) {
@@ -58,7 +66,9 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 		// Some helper DLLs load companions from their own directory.
 		SetDllDirectoryW(decodeUTF8StringWide(lookupdir.c_str()).c_str());
 
-		return __real_SDL_LoadObject((lookupdir + sofile).c_str());
+		void *object = __real_SDL_LoadObject((lookupdir + sofile).c_str());
+		SetDllDirectoryW(nullptr);
+		return object;
 	}
 
 	return __real_SDL_LoadObject(sofile);
@@ -184,6 +194,16 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 }
 
 static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
+	std::vector<std::string_view> arguments;
+	arguments.reserve(argc > 1 ? static_cast<size_t>(argc - 1) : 0);
+	for (int i = 1; i < argc; ++i)
+		arguments.emplace_back(argv[i] ? argv[i] : "");
+	std::string validationError;
+	if (!CommandLine::validate(arguments, validationError)) {
+		ons.errorAndCont(validationError.c_str(), nullptr, "Command-Line Issue", true);
+		return;
+	}
+
 	argv++;
 	while (argc > 1) {
 		if (argv[0][0] == '-') {
@@ -501,10 +521,8 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
 				argc--;
 				argv++;
 				ons.ons_cfg_options["prefer-rumble"] = argv[0];
-			} else if (!std::strncmp(argv[0] + 1, "-env[", 5) && *(argv[0] + 6) != '\0' && std::strchr(argv[0] + 7, ']')) {
-				auto sz                   = std::strchr(argv[0] + 7, ']') - argv[0] - 6;
-				auto opt                  = std::string(argv[0] + 6, sz);
-				ons.user_cfg_options[opt] = argv[1];
+			} else if (const auto opt = CommandLine::environmentOptionName(argv[0]); opt) {
+				ons.user_cfg_options[*opt] = argv[1];
 				argc--;
 				argv++;
 			} else if (!std::strcmp(argv[0], "-NSDocumentRevisionsDebugMode")) {
@@ -731,10 +749,7 @@ static void requestHighMemoryUsage() {
 enum {
 	CRASHREPORTER_OK            = 0,
 	CRASHREPORTER_NO_RUN        = 1,
-	CRASHREPORTER_NO_DEBUG      = 2,
-	CRASHREPORTER_NO_ALLOCGUARD = 4,
-	CRASHREPORTER_NO_RUNTIME    = 8,
-	CRASHREPORTER_NO_FUNCS      = 16
+	CRASHREPORTER_NO_DEBUG      = 2
 };
 
 static int crashReporterError = CRASHREPORTER_NO_RUN;
@@ -755,35 +770,16 @@ CONSTRUCTOR setupCrashReporter() {
 		sendToLog(LogLevel::Error, "Memory allocation failure!\n");
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, VERSION_STR1, "Memory allocation failure!", nullptr);
 #ifdef WIN32
-		asm("ud2"); // We want Dr.Mingw catch it
+		__builtin_trap();
 #endif
 		std::terminate();
 	};
 
-#ifdef WIN32
-	if (!SDL_LoadObject("exchndl.dll")) {
-		crashReporterError |= CRASHREPORTER_NO_DEBUG;
-	}
-
-	// On Windows we additionally try to guard C mallocs
-	auto runtime = SDL_LoadObject("msvcrt");
-	if (runtime) {
-		using SetNewMode    = void (*)(int);
-		using SetNewHandler = void (*)(void (*)());
-		auto snm            = reinterpret_cast<SetNewMode>(SDL_LoadFunction(runtime, "?_set_new_mode@@YAHH@Z"));
-		auto snh            = reinterpret_cast<SetNewHandler>(SDL_LoadFunction(runtime, "?_set_new_handler@@YAP6AHI@ZP6AHI@Z@Z"));
-		if (snm)
-			snm(1);
-		if (snh)
-			snh(memoryAllocFailure);
-		if (!snm || !snh)
-			crashReporterError |= CRASHREPORTER_NO_ALLOCGUARD | CRASHREPORTER_NO_FUNCS;
-		SDL_UnloadObject(runtime);
-	} else {
-		crashReporterError |= CRASHREPORTER_NO_ALLOCGUARD | CRASHREPORTER_NO_RUNTIME;
-	}
-#else
 	std::set_new_handler(memoryAllocFailure);
+#ifdef WIN32
+	// The old unsigned DrMinGW DLL bundle was removed. Windows Error Reporting
+	// and attached debuggers now handle native crashes without pre-main DLL loads.
+	crashReporterError |= CRASHREPORTER_NO_DEBUG;
 #endif
 }
 
@@ -836,7 +832,7 @@ int main(int argc, char **argv) {
 				return fallback;
 			char *end        = nullptr;
 			const long value = std::strtol(it->second.c_str(), &end, 10);
-			return (end && *end == '\0' && value > 0) ? static_cast<int>(value) : fallback;
+			return (end && *end == '\0' && value > 0 && value <= std::numeric_limits<int>::max()) ? static_cast<int>(value) : fallback;
 		};
 		auto benchmarkStringOption = [](const char *name) -> const char * {
 			auto it = ons.ons_cfg_options.find(name);
@@ -856,7 +852,7 @@ int main(int argc, char **argv) {
 				return fallback;
 			char *end        = nullptr;
 			const long value = std::strtol(it->second.c_str(), &end, 10);
-			return (end && *end == '\0' && value > 0) ? static_cast<int>(value) : fallback;
+			return (end && *end == '\0' && value > 0 && value <= std::numeric_limits<int>::max()) ? static_cast<int>(value) : fallback;
 		};
 		auto benchmarkStringOption = [](const char *name) -> const char * {
 			auto it = ons.ons_cfg_options.find(name);

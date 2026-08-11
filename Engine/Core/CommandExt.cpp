@@ -28,6 +28,8 @@
 #include <malloc/malloc.h>
 #endif
 
+#include <limits>
+
 #include <algorithm>
 
 int ONScripter::zOrderOverridePreserveCommand() {
@@ -1709,19 +1711,36 @@ int ONScripter::relaunchCommand() {
 }
 
 int ONScripter::regexDefineCommand() {
-	unsigned index = script_h.readInt();
+	constexpr int MaxScriptRegexes = 4096;
+	const int requestedIndex = script_h.readInt();
+	if (requestedIndex < 0 || requestedIndex >= MaxScriptRegexes) {
+		errorAndCont("regex index is out of range");
+		return RET_CONTINUE;
+	}
+	const auto index = static_cast<size_t>(requestedIndex);
 
 	if (index >= regExps.size()) {
 		regExps.resize(index + 1);
 	}
 
 #ifdef USE_STD_REGEX
-	regExps[index] = std::regex(script_h.readStr(), std::regex_constants::optimize);
+	try {
+		regExps[index] = std::regex(script_h.readStr(), std::regex_constants::optimize);
+	} catch (const std::regex_error &) {
+		errorAndCont("invalid regular expression");
+	}
 #else
 	regExps[index].first = std::unique_ptr<char[]>(copystr(script_h.readStr()));
-	slre_compile(regExps[index].first.get(),
-	             static_cast<int>(std::strlen(regExps[index].first.get())),
-	             0, &regExps[index].second);
+	regExps[index].second = {};
+	constexpr size_t MaxRegexLength = 4096;
+	const size_t expressionLength = std::strlen(regExps[index].first.get());
+	if (expressionLength > MaxRegexLength ||
+	    slre_compile(regExps[index].first.get(), static_cast<int>(expressionLength),
+	                 0, &regExps[index].second) < 0) {
+		regExps[index].first.reset();
+		regExps[index].second = {};
+		errorAndCont("invalid or excessively long regular expression");
+	}
 #endif
 
 	return RET_CONTINUE;
@@ -2024,13 +2043,9 @@ int ONScripter::operateConfigCommand() {
 
 	auto &map = op.substr(0, 2) == "u_" ? (static_cast<void>(op.replace(0, 2, "")), user_cfg_options) : ons_cfg_options;
 
-	auto translate = [](std::string propertyName) {
-		std::unordered_map<std::string, std::string> remaps {
-			{"game_script", "game-script"}
-		};
-		for (auto &remap : remaps)
-			if (remap.first == propertyName)
-				return remap.second;
+	auto translate = [](const std::string &propertyName) {
+		if (propertyName == "game_script")
+			return std::string("game-script");
 		return propertyName;
 	};
 
@@ -2237,8 +2252,21 @@ int ONScripter::lookaheadCommand() {
 	if (!tmp_nest->next_script)
 		return RET_CONTINUE; // failed (I can't imagine why we'd have no script available but just in case...)
 
-	auto &regexp  = regExps[script_h.readInt()];
-	auto matchNum = script_h.readInt();
+	constexpr int MaxRegexCaptures = 100;
+	const int requestedIndex = script_h.readInt();
+	const int matchNum = script_h.readInt();
+	if (requestedIndex < 0 || static_cast<size_t>(requestedIndex) >= regExps.size() ||
+	    matchNum <= 0 || matchNum > MaxRegexCaptures) {
+		errorAndCont("lookahead regular expression or capture count is out of range");
+		return RET_CONTINUE;
+	}
+	auto &regexp = regExps[static_cast<size_t>(requestedIndex)];
+#ifndef USE_STD_REGEX
+	if (!regexp.first) {
+		errorAndCont("lookahead regular expression is not defined");
+		return RET_CONTINUE;
+	}
+#endif
 
 #ifdef USE_STD_REGEX // Unfortunately it is like 50 times slower :x
 	bool matched = true;
@@ -2274,7 +2302,15 @@ int ONScripter::lookaheadCommand() {
 
 	int bytesScanned            = 0;
 	size_t bytesConsumed        = script_h.getOffset(tmp_nest->next_script);
+	if (bytesConsumed > script_h.getScriptLength()) {
+		errorAndCont("lookahead position is outside the script");
+		return RET_CONTINUE;
+	}
 	size_t bytesRemaining       = script_h.getScriptLength() - bytesConsumed;
+	if (bytesRemaining > static_cast<size_t>(std::numeric_limits<int>::max())) {
+		errorAndCont("lookahead input is too large");
+		return RET_CONTINUE;
+	}
 	const char *currentLocation = tmp_nest->next_script;
 	std::unique_ptr<char[]> output;
 	size_t outputLen = 0;
@@ -2298,8 +2334,10 @@ int ONScripter::lookaheadCommand() {
 			// feed empty string if matching failed
 			if (bytesScanned < 0) {
 				script_h.setStr(&script_h.getVariableData(script_h.current_variable.var_no).str, "");
+			} else if (!result[i].ptr || result[i].len < 0) {
+				script_h.setStr(&script_h.getVariableData(script_h.current_variable.var_no).str, "");
 			} else {
-				size_t len = result[i].len;
+				size_t len = static_cast<size_t>(result[i].len);
 				if (outputLen < len + 1) {
 					output    = std::make_unique<char[]>(len + 1);
 					outputLen = len + 1;
@@ -2311,8 +2349,14 @@ int ONScripter::lookaheadCommand() {
 			}
 		}
 
-		currentLocation += bytesScanned; // Next search after the previous hit
-		bytesRemaining -= bytesScanned;
+		if (bytesScanned > 0) {
+			if (static_cast<size_t>(bytesScanned) > bytesRemaining) {
+				errorAndCont("regular expression scanner exceeded the script boundary");
+				return RET_CONTINUE;
+			}
+			currentLocation += bytesScanned; // Next search after the previous hit
+			bytesRemaining -= static_cast<size_t>(bytesScanned);
+		}
 	}
 #endif
 

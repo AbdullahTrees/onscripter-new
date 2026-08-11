@@ -1,6 +1,0 @@
-diff -rupN a/Makefile.in b/Makefile.in
---- a/Makefile.in
-+++ b/Makefile.in
-@@ -84 +84 @@
--all: $(srcdir)/configure Makefile $(objects)/$(TARGET) $(objects)/playwave$(EXE) $(objects)/playmus$(EXE)
-+all: $(srcdir)/configure Makefile $(objects)/$(TARGET)

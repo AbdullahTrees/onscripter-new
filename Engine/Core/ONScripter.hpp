@@ -1135,9 +1135,9 @@ public:
 
 private:
 	struct Lips {
-		char seq[CHUNKS_PER_SECOND * MAX_SOUND_LENGTH];
-		int seqSize;
-		int speechStart;
+		char seq[CHUNKS_PER_SECOND * MAX_SOUND_LENGTH]{};
+		int seqSize{0};
+		int speechStart{0};
 	};
 	struct LipsChannel {
 		std::vector<std::string> characterNames;
@@ -1241,7 +1241,7 @@ public: // DialogueController wants access to this
 	int getCharacterPostDisplayDelay(char16_t codepoint, int speed);
 	int unpackInlineCall(const char *cmd, int &val);
 	const char *getFontPath(int i, bool fallback = true);
-	const char *getSubtitleFontDir();
+	std::string getSubtitleFontDir() const;
 
 private:
 	void enterTextDisplayMode();
@@ -1348,14 +1348,14 @@ private:
 	size_t save_load_transition_call_depth{0};
 
 	struct BreakupData {
-		int n_cells, tot_frames;
-		int prev_frame; // Literally unused by new breakup, and functionally unused by old breakup if refactored a tiny amount
+		int n_cells{0}, tot_frames{0};
+		int prev_frame{0}; // Literally unused by new breakup, and functionally unused by old breakup if refactored a tiny amount
 		cmp::optional<int> breakup_mode;
 		cmp::optional<TriangleBlitter> blitter; // Only used by new breakup
-		float wInCellsFloat, hInCellsFloat;
-		int cellFactor;
-		int numCellsX, numCellsY;            // Only used by new breakup
-		int maxDiagonalToContainBrokenCells; // Only used by new breakup
+		float wInCellsFloat{0}, hInCellsFloat{0};
+		int cellFactor{0};
+		int numCellsX{0}, numCellsY{0};            // Only used by new breakup
+		int maxDiagonalToContainBrokenCells{0}; // Only used by new breakup
 		std::vector<BreakupCell> breakup_cells;
 		std::vector<BreakupCell *> diagonals;
 	};
@@ -1391,8 +1391,8 @@ private:
 		cmp::optional<TriangleBlitter> blitter;
 		bool initialised{false};
 		int smashParameter{DefaultParameter};
-		std::array<std::pair<float, float>, DotNum> points;
-		std::array<int, TriangleNum> triangleSeeds;
+		std::array<std::pair<float, float>, DotNum> points{};
+		std::array<int, TriangleNum> triangleSeeds{};
 	};
 
 	GlassSmashData glassSmashData;

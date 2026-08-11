@@ -356,14 +356,8 @@ void LUAHandler::callback(int name) {
 }
 
 int LUAHandler::callFunction(bool is_callback, const char *cmd) {
-	char cmd2[256];
-
-	if (is_callback)
-		std::sprintf(cmd2, "NSCALL_%s", cmd);
-	else
-		std::sprintf(cmd2, "NSCOM_%s", cmd);
-
-	lua_getglobal(state, cmd2);
+	const std::string function_name = std::string(is_callback ? "NSCALL_" : "NSCOM_") + (cmd ? cmd : "");
+	lua_getglobal(state, function_name.c_str());
 
 	if (lua_pcall(state, 0, 0, 0) != 0) {
 		copystr(error_str, lua_tostring(state, -1), sizeof(error_str));

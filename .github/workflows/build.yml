@@ -1,0 +1,90 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-ucrt64:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-meson
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-pkgconf
+      - name: Configure
+        shell: msys2 {0}
+        run: ./configure --release-build --std=gnu++23 --with-werror
+      - name: Build
+        shell: msys2 {0}
+        run: make -j2
+      - name: Native regression tests
+        shell: msys2 {0}
+        run: |
+          cmake -S Tests -B DerivedData/tests -G Ninja
+          cmake --build DerivedData/tests
+          ctest --test-dir DerivedData/tests --output-on-failure
+
+  linux-sanitizers-and-fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:check_initialization_order=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      FUZZ_RUNS: ${{ github.event_name == 'schedule' && '100000' || '5000' }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Clang and Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang ninja-build
+      - name: Configure sanitizer and fuzz targets
+        env:
+          CC: clang
+          CXX: clang++
+        run: >-
+          cmake -S Tests -B DerivedData/tests-sanitize -G Ninja
+          -DONS_ENABLE_SANITIZERS=ON
+          -DONS_BUILD_FUZZERS=ON
+      - name: Build
+        run: cmake --build DerivedData/tests-sanitize
+      - name: Run regression tests under ASan and UBSan
+        run: ctest --test-dir DerivedData/tests-sanitize --output-on-failure
+      - name: Fuzz archive indexes
+        run: >-
+          DerivedData/tests-sanitize/fuzz_archive_parser
+          -runs="$FUZZ_RUNS" -max_len=65536 -timeout=5
+      - name: Fuzz command-line validation
+        run: >-
+          DerivedData/tests-sanitize/fuzz_command_line
+          -runs="$FUZZ_RUNS" -max_len=65536 -timeout=5
+      - name: Fuzz serialized-data reads
+        run: >-
+          DerivedData/tests-sanitize/fuzz_serialized_data
+          -runs="$FUZZ_RUNS" -max_len=65536 -timeout=5
+      - name: Fuzz regular expressions
+        run: >-
+          DerivedData/tests-sanitize/fuzz_slre
+          -runs="$FUZZ_RUNS" -max_len=65536 -timeout=5
+
+  source-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Reject whitespace errors
+        run: git show --check --oneline --no-renames "${{ github.sha }}"

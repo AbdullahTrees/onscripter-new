@@ -1,0 +1,7 @@
+;mode800
+*define
+caption "onscripter-new synthetic smoke test"
+game
+
+*start
+end

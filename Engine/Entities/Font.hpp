@@ -76,10 +76,10 @@ struct NewLineBehavior {
 
 // For information that can change as part of the text layouting process without hitting any {}.
 struct LayoutData {
-	float xPxLeft;  //Real x coordinate (pen position)
-	float xPxRight; // Similar to above, but accounts for the entire final glyph (for rendering rectangles etc) and takes whole-number values
-	uint32_t last_printed_codepoint;
-	unsigned int prevCharIndex; // last ft char index, used for kerning
+	float xPxLeft{0};  //Real x coordinate (pen position)
+	float xPxRight{0}; // Similar to above, but accounts for the entire final glyph (for rendering rectangles etc) and takes whole-number values
+	uint32_t last_printed_codepoint{0};
+	unsigned int prevCharIndex{0}; // last ft char index, used for kerning
 	NewLineBehavior newLineBehavior;
 };
 

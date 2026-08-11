@@ -24,6 +24,7 @@
 #endif
 
 #include <cstdio>
+#include <limits>
 
 struct WAVE_HEADER {
 	char chunk_riff[4];
@@ -71,18 +72,23 @@ extern void seqmusicCallback(int sig);
 	 ((buf)[3] != 0xFF) && ((buf)[4] != 0xFF) && !((buf)[5] & 0x1F))
 
 struct OVInfo {
-	uint8_t *buf;
-	ogg_int64_t length;
-	ogg_int64_t pos;
-	OggVorbis_File ovf;
+	uint8_t *buf{nullptr};
+	ogg_int64_t length{0};
+	ogg_int64_t pos{0};
+	OggVorbis_File ovf{};
 };
 
 static size_t oc_read_func(void *ptr, size_t size, size_t nmemb, void *datasource) {
 	OVInfo *ogg_vorbis_info = static_cast<OVInfo *>(datasource);
 
+	if (size != 0 && nmemb > std::numeric_limits<size_t>::max() / size)
+		return 0;
 	size_t len = size * nmemb;
-	if (static_cast<size_t>(ogg_vorbis_info->pos) + len > static_cast<size_t>(ogg_vorbis_info->length))
-		len = static_cast<size_t>(ogg_vorbis_info->length - ogg_vorbis_info->pos);
+	if (ogg_vorbis_info->pos < 0 || ogg_vorbis_info->pos > ogg_vorbis_info->length)
+		return 0;
+	const size_t remaining = static_cast<size_t>(ogg_vorbis_info->length - ogg_vorbis_info->pos);
+	if (len > remaining)
+		len = remaining;
 	std::memcpy(ptr, ogg_vorbis_info->buf + ogg_vorbis_info->pos, len);
 	ogg_vorbis_info->pos += len;
 
@@ -251,6 +257,10 @@ int ONScripter::playSound(const char *filename, int format, bool loop_flag, int 
 
 	if (length == 0)
 		return SOUND_NONE;
+	if (length > static_cast<size_t>(std::numeric_limits<int>::max())) {
+		freearr(&buffer);
+		return SOUND_NONE;
+	}
 
 	if ((channel == MIX_CACHE_CHANNEL_BLOCK || channel == MIX_CACHE_CHANNEL_ASYNC) &&
 	    !(format & SOUND_CHUNK && format & SOUND_PRELOAD)) {
@@ -259,7 +269,7 @@ int ONScripter::playSound(const char *filename, int format, bool loop_flag, int 
 		return SOUND_NONE; //dummy
 	}
 
-	if ((format & SOUND_CHUNK) && !buffer[0] && !buffer[1] && !buffer[2] && !buffer[3]) {
+	if ((format & SOUND_CHUNK) && length >= 128 && !buffer[0] && !buffer[1] && !buffer[2] && !buffer[3]) {
 		// "chunk" sound files would have a 4+ byte magic number,
 		// so this could be a WAV with a bad (encrypted?) header;
 		// will recreate the header from a ".fmt" file if one exists
@@ -327,7 +337,7 @@ int ONScripter::playSound(const char *filename, int format, bool loop_flag, int 
 
 	if (format & SOUND_MUSIC) {
 		int id3v2_size = 0;
-		if (HAS_ID3V2_TAG(buffer)) {
+		if (length >= 10 && HAS_ID3V2_TAG(buffer)) {
 			// Skip ID3v2 metadata before probing the audio stream.
 			for (int i = 0; i < 4; i++) {
 				if (buffer[6 + i] & 0x80) { //err music_buffer brb, sorry {think of it}. See above ^
@@ -337,9 +347,11 @@ int ONScripter::playSound(const char *filename, int format, bool loop_flag, int 
 				id3v2_size <<= 7;
 				id3v2_size += buffer[6 + i];
 			}
-			if (id3v2_size > 0) {
+			if (id3v2_size > 0 && static_cast<size_t>(id3v2_size) + 10 <= length) {
 				id3v2_size += 10;
 				sendToLog(LogLevel::Info, "found ID3v2 tag in file '%s', size %d bytes\n", filename, id3v2_size);
+			} else {
+				id3v2_size = 0;
 			}
 		}
 		uint8_t *m_buf   = buffer + id3v2_size;
@@ -575,15 +587,14 @@ int ONScripter::playWave(const std::shared_ptr<Wrapped_Mix_Chunk> &chunk, int fo
 int ONScripter::playSequencedMusic(bool loop_flag) {
 	Mix_SetMusicCMD(seqmusic_cmd);
 
-	char seqmusic_filename[256];
-	std::sprintf(seqmusic_filename, "%s%s", script_h.save_path, TMP_MUSIC_FILE);
+	const std::string seqmusic_filename = std::string(script_h.save_path ? script_h.save_path : "") + TMP_MUSIC_FILE;
 	{
 		Lock lock(&music_file_name); //general sound i/o lock
-		seqmusic_info = Mix_LoadMUS(seqmusic_filename);
+		seqmusic_info = Mix_LoadMUS(seqmusic_filename.c_str());
 	}
 	if (seqmusic_info == nullptr) {
 		std::snprintf(script_h.errbuf, MAX_ERRBUF_LEN,
-		              "error in sequenced music file %s", seqmusic_filename);
+		              "error in sequenced music file %s", seqmusic_filename.c_str());
 		errorAndCont(script_h.errbuf, Mix_GetError());
 		return -1;
 	}

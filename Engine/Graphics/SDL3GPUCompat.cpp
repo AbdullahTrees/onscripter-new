@@ -4966,6 +4966,9 @@ struct BenchmarkOutputFile {
 		if (file)
 			std::fclose(file);
 	}
+
+	BenchmarkOutputFile(const BenchmarkOutputFile &)            = delete;
+	BenchmarkOutputFile &operator=(const BenchmarkOutputFile &) = delete;
 };
 
 SDL_Surface *createBenchmarkSurface(int width, int height) {
@@ -6179,18 +6182,8 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 		return 1;
 	}
 
-	auto writeLine = [&](const char *fmt, ...) {
-		va_list args;
-		va_start(args, fmt);
-		std::vprintf(fmt, args);
-		va_end(args);
-		std::fflush(stdout);
-		if (benchmarkOutput.file) {
-			va_start(args, fmt);
-			std::vfprintf(benchmarkOutput.file, fmt, args);
-			va_end(args);
-			std::fflush(benchmarkOutput.file);
-		}
+	auto writeLine = [&](const char *fmt, auto... args) {
+		printBenchmarkLine(benchmarkOutput.file, fmt, args...);
 	};
 
 	if (!onsSDLInit(SDL_INIT_VIDEO)) {

@@ -189,7 +189,7 @@ public:
 
 class ButtonWaitAction : public AbstractWaitAction<ButtonWaitAction> {
 public:
-	uint32_t button_timer_start;
+	uint32_t button_timer_start{0};
 	std::shared_ptr<void> variableInfo;
 	ButtonState buttonState;
 	bool del_flag{false};

@@ -1,9 +1,0 @@
-diff -rupN a/src/mixer.c b/src/mixer.c
---- a/src/mixer.c
-+++ b/src/mixer.c
-@@ -700 +700 @@ static SDL_AudioSpec *Mix_LoadMusic_RW(SDL_RWops *src, int freesrc, SDL_AudioSpec *spec, Uint8 **audio_buf, Uint32 *audio_len)
--    Mix_LockAudio();
-+    /* Mix_LockAudio(); */
-@@ -749 +749 @@ static SDL_AudioSpec *Mix_LoadMusic_RW(SDL_RWops *src, int freesrc, SDL_AudioSpec *spec, Uint8 **audio_buf, Uint32 *audio_len)
--    Mix_UnlockAudio();
-+    /* Mix_UnlockAudio(); */

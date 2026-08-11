@@ -112,7 +112,7 @@ CSTD="-std=c11 -D_ISOC99_SOURCE -D_ISOC11_SOURCE -U__STRICT_ANSI__"
 CXXSTD="-std=c++23 -D_ISOC99_SOURCE -D_ISOC11_SOURCE -U__STRICT_ANSI__"
 
 DEFAULT_CC="gcc"
-DEFAULT_OPT="-Os"
+DEFAULT_OPT="-O2"
 DEFAULT_MACOSX_CC="clang"
 DEFAULT_DROID_CC="clang"
 MACOSX_DEPLOYMENT_TARGET=14.0
@@ -127,6 +127,8 @@ COMPILER_PREFIX=""
 EMBED_PATH=""
 BUILD_PATH=""
 DISCORD_APP_ID=""
+RELEASE_BUILD=false
+LTO_MODE=auto
 
 VERSION=$(awk '/define VER_NUMBER/ {print $3}' Resources/Support/Version.hpp | sed s/-ru$//)
 
@@ -171,7 +173,12 @@ do
       --vectorize-verbose=* | -vectorize-verbose=*)
         VECTORIZE_LEVEL=$arg ;;
       --release-build | -release-build)
+        RELEASE_BUILD=true
         EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DPUBLIC_RELEASE" ;;
+      --lto | -lto)
+        LTO_MODE=on ;;
+      --no-lto | -no-lto)
+        LTO_MODE=off ;;
       --strip-binary | -strip-binary)
         EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -s" ;;
       --directx-sdk-path=* | -directx-sdk-path)
@@ -225,6 +232,8 @@ do
 	Build-specific options:
 	  --build-path=DIR         absolute path to build directory (default is DerivedData)
 	  --release-build          build with PUBLIC_RELEASE flag 	
+	  --lto                    enable link-time optimization
+	  --no-lto                 disable release-build LTO
 	  --strip-binary           strip debug information from the executable
 	  --discord-app-id=ID      embed default Discord Rich Presence application ID
 	  --directx-sdk-path=DIR   enable DirectX 9 SDK support (Windows only)
@@ -290,15 +299,15 @@ if $DROID_BUILD; then
   fi
 else
   if [[ $(uname) == Darwin* ]] && [ "$CROSS_TRIPLE" == "" ]; then
-    echo "Warning: Building for macOS via configure is unsupported, use Xcode!"
+    echo "Warning: macOS builds are best-effort and are not currently CI-validated."
     echo "Warning: Binaries are built without Cocoa extensions and arch support!"
   fi
 fi
 
 if [[ "$EXTRAOSCFLAGS" =~ "PUBLIC_RELEASE" ]]; then
-  echo "Configuring ONScripter-RU $VERSION (release)"
+  echo "Configuring onscripter-new $VERSION (release)"
 else
-  echo "Configuring ONScripter-RU $VERSION (develop)"
+  echo "Configuring onscripter-new $VERSION (develop)"
 fi
 
 # ---------- Platform detection ----------
@@ -426,10 +435,27 @@ supports_cxx_linker_flag() {
   return $ret
 }
 
+supports_cxx_compiler_flag() {
+  local flag="$1"
+  local test_src test_obj ret
+  test_src="$(mktemp "${TMPDIR:-/tmp}/ons-compile-XXXXXX.cpp")" || return 1
+  test_obj="$(mktemp "${TMPDIR:-/tmp}/ons-compile-XXXXXX.o")" || {
+    rm -f "$test_src"
+    return 1
+  }
+  printf 'int main(){return 0;}\n' > "$test_src"
+  "$CXX" $CXXSTD "$flag" -Werror -c "$test_src" -o "$test_obj" >/dev/null 2>&1
+  ret=$?
+  rm -f "$test_src" "$test_obj"
+  return $ret
+}
+
 case "$CXX_TMP" in
   g++* | *apple*g++* | Apple* | *clang* | *\(GCC\)*)
-    EXTRAOSCFLAGS="$EXTRAOSCFLAGS -Wall -Wextra" ;;
+    EXTRAOSCFLAGS="$EXTRAOSCFLAGS -Wall -Wextra -Wformat=2" ;;
 esac
+
+supports_cxx_compiler_flag "-fstack-protector-strong" && EXTRAOSCFLAGS="$EXTRAOSCFLAGS -fstack-protector-strong"
 
 # ---------- Auto-vectorization ----------
 
@@ -541,6 +567,13 @@ if [ "x$MAKE" != "xmake" ]; then
   fi
 fi
 
+# CMake treats bare tool names supplied through CMAKE_AR/CMAKE_RANLIB as paths
+# relative to its source directory on Windows. Export resolved paths instead.
+AR_RESOLVED="$(command -v "$AR" 2>/dev/null)"
+RANLIB_RESOLVED="$(command -v "$RANLIB" 2>/dev/null)"
+[ -n "$AR_RESOLVED" ] && [ "$AR_RESOLVED" != "$AR" ] && AR="$AR_RESOLVED"
+[ -n "$RANLIB_RESOLVED" ] && [ "$RANLIB_RESOLVED" != "$RANLIB" ] && RANLIB="$RANLIB_RESOLVED"
+
 # ---------- Compiler flag support ----------
 
 echo -n "Deciding on flags...      "
@@ -581,6 +614,7 @@ case "$CXX_TMP:$SYS" in
     EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DWIN32 -DPTW32_STATIC_LIB -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00"
     EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -lwinmm -lshlwapi -lws2_32 -Wl,--wrap=SDL_LoadObject"
     supports_cxx_linker_flag "-Wl,--large-address-aware" && EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -Wl,--large-address-aware"
+    supports_cxx_linker_flag "-Wl,--dynamicbase,--nxcompat,--high-entropy-va" && EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -Wl,--dynamicbase,--nxcompat,--high-entropy-va"
   ;;
   *clang*:"Droid")
     LINK_START_GROUP="-Wl,--start-group"
@@ -596,6 +630,7 @@ case "$CXX_TMP:$SYS" in
     EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DWIN32 -DPTW32_STATIC_LIB -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -mthreads"
     EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -lwinmm -lshlwapi -lws2_32 -Wl,--wrap=SDL_LoadObject"
     supports_cxx_linker_flag "-Wl,--large-address-aware" && EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -Wl,--large-address-aware"
+    supports_cxx_linker_flag "-Wl,--dynamicbase,--nxcompat,--high-entropy-va" && EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -Wl,--dynamicbase,--nxcompat,--high-entropy-va"
   ;;
   g++*:"Posix" | *clang*:"Posix")
     LINK_START_GROUP="-Wl,--start-group"
@@ -623,6 +658,25 @@ case "$CXX_TMP:$SYS" in
 esac
 
 EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DONS_USE_SDL3"
+
+# LTO is a measurable whole-program optimization for the engine itself. Keep
+# development builds fast, enable it for releases when the complete compile and
+# link probe succeeds, and retain an explicit opt-out for problematic toolchains.
+if [ "$LTO_MODE" == "on" ] || { [ "$LTO_MODE" == "auto" ] && $RELEASE_BUILD; }; then
+  case "$CXX_TMP" in
+    *clang* | Apple*) LTO_FLAG="-flto=thin" ;;
+    *)                LTO_FLAG="-flto=auto" ;;
+  esac
+  if supports_cxx_compiler_flag "$LTO_FLAG" && supports_cxx_linker_flag "$LTO_FLAG"; then
+    EXTRAOSCFLAGS="$EXTRAOSCFLAGS $LTO_FLAG"
+    EXTRALDFLAGS="$EXTRALDFLAGS $LTO_FLAG"
+  elif [ "$LTO_MODE" == "on" ]; then
+    echo "Error: requested LTO flag '$LTO_FLAG' is not supported by this compiler/linker"
+    exit 1
+  else
+    echo "Warning: release LTO is unavailable with this compiler/linker"
+  fi
+fi
 
 if [ "$DISCORD_APP_ID" != "" ]; then
   if [[ ! "$DISCORD_APP_ID" =~ ^[0-9]{16,32}$ ]]; then
@@ -778,6 +832,7 @@ SOURCES=(
   'Engine/Components/TextWindow.cpp'
   'Engine/Components/Window.cpp'
   'Engine/Core/Animation.cpp'
+	'Engine/Core/CommandLine.cpp'
   'Engine/Core/Command.cpp'
   'Engine/Core/CommandExt.cpp'
   'Engine/Core/Effect.cpp'
@@ -817,6 +872,7 @@ SOURCES=(
   'Engine/Media/SubtitleDecoder.cpp'
   'Engine/Media/SubtitleDriver.cpp'
   'Engine/Media/VideoDecoder.cpp'
+	'Engine/Readers/ArchiveParser.cpp'
   'Engine/Readers/Direct.cpp'
   'Engine/Readers/Nsa.cpp'
   'Engine/Readers/Sar.cpp'
@@ -843,6 +899,7 @@ HEADERS=(
   'Engine/Components/TextWindow.hpp'
   'Engine/Components/Window.hpp'
   'Engine/Core/ONScripter.hpp'
+	'Engine/Core/CommandLine.hpp'
   'Engine/Core/Parser.hpp'
   'Engine/Entities/Animation.hpp'
   'Engine/Entities/Breakup.hpp'
@@ -867,6 +924,7 @@ HEADERS=(
   'Engine/Layers/Subtitle.hpp'
   'Engine/Media/Controller.hpp'
   'Engine/Media/SubtitleDriver.hpp'
+	'Engine/Readers/ArchiveParser.hpp'
   'Engine/Readers/Base.hpp'
   'Engine/Readers/Direct.hpp'
   'Engine/Readers/Nsa.hpp'
@@ -887,6 +945,7 @@ HEADERS=(
   'Support/SDLCompat.hpp'
   'Support/SDLImageCompat.hpp'
   'Support/SDLMixerCompat.hpp'
+	'Support/SerializedData.hpp'
   'Support/SDLSysWMCompat.hpp'
   'Support/Unicode.hpp'
   'External/Compatibility.hpp'
@@ -986,6 +1045,7 @@ export PKG_CONFIG_PATH := \$(EXTLIB)/lib/pkgconfig
 ONS_PKGS        = $ONS_PKGS
 ONS_PKG_OPTS    = $ONS_PKG_OPTS
 ONS_PKG_DEPS    = \$(addprefix \$(EXTLIB)/.pkgs/,\$(ONS_PKGS))
+ONS_PKG_RECIPES = \$(wildcard \$(ONSCRLIB)/pkgs/*.pkgbuild \$(ONSCRLIB)/patches/*)
 
 EXTRAOSCFLAGS   = $EXTRAOSCFLAGS
 EXTRAOSLDFLAGS  = $EXTRAOSLDFLAGS
@@ -1018,7 +1078,7 @@ else
 		OSCFLAGS        = $DEFAULT_OPT -pg \$(NPGOSCFLAGS)
 		export LDFLAGS  := -pg $ \$(LDFLAGS)
 	else
-		NPGOSCFLAGS     = -fomit-frame-pointer -pipe -Wpointer-arith \$(EXTRAOSCFLAGS)
+		NPGOSCFLAGS     = -fomit-frame-pointer -pipe -Wpointer-arith -DNDEBUG \$(EXTRAOSCFLAGS)
 		OSCFLAGS        = $DEFAULT_OPT \$(NPGOSCFLAGS)
 	endif
 endif
@@ -1120,6 +1180,10 @@ cat >> "$BUILD_PATH/Makefile" <<_EOF
 	@unset MAKEFLAGS; cd \$(ONSCRLIB); \\
 	./build.sh \$(ONS_PKG_OPTS) -o \$(EXTLIB) \$*
 
+# A meta-package stamp cannot reveal a changed transitive recipe. Re-run its
+# inexpensive version check whenever configure copies recipe or patch updates.
+\$(EXTLIB)/.pkgs/onscrlib: \$(ONS_PKG_RECIPES)
+
 apk: binary
 	@echo "Building apk..."
 	\$(PROJECT)/Scripts/apkbuild.tool \$(BUILD_PATH)
@@ -1218,4 +1282,4 @@ include("$(pathautofix "${BUILD_PATH}")/CMakeLists.txt")
 _EOF
 
 echo "done"
-echo "Now run \"$MAKE\" to build ONScripter-RU."
+echo "Now run \"$MAKE\" to build onscripter-new."

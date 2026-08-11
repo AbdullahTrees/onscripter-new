@@ -28,10 +28,10 @@ extern "C" {
 
 struct SubtitleImage {
 	std::unique_ptr<uint8_t[]> buffer;
-	int w, h;
-	int linesize;
-	int x, y;
-	uint32_t color;
+	int w{0}, h{0};
+	int linesize{0};
+	int x{0}, y{0};
+	uint32_t color{0};
 };
 
 class SubtitleDriver {

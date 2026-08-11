@@ -164,7 +164,7 @@ struct CallStack {
 	}
 
 	MAP_TYPE<T, CallStack> children;
-	size_t counter;
+	size_t counter{0};
 };
 
 #ifdef DELAY_NAME_RESOLVE

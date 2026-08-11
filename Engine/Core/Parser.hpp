@@ -395,9 +395,9 @@ protected:
 	/* ---------------------------------------- */
 	/* Save/Load related variables */
 	struct SaveFileInfo {
-		int month, day, year, hour, minute;
+		int month{0}, day{0}, year{0}, hour{0}, minute{0};
 		std::unique_ptr<char[]> descr;
-		int version;
+		int version{0};
 	};
 	unsigned int num_save_file;
 
@@ -464,6 +464,8 @@ protected:
 	void allocFileIOBuf();
 	int saveFileIOBuf(const char *filename);
 	int loadFileIOBuf(const char *filename, bool savedata = true);
+	void requireFileIOBytes(size_t bytes) const;
+	void moveFileIOPosition(int64_t delta);
 
 	//TODO: separate from ScriptParser
 	union ConvBytes {

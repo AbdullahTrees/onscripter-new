@@ -479,7 +479,7 @@ void DialogueController::layoutDialogue() {
 	size_t dataPartLen    = dataPart.length();
 
 	while (true) {
-		slre_cap result;
+		slre_cap result{};
 
 		if (pos > dataPartLen) {
 			ons.errorAndExit("pos is greater than dataPartLen somehow");

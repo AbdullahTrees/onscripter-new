@@ -101,8 +101,44 @@ const char *ScriptHandler::getSavePath(const char *filename) {
 }
 
 void ScriptHandler::setSavedir(const char *dir) {
-	savedir = new char[std::strlen(dir) + std::strlen(save_path) + 2];
-	std::sprintf(savedir, "%s%s%c", save_path, dir, DELIMITER);
+	if (!dir || !save_path)
+		throw std::runtime_error("Invalid save directory");
+
+	std::string relative(dir);
+	if (relative.size() >= PATH_MAX || (!relative.empty() && (relative.front() == '/' || relative.front() == '\\')))
+		throw std::runtime_error("Save directory must be a bounded relative path");
+	for (char &ch : relative)
+		if (ch == '\\')
+			ch = '/';
+
+	std::string normalized;
+	size_t position = 0;
+	while (position <= relative.size()) {
+		const size_t separator = relative.find('/', position);
+		const size_t end = separator == std::string::npos ? relative.size() : separator;
+		const std::string component = relative.substr(position, end - position);
+		if (component == ".." || component.find(':') != std::string::npos)
+			throw std::runtime_error("Save directory may not escape the save root");
+		if (!component.empty() && component != ".") {
+			if (!normalized.empty())
+				normalized.push_back(DELIMITER);
+			normalized += component;
+		}
+		if (separator == std::string::npos)
+			break;
+		position = separator + 1;
+	}
+
+	std::string fullPath(save_path);
+	if (!normalized.empty())
+		fullPath += normalized;
+	if (fullPath.empty() || (fullPath.back() != '/' && fullPath.back() != '\\'))
+		fullPath.push_back(DELIMITER);
+	if (fullPath.size() >= PATH_MAX)
+		throw std::runtime_error("Save directory path is too long");
+
+	freearr(&savedir);
+	savedir = copystr(fullPath.c_str());
 	FileIO::makeDir(savedir, nullptr, true);
 }
 
@@ -950,11 +986,13 @@ int32_t ScriptHandler::getStringFromInteger(char *buffer, int32_t no, int32_t nu
                                             bool is_zero_inserted,
                                             bool use_zenkaku) {
 	int32_t i, num_space = 0, num_minus = 0;
+	int64_t magnitude = no;
 	if (no < 0) {
 		num_minus = 1;
-		no        = -no;
+		magnitude = -magnitude;
 	}
-	int32_t num_digit = 1, no2 = no;
+	int32_t num_digit = 1;
+	int64_t no2 = magnitude;
 	while (no2 >= 10) {
 		no2 /= 10;
 		num_digit++;
@@ -966,20 +1004,16 @@ int32_t ScriptHandler::getStringFromInteger(char *buffer, int32_t no, int32_t nu
 		num_space = num_column - (num_digit + num_minus);
 	else {
 		for (i = 0; i < num_digit + num_minus - num_column; i++)
-			no /= 10;
+			magnitude /= 10;
 		num_digit -= num_digit + num_minus - num_column;
 	}
 
 	if (!use_zenkaku) {
-		if (num_minus == 1)
-			no = -no;
-		char format[6];
+		const int32_t signed_value = static_cast<int32_t>(num_minus == 1 ? -magnitude : magnitude);
 		if (is_zero_inserted)
-			std::snprintf(format, sizeof(format), "%%0%dd", num_column);
+			std::sprintf(buffer, "%0*d", num_column, signed_value);
 		else
-			std::snprintf(format, sizeof(format), "%%%dd", num_column);
-
-		std::sprintf(buffer, format, no);
+			std::sprintf(buffer, "%*d", num_column, signed_value);
 		return num_column;
 	}
 
@@ -1002,9 +1036,9 @@ int32_t ScriptHandler::getStringFromInteger(char *buffer, int32_t no, int32_t nu
 	c              = (num_column - 1) * 2;
 	char num_str[] = "０１２３４５６７８９";
 	for (i = 0; i < num_digit; i++) {
-		buffer[c]     = num_str[no % 10 * 2];
-		buffer[c + 1] = num_str[no % 10 * 2 + 1];
-		no /= 10;
+		buffer[c]     = num_str[magnitude % 10 * 2];
+		buffer[c + 1] = num_str[magnitude % 10 * 2 + 1];
+		magnitude /= 10;
 		c -= 2;
 	}
 	buffer[num_column * 2] = '\0';

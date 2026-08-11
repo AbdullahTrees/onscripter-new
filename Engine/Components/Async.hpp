@@ -31,10 +31,11 @@ class AsyncInstructionQueue {
 public:
 	std::deque<std::unique_ptr<AsyncInstruction>> q;
 	std::deque<void *> results;
-	SDL_SpinLock lock{0}, loopLock{0}, resultsLock{0};
+	SDL_SpinLock lock{0}, resultsLock{0};
 
 	SDL_sem *instructionsWaiting{nullptr}, *resultsWaiting{nullptr};
 	SDL_Thread *thread{nullptr};
+	std::atomic_bool running{false};
 	const char *name{nullptr};
 	bool quitOnEmpty{true};
 	bool hasQueue{true};
@@ -43,6 +44,7 @@ public:
 	void (*threadStopFunction)(AsyncInstructionQueue *){defaultThreadEnd};
 
 	void init();
+	void destroy();
 	AsyncInstructionQueue(const char *threadname, bool quits = true, bool queued = true)
 	    : name(threadname), quitOnEmpty(quits), hasQueue(queued) {}
 };
@@ -142,13 +144,13 @@ public:
 class PlaySoundInstruction : public AsyncInstruction {
 public:
 	AsyncInstructionQueue *getInstructionQueue() override;
-	const char *filename;
+	std::string filename;
 	int format;
 	bool loop_flag;
 	int channel;
 	void execute() override;
 	PlaySoundInstruction(AsyncController *_ac, const char *_filename, int _format, bool _loop_flag, int _channel)
-	    : AsyncInstruction(_ac), filename(_filename), format(_format), loop_flag(_loop_flag), channel(_channel) {}
+	    : AsyncInstruction(_ac), filename(_filename ? _filename : ""), format(_format), loop_flag(_loop_flag), channel(_channel) {}
 };
 
 class EventQueueInstruction : public AsyncInstruction {
@@ -164,6 +166,7 @@ public:
 	void setMutex(void *ptr);
 	void unsetMutex(void *ptr);
 	void init();
+	void deinit();
 
 	// bit of a misplaced method to help us debug weird thread issues by coordinating the locations of two separate running threads.
 	// (only here 'cause i wanted to use the access_mutex)
@@ -198,7 +201,7 @@ public:
 	    playSoundQueue, eventQueueQueue;
 	std::vector<AsyncInstructionQueue *> queueCollection;
 	VirtualMutexes mutexes; //-V730_NOINIT
-	bool threadShutdownRequested{false};
+	std::atomic_bool threadShutdownRequested{false};
 
 	class ThreadTerminate : public std::exception {};
 
@@ -229,8 +232,13 @@ public:
 		if (async.initialised())
 			async.mutexes.setMutex(ptr);
 	}
-	~Lock() {
-		if (async.initialised())
-			async.mutexes.unsetMutex(ptr);
+	~Lock() noexcept {
+		if (async.initialised()) {
+			try {
+				async.mutexes.unsetMutex(ptr);
+			} catch (...) {
+				// A destructor must never terminate the process while unwinding.
+			}
+		}
 	}
 };

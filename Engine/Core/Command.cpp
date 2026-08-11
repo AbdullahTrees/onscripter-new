@@ -2906,10 +2906,11 @@ int ONScripter::dwaveCommand() {
 }
 
 int ONScripter::dvCommand() {
-	char buf[256];
-
-	std::sprintf(buf, "voice%c%s.wav", DELIMITER, script_h.getStringBuffer() + 2);
-	playSoundThreaded(buf, SOUND_CHUNK, false, 0);
+	std::string filename = "voice";
+	filename += DELIMITER;
+	filename += script_h.getStringBuffer() + 2;
+	filename += ".wav";
+	playSoundThreaded(filename.c_str(), SOUND_CHUNK, false, 0);
 
 	return RET_CONTINUE;
 }

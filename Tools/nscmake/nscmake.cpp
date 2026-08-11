@@ -11,6 +11,9 @@
 
 #include <iostream>
 #include <fstream>
+#include <array>
+#include <cstdint>
+#include <limits>
 #include <vector>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,9 +45,8 @@ int main(int argc, char **argv) {
 		0x20, 0x42, 0xcd, 0x51, 0xb2, 0x06, 0x19, 0x4b, 0x9b, 0xd4, 0x8a, 0x4c, 0xf8, 0x87, 0x1a, 0xdd
 	};
 	std::vector<unsigned char> out_buffer;
-	std::streampos out_size = 0, cur_size = 0, cur_pos = 0;
-	unsigned int version = 110;
-	int i;
+	constexpr std::uint32_t version = 110;
+	constexpr std::size_t maximumInputSize = MAX_IN;
 
 	if (argc > 1) {
 		if (!strcmp(argv[1], "-o")) {
@@ -81,67 +83,59 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	if (use_stdin) {
-		std::istream *in_fp = &std::cin;
-		in_fp->seekg(std::ios::end);
-
-		cur_size = in_fp->tellg();
-		cur_pos  = out_size;
-		out_size += cur_size;
-
-		if (out_size >= MAX_IN) {
-			fprintf(stderr, "Too big input, maximum size is %d bytes\n", MAX_IN);
-			return 1;
+	auto appendInput = [&](std::istream &input, const char *name) {
+		std::array<char, 64 * 1024> chunk{};
+		while (input) {
+			input.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+			const std::streamsize count = input.gcount();
+			if (count > 0) {
+				const std::size_t amount = static_cast<std::size_t>(count);
+				if (amount >= maximumInputSize - out_buffer.size()) {
+					fprintf(stderr, "Input is too big, maximum size is %d bytes\n", MAX_IN);
+					return false;
+				}
+				out_buffer.insert(out_buffer.end(), chunk.data(), chunk.data() + amount);
+			}
 		}
+		if (!input.eof()) {
+			fprintf(stderr, "Couldn't read '%s'\n", name);
+			return false;
+		}
+		return true;
+	};
 
-		out_buffer.resize(out_size);
-
-		in_fp->seekg(0);
-		in_fp->read((char *)&out_buffer[cur_pos], cur_size);
+	if (use_stdin) {
+		if (!appendInput(std::cin, "standard input"))
+			return 1;
 	} else {
-		std::ifstream *in_fp;
 		do {
 			in_filename = argv[1];
-			in_fp       = new std::ifstream(in_filename, std::ios::binary | std::ios::ate);
+			std::ifstream in_fp(in_filename, std::ios::binary);
 
-			if (in_fp->is_open() == false) {
+			if (!in_fp.is_open()) {
 				fprintf(stderr, "Couldn't open '%s' for reading\n", in_filename);
-				exit(1);
+				return 1;
 			}
 
-			cur_size = in_fp->tellg();
-			cur_pos  = out_size;
-			out_size += cur_size;
-
-			if (out_size >= MAX_IN) {
-				fprintf(stderr, "Files are too big, maximum size is %d bytes\n", MAX_IN);
-				in_fp->close();
-				exit(1);
-			}
-
-			out_buffer.resize(out_size);
-
-			in_fp->seekg(0);
-			in_fp->read((char *)&out_buffer[cur_pos], cur_size);
-
-			in_fp->close();
+			if (!appendInput(in_fp, in_filename))
+				return 1;
 			argc--;
 			argv++;
 		} while (argc > 1);
 	}
 
-	for (i = 0; i < out_size; i++) {
+	const std::size_t out_size = out_buffer.size();
+	for (std::size_t i = 0; i < out_size; i++) {
 		out_buffer[i] = key_table[out_buffer[i] ^ 0x71] ^ 0x45;
 	}
 
-	unsigned long compressed_size  = (out_size * 1.1) + 12;
-	unsigned char *compressed_data = (unsigned char *)malloc(compressed_size);
-
-	//Normally this is not safe but we check our sizes
-	int gz_result = compress(compressed_data,
+	const unsigned char empty_input = 0;
+	uLongf compressed_size = compressBound(static_cast<uLong>(out_size));
+	std::vector<unsigned char> compressed_data(compressed_size);
+	int gz_result = compress(compressed_data.data(),
 	                         &compressed_size,
-	                         (unsigned char *)&out_buffer[0],
-	                         out_size);
+	                         out_buffer.empty() ? &empty_input : out_buffer.data(),
+	                         static_cast<uLong>(out_size));
 
 	if (gz_result != Z_OK) {
 		fprintf(stderr, "Compression error\n");
@@ -163,17 +157,42 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	fseek(out_fp, 0, 0);
-	fwrite("ONS2", 4, 1, out_fp);
-	fwrite(&compressed_size, 4, 1, out_fp);
-	fwrite(&out_size, 4, 1, out_fp);
-	fwrite(&version, 4, 1, out_fp); //version
+	auto write_u32_le = [out_fp](std::uint32_t value) {
+		unsigned char bytes[4] = {
+			static_cast<unsigned char>(value),
+			static_cast<unsigned char>(value >> 8),
+			static_cast<unsigned char>(value >> 16),
+			static_cast<unsigned char>(value >> 24)};
+		return fwrite(bytes, sizeof(bytes), 1, out_fp) == 1;
+	};
 
-	for (unsigned long i = 0; i < compressed_size; i++)
-		fputc(key_table[compressed_data[i] ^ 0x23] ^ 0x86, out_fp);
+	if (compressed_size > std::numeric_limits<std::uint32_t>::max() ||
+	    out_size > std::numeric_limits<std::uint32_t>::max() ||
+	    fwrite("ONS2", 4, 1, out_fp) != 1 ||
+	    !write_u32_le(static_cast<std::uint32_t>(compressed_size)) ||
+	    !write_u32_le(static_cast<std::uint32_t>(out_size)) ||
+	    !write_u32_le(version)) {
+		fprintf(stderr, "Couldn't write script header\n");
+		if (!use_stdout)
+			fclose(out_fp);
+		return 1;
+	}
 
-	if (!use_stdout)
-		fclose(out_fp);
+	for (uLongf i = 0; i < compressed_size; i++) {
+		if (fputc(key_table[compressed_data[i] ^ 0x23] ^ 0x86, out_fp) == EOF) {
+			fprintf(stderr, "Couldn't write compressed script\n");
+			if (!use_stdout)
+				fclose(out_fp);
+			return 1;
+		}
+	}
+
+	const bool flushFailed = fflush(out_fp) != 0;
+	const bool closeFailed = !use_stdout && fclose(out_fp) != 0;
+	if (flushFailed || closeFailed) {
+		fprintf(stderr, "Couldn't finalize script output\n");
+		return 1;
+	}
 
 	return 0;
 }

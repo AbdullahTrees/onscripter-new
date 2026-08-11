@@ -21,20 +21,20 @@ class GlyphAtlasController;
 
 //Key params of our Font cache
 struct GlyphParams {
-	uint32_t unicode;
-	uint32_t font_number;
-	int preset_id;
-	int font_size;
-	int border_width;
-	SDL_Color glyph_color;
-	SDL_Color border_color;
+	uint32_t unicode{0};
+	uint32_t font_number{0};
+	int preset_id{-1};
+	int font_size{0};
+	int border_width{0};
+	SDL_Color glyph_color{};
+	SDL_Color border_color{};
 
-	bool is_bold : 1;
-	bool is_italic : 1;
-	bool is_underline : 1;
-	bool is_border : 1;
-	bool is_colored : 1;
-	bool is_gradient : 1;
+	bool is_bold : 1 {false};
+	bool is_italic : 1 {false};
+	bool is_underline : 1 {false};
+	bool is_border : 1 {false};
+	bool is_colored : 1 {false};
+	bool is_gradient : 1 {false};
 };
 
 //Value params of our Font cache

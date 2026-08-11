@@ -8,7 +8,13 @@
  */
 
 #include "Engine/Readers/Sar.hpp"
+#include "Engine/Readers/ArchiveParser.hpp"
 #include "Support/FileIO.hpp"
+
+#include <algorithm>
+#include <limits>
+#include <memory>
+#include <sys/stat.h>
 
 namespace {
 std::string normalizeArchiveLookupName(const char *file_name) {
@@ -30,6 +36,15 @@ void buildArchiveIndex(BaseReader::ArchiveInfo *ai) {
 	ai->file_index.reserve(ai->num_of_files);
 	for (size_t i = 0; i < ai->num_of_files; ++i)
 		ai->file_index.emplace(ai->fi_list[i].name, i);
+}
+
+bool archiveFileSize(FILE *fp, size_t &size) {
+	struct stat info{};
+	if (!fp || fstat(fileno(fp), &info) != 0 || info.st_size < 0 ||
+	    static_cast<uintmax_t>(info.st_size) > std::numeric_limits<size_t>::max())
+		return false;
+	size = static_cast<size_t>(info.st_size);
+	return true;
 }
 } // namespace
 
@@ -54,7 +69,10 @@ int SarReader::open(const char *name) {
 	info->file_name = new char[std::strlen(name) + 1];
 	std::memcpy(info->file_name, name, strlen(name) + 1);
 
-	readArchive(info);
+	if (readArchive(info) != 0) {
+		delete info;
+		return -1;
+	}
 
 	last_archive_info->next = info;
 	last_archive_info       = last_archive_info->next;
@@ -64,99 +82,51 @@ int SarReader::open(const char *name) {
 }
 
 int SarReader::readArchive(ArchiveInfo *ai, int archive_type, size_t offset) {
-	unsigned int i = 0;
+	if (!ai || !ai->file_handle)
+		return -1;
 
-	/* Read header */
-	for (size_t j = 0; j < offset; j++)
-		read8(ai->file_handle);
-	if (archive_type == ARCHIVE_TYPE_NS2) {
-		// new archive type since NScr2.91
-		// - header starts with base_offset (byte-swapped), followed by
-		//   filename data - doesn't tell how many files!
-		// - filenames are surrounded by ""s
-		// - new NS2 filename def: "filename", length (4bytes, swapped)
-		// - no compression type? really, no compression.
-		// - not sure if NS2 uses key_table or not, using default funcs for now
-		ai->base_offset = swap32(read32(ai->file_handle));
-		ai->base_offset += offset;
+	size_t archiveSize = 0;
+	if (!archiveFileSize(ai->file_handle, archiveSize))
+		return -1;
 
-		// need to parse the whole header to see how many files there are
-		ai->num_of_files  = 0;
-		size_t cur_offset = offset + 5;
-		// there's an extra byte at the end of the header, not sure what for
-		while (cur_offset < ai->base_offset) {
-			//skip the beginning double-quote
-			cur_offset++;
-			do
-				cur_offset++;
-			while (std::fgetc(ai->file_handle) != '"');
-			read32(ai->file_handle);
-			cur_offset += 4;
-			ai->num_of_files++;
-		}
-		ai->fi_list = new FileInfo[ai->num_of_files];
-
-		// now go back to the beginning and read the file info
-		cur_offset = ai->base_offset;
-		FileIO::seekFile(ai->file_handle, 4 + offset, SEEK_SET);
-		for (i = 0; i < ai->num_of_files; i++) {
-			unsigned int count = 0;
-			//skip the beginning double-quote
-			uint8_t ch = std::fgetc(ai->file_handle);
-			//error if _not_ a double-quote
-			if (ch != '"') {
-				sendToLog(LogLevel::Error, "file does not seem to be a valid NS2 archive\n");
-				return -1;
-			}
-			while ((ch = std::fgetc(ai->file_handle)) != '"') {
-				if ('a' <= ch && ch <= 'z')
-					ch += 'A' - 'a';
-				ai->fi_list[i].name[count++] = ch;
-			}
-			ai->fi_list[i].name[count]     = '\0';
-			ai->fi_list[i].offset          = cur_offset;
-			ai->fi_list[i].length          = swap32(read32(ai->file_handle));
-			ai->fi_list[i].original_length = ai->fi_list[i].length;
-			cur_offset += ai->fi_list[i].length;
-		}
-		//
-		// old NSA filename def: filename, ending '\0' byte , compr-type byte,
-		// start (4byte), length (4byte))
-	} else {
-		ai->num_of_files = read16(ai->file_handle);
-		ai->fi_list      = new struct FileInfo[ai->num_of_files];
-
-		ai->base_offset = read32(ai->file_handle);
-		ai->base_offset += offset;
-
-		for (i = 0; i < ai->num_of_files; i++) {
-			uint8_t ch;
-			int count = 0;
-
-			while ((ch = std::fgetc(ai->file_handle))) {
-				if ('a' <= ch && ch <= 'z')
-					ch += 'A' - 'a';
-				ai->fi_list[i].name[count++] = ch;
-			}
-			ai->fi_list[i].name[count] = ch;
-
-			if (archive_type == ARCHIVE_TYPE_NSA && read8(ai->file_handle) != 0) {
-				sendToLog(LogLevel::Error, "Reading of %s might fail due to compression.\n"
-				                           "Refrain from using any compression on media files!\n",
-				          ai->fi_list[i].name);
-			}
-
-			ai->fi_list[i].offset = read32(ai->file_handle) + ai->base_offset;
-			ai->fi_list[i].length = read32(ai->file_handle);
-
-			if (archive_type == ARCHIVE_TYPE_NSA) {
-				ai->fi_list[i].original_length = read32(ai->file_handle);
-			} else {
-				ai->fi_list[i].original_length = ai->fi_list[i].length;
-			}
-		}
+	ArchiveParser::Type type;
+	switch (archive_type) {
+		case ARCHIVE_TYPE_SAR: type = ArchiveParser::Type::Sar; break;
+		case ARCHIVE_TYPE_NSA: type = ArchiveParser::Type::Nsa; break;
+		case ARCHIVE_TYPE_NS2: type = ArchiveParser::Type::Ns2; break;
+		default: return -1;
 	}
 
+	ArchiveParser::Result parsed;
+	std::string parseError;
+	if (!ArchiveParser::parse(ai->file_handle, archiveSize, type, offset,
+	                          sizeof(FileInfo{}.name) - 1, parsed, parseError)) {
+		sendToLog(LogLevel::Error, "Invalid or truncated archive %s: %s\n",
+		          ai->file_name ? ai->file_name : "(unnamed)", parseError.c_str());
+		ai->file_index.clear();
+		delete[] ai->fi_list;
+		ai->fi_list = nullptr;
+		ai->num_of_files = 0;
+		ai->base_offset = 0;
+		return -1;
+	}
+
+	ai->base_offset = parsed.baseOffset;
+	ai->num_of_files = parsed.entries.size();
+	ai->fi_list = ai->num_of_files ? new FileInfo[ai->num_of_files] : nullptr;
+	for (size_t i = 0; i < ai->num_of_files; ++i) {
+		const auto &source = parsed.entries[i];
+		auto &destination = ai->fi_list[i];
+		std::memcpy(destination.name, source.name.c_str(), source.name.size() + 1);
+		destination.offset = source.offset;
+		destination.length = source.length;
+		destination.original_length = source.originalLength;
+		if (source.compressed) {
+			sendToLog(LogLevel::Error, "Reading of %s might fail due to compression.\n"
+			                           "Refrain from using any compression on media files!\n",
+			          destination.name);
+		}
+	}
 	buildArchiveIndex(ai);
 	return 0;
 }
@@ -207,13 +177,18 @@ bool SarReader::getFileSub(ArchiveInfo *ai, const char *file_name, size_t &len, 
 		return false;
 
 	len = ai->fi_list[i].length;
+	if (len == std::numeric_limits<size_t>::max())
+		return false;
 
-	if (len > 0 && buffer) {
-		*buffer = new uint8_t[len + 1];
-
+	if (buffer && len > 0) {
+		auto data = std::make_unique<uint8_t[]>(len + 1);
 		FileIO::seekFile(ai->file_handle, ai->fi_list[i].offset, SEEK_SET);
-		if (std::fread(*buffer, len, 1, ai->file_handle) != 1)
+		if (std::fread(data.get(), 1, len, ai->file_handle) != len)
 			throw std::runtime_error("Error reading file");
+		data[len] = 0x00;
+		*buffer = data.release();
+	} else if (buffer) {
+		*buffer = nullptr;
 	}
 
 	return true;
@@ -227,6 +202,8 @@ bool SarReader::getFileSub(ArchiveInfo *ai, const char *file_name, size_t &len, 
 		return false;
 
 	len = ai->fi_list[i].length;
+	if (len == std::numeric_limits<size_t>::max())
+		return false;
 	if (buffer.size() < len + 1)
 		buffer.resize(len + 1);
 	if (len > 0) {

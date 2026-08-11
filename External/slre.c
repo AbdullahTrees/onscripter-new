@@ -51,7 +51,7 @@ static int set_len(const char *re, int re_len) {
     len += op_len(re + len);
   }
 
-  return len <= re_len ? len + 1 : -1;
+  return len < re_len && re[len] == ']' ? len + 1 : -1;
 }
 
 static int get_op_len(const char *re, int re_len) {
@@ -63,7 +63,8 @@ static int is_quantifier(const char *re) {
 }
 
 static int toi(int x) {
-  return isdigit(x) ? x - '0' : x - 'W';
+  const unsigned char ch = (unsigned char)x;
+  return isdigit(ch) ? ch - '0' : tolower(ch) - 'a' + 10;
 }
 
 static int hextoi(const unsigned char *s) {
@@ -107,7 +108,7 @@ static int match_op(const unsigned char *re, const unsigned char *s,
 
     default:
       if (info->flags & SLRE_IGNORE_CASE) {
-        FAIL_IF(tolower(*re) != tolower(*s), SLRE_NO_MATCH);
+        FAIL_IF(tolower((unsigned char)*re) != tolower((unsigned char)*s), SLRE_NO_MATCH);
       } else {
         FAIL_IF(*re != *s, SLRE_NO_MATCH);
       }
@@ -124,12 +125,13 @@ static int match_set(const char *re, int re_len, const char *s,
 
   if (invert) (void)(re++), re_len--;
 
-  while (len <= re_len && re[len] != ']' && result <= 0) {
+  while (len < re_len && re[len] != ']' && result <= 0) {
     /* Support character range */
-    if (re[len] != '-' && re[len + 1] == '-' && re[len + 2] != ']' &&
-        re[len + 2] != '\0') {
+    if (len + 2 < re_len && re[len] != '-' && re[len + 1] == '-' &&
+        re[len + 2] != ']' && re[len + 2] != '\0') {
       result = info->flags &  SLRE_IGNORE_CASE ?
-        tolower(*s) >= tolower(re[len]) && tolower(*s) <= tolower(re[len + 2]) :
+        tolower((unsigned char)*s) >= tolower((unsigned char)re[len]) &&
+        tolower((unsigned char)*s) <= tolower((unsigned char)re[len + 2]) :
         *s >= re[len] && *s <= re[len + 2];
       len += 3;
     } else {
@@ -146,6 +148,9 @@ static int bar(const char *re, int re_len, const char *s, int s_len,
                struct slre_regex_info *info, int bi) {
   /* i is offset in re, j is offset in s, bi is brackets index */
   int i, j, n, step;
+
+  FAIL_IF(info->steps_remaining == 0, SLRE_MATCH_LIMIT);
+  info->steps_remaining--;
 
   for (i = j = 0; i < re_len && j <= s_len; i += step) {
 
@@ -235,12 +240,10 @@ static int bar(const char *re, int re_len, const char *s, int s_len,
         /* Nothing follows brackets */
         n = doh(s + j, s_len - j, info, bi);
       } else {
-        int j2;
-        for (j2 = 0; j2 <= s_len - j; j2++) {
-          if ((n = doh(s + j, s_len - (j + j2), info, bi)) >= 0 &&
-              bar(re + i + step, re_len - (i + step),
-                  s + j + n, s_len - (j + n), info, bi) >= 0) break;
-        }
+        n = doh(s + j, s_len - j, info, bi);
+        if (n >= 0 && bar(re + i + step, re_len - (i + step),
+                          s + j + n, s_len - (j + n), info, bi) < 0)
+          n = SLRE_NO_MATCH;
       }
 
       DBG(("CAPTURED [%.*s] [%.*s]:%d\n", step, re + i, s_len - j, s + j, n));
@@ -278,6 +281,7 @@ static int doh(const char *s, int s_len, struct slre_regex_info *info, int bi) {
       (int)(info->branches[b->branches + i].schlong - p);
     DBG(("%s %d %d [%.*s] [%.*s]\n", __func__, bi, i, len, p, s_len, s));
     result = bar(p, len, s, s_len, info, bi);
+    if (info->steps_remaining == 0) return SLRE_MATCH_LIMIT;
     DBG(("%s <- %d\n", __func__, result));
   } while (result <= 0 && i++ < b->num_branches);  /* At least 1 iteration */
 
@@ -289,6 +293,8 @@ static int baz(const char *s, int s_len, struct slre_regex_info *info) {
 
   for (i = 0; i <= s_len; i++) {
     result = doh(s + i, s_len - i, info, 0);
+    if (result == SLRE_MATCH_LIMIT || info->steps_remaining == 0)
+      return SLRE_MATCH_LIMIT;
     if (result >= 0) {
       result += i;
       break;
@@ -343,6 +349,7 @@ int slre_compile(const char *re, int re_len, int flags,
   /* Make a single pass over regex string, memorize brackets and branches */
   for (i = 0; i < re_len; i += step) {
     step = get_op_len(re + i, re_len - i);
+    FAIL_IF(step <= 0 || step > re_len - i, SLRE_INVALID_CHARACTER_SET);
 
     if (re[i] == '|') {
       FAIL_IF(info->num_branches >= (int) ARRAY_SIZE(info->branches),
@@ -397,6 +404,16 @@ int slre_match_reuse(struct slre_regex_info *info, const char *buf,
   /* Initialize info structure with user-supplied capture array */
   info->num_caps = num_caps;
   info->caps = caps;
+
+  /* Simple searches need roughly two calls per input byte. Give normal
+   * patterns ample headroom while enforcing a hard upper bound against
+   * pathological backtracking. */
+  {
+    unsigned long input_len = buf_len > 0 ? (unsigned long)buf_len : 0;
+    unsigned long budget = input_len > 2499984UL ? 20000000UL :
+                           128UL + input_len * 8UL;
+    info->steps_remaining = budget;
+  }
 
   DBG(("========================> [compiled] [%.*s]\n", buf_len, buf));
   return baz(buf, buf_len, info);

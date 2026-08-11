@@ -22,6 +22,7 @@
 #include "Support/SDLCompat.hpp"
 
 #include <cstring>
+#include <stdexcept>
 
 #ifdef USE_OBJC
 #ifdef MACOSX
@@ -1280,9 +1281,13 @@ void ONScripter::reset() {
 	/* ---------------------------------------- */
 	/* Load global variables if available */
 	if (!deinitialising()) {
-		if (loadFileIOBuf("gloval.sav") == 0 ||
-		    loadFileIOBuf("global.sav") == 0)
-			readVariables(script_h.global_variable_border, VARIABLE_RANGE);
+		try {
+			if (loadFileIOBuf("gloval.sav") == 0 ||
+			    loadFileIOBuf("global.sav") == 0)
+				readVariables(script_h.global_variable_border, VARIABLE_RANGE);
+		} catch (const std::exception &exception) {
+			sendToLog(LogLevel::Error, "Ignoring malformed global-variable data: %s\n", exception.what());
+		}
 
 		loadReadLabels("readlbl.sav");
 	} else {
@@ -2692,44 +2697,59 @@ void ONScripter::loadEnvData() {
 	script_h.setStr(&savedir, nullptr);
 	automode_time = 1000;
 
+	bool loadedEnvironment = false;
 	if (loadFileIOBuf("envdata") == 0) {
-		use_default_volume = false;
+		try {
+			use_default_volume = false;
 #if defined(IOS) || defined(DROID)
-		bool goFullscreen = read32s() == 1;
+			bool goFullscreen = read32s() == 1;
 #else
-		bool goFullscreen = read32s() == 1 && ons_cfg_options.find("window") == ons_cfg_options.end();
+			bool goFullscreen = read32s() == 1 && ons_cfg_options.find("window") == ons_cfg_options.end();
 #endif
-		if (goFullscreen && window.changeMode(true, true, 1))
-			fillCanvas(true, true);
-		if (read32s() == 0)
-			volume_on_flag = false;
-		read32s();
-		read32s();
-		readStr(&default_env_font);
-		if (default_env_font == nullptr)
-			script_h.setStr(&default_env_font, DEFAULT_ENV_FONT);
-		if (read32s() == 0)
-			cdaudio_on_flag = false;
-		//read and validate sound volume settings
-		for (auto vol : {&voice_volume, &se_volume, &music_volume, &video_volume}) {
-			*vol = DEFAULT_VOLUME - read32s();
-			if (*vol > DEFAULT_VOLUME)
-				*vol = DEFAULT_VOLUME;
-		}
+			if (goFullscreen && window.changeMode(true, true, 1))
+				fillCanvas(true, true);
+			if (read32s() == 0)
+				volume_on_flag = false;
+			read32s();
+			read32s();
+			readStr(&default_env_font);
+			if (default_env_font == nullptr)
+				script_h.setStr(&default_env_font, DEFAULT_ENV_FONT);
+			if (read32s() == 0)
+				cdaudio_on_flag = false;
+			for (auto vol : {&voice_volume, &se_volume, &music_volume, &video_volume}) {
+				const int32_t attenuation = read32s();
+				if (attenuation < 0 || attenuation > DEFAULT_VOLUME)
+					throw std::runtime_error("Invalid environment volume");
+				*vol = DEFAULT_VOLUME - attenuation;
+			}
 
-		if (read32s() == 0)
-			kidokumode_flag = false;
-		if (read32s() == 1) {
-			bgmdownmode_flag = true;
+			if (read32s() == 0)
+				kidokumode_flag = false;
+			if (read32s() == 1)
+				bgmdownmode_flag = true;
+			readStr(&savedir);
+			automode_time = read32s();
+			if (automode_time < 0 || automode_time > 24 * 60 * 60 * 1000)
+				throw std::runtime_error("Invalid environment automode time");
+			if (savedir)
+				script_h.setSavedir(savedir);
+			else
+				script_h.setStr(&savedir, ""); //prevents changing savedir
+			loadedEnvironment = true;
+		} catch (const std::exception &exception) {
+			sendToLog(LogLevel::Error, "Ignoring malformed environment data: %s\n", exception.what());
 		}
-		readStr(&savedir);
-		if (savedir)
-			script_h.setSavedir(savedir);
-		else
-			script_h.setStr(&savedir, ""); //prevents changing savedir
-		automode_time = read32s();
-	} else {
+	}
+	if (!loadedEnvironment) {
+		volume_on_flag = true;
+		cdaudio_on_flag = true;
+		kidokumode_flag = true;
+		use_default_volume = true;
+		bgmdownmode_flag = false;
 		script_h.setStr(&default_env_font, DEFAULT_ENV_FONT);
+		script_h.setStr(&savedir, nullptr);
+		automode_time = 1000;
 		voice_volume = se_volume = music_volume = video_volume = DEFAULT_VOLUME;
 	}
 	// set the volumes of channels

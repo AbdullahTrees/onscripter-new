@@ -222,7 +222,7 @@ public:
 	bool abs_flag{true};
 
 	bool has_z_order_override{false};
-	int z_order_override;
+	int z_order_override{0};
 
 	RenderRect orig_pos{0, 0, 0, 0}; //Mion: position and size of the image before resizing
 	RenderRect pos{0, 0, 0, 0};      // position and size of the current cell
@@ -267,9 +267,9 @@ public:
 	float2 scale_center;     // The offset from the center of the image (or from the hotspot, if provided) to use as the center for scaling and rotate operations.
 	float2 rendering_center; // (Computed) The location of the new image-center for images that have a rotation applied.
 
-	int param;     // used by prnum and bar
-	int max_param; // used by bar
-	int max_width; // used by bar
+	int param{0};     // used by prnum and bar
+	int max_param{0}; // used by bar
+	int max_width{0}; // used by bar
 
 	AnimationInfo() = default;
 	AnimationInfo(const AnimationInfo &o);

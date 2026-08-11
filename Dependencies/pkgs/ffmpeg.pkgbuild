@@ -1,12 +1,12 @@
 pkgname=ffmpeg
-pkgver=7.1.4
+pkgver=8.1.2
 pkgrel=1
 depends=(
     'zlib'
     'bzip2'
 )
 sources=("https://ffmpeg.org/releases/ffmpeg-$pkgver.tar.xz")
-hashes=('71f4aac3573ed9060489cb62526a6c7dda815ae10993789611acd7be9fa9fbf4')
+hashes=('464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c')
 addcrossopt=false
 
 giturl=https://git.ffmpeg.org/ffmpeg.git
@@ -57,7 +57,6 @@ configopts=(
     #'--disable-logging'
     #remove components
     '--disable-avdevice'
-    '--disable-postproc'
     '--disable-avfilter'
     '--disable-programs'
     '--disable-network'

@@ -32,6 +32,9 @@ int AsyncController::ownInit() {
 
 int AsyncController::ownDeinit() {
 	endThreads();
+	for (AsyncInstructionQueue *qPtr : queueCollection)
+		qPtr->destroy();
+	mutexes.deinit();
 	return 0;
 }
 
@@ -82,38 +85,43 @@ void AsyncController::queue(std::unique_ptr<AsyncInstruction> inst) {
 	AsyncInstructionQueue *instQueue = inst->getInstructionQueue();
 	// Runs thread if it is not already running
 	SDL_AtomicLock(&instQueue->lock);
+	if (instQueue->thread && !instQueue->running) {
+		SDL_Thread *finishedThread = instQueue->thread;
+		instQueue->thread          = nullptr;
+		SDL_AtomicUnlock(&instQueue->lock);
+		SDL_WaitThread(finishedThread, nullptr);
+		SDL_AtomicLock(&instQueue->lock);
+	}
 	instQueue->q.push_back(std::move(inst));
 	if (!instQueue->quitOnEmpty)
 		SDL_SemPost(instQueue->instructionsWaiting);
-	if (!instQueue->thread) {
+	if (!instQueue->running) {
+		instQueue->running = true;
 		instQueue->thread = SDL_CreateThread(instQueue->threadLoopFunction,
 		                                     instQueue->name,
 		                                     instQueue->q.back()->ac);
+		if (!instQueue->thread) {
+			instQueue->running = false;
+			SDL_AtomicUnlock(&instQueue->lock);
+			throw std::runtime_error(std::string("Could not start async thread '") +
+			                         instQueue->name + "': " + SDL_GetError());
+		}
 	}
 	SDL_AtomicUnlock(&instQueue->lock);
 }
 
 // Main genericized async loop function
 int AsyncController::asyncLoop(AsyncInstructionQueue &queue) {
-	SDL_AtomicLock(&queue.loopLock);
 	while (true) {
-		if (threadShutdownRequested) {
-			SDL_AtomicLock(&queue.lock);
-			queue.thread = nullptr;
-			SDL_AtomicUnlock(&queue.lock);
+		if (threadShutdownRequested)
 			break;
-		}
 
 		if (!queue.quitOnEmpty && queue.hasQueue) {
 			SDL_SemWait(queue.instructionsWaiting);
 		}
 
-		if (threadShutdownRequested) {
-			SDL_AtomicLock(&queue.lock);
-			queue.thread = nullptr;
-			SDL_AtomicUnlock(&queue.lock);
+		if (threadShutdownRequested)
 			break;
-		}
 
 		SDL_AtomicLock(&queue.lock);
 		if (!queue.q.empty()) {
@@ -134,10 +142,7 @@ int AsyncController::asyncLoop(AsyncInstructionQueue &queue) {
 			try {
 				ptr->execute(); // Do the actual work
 			} catch (ThreadTerminate &) {
-				SDL_AtomicLock(&queue.lock);
 				SDL_SemPost(queue.resultsWaiting);
-				queue.thread = nullptr;
-				SDL_AtomicUnlock(&queue.lock);
 				break;
 			}
 
@@ -145,14 +150,13 @@ int AsyncController::asyncLoop(AsyncInstructionQueue &queue) {
 			if (!queue.quitOnEmpty && queue.hasQueue)
 				SDL_SemPost(queue.resultsWaiting);
 			if (threadShutdownRequested || (queue.q.empty() && queue.quitOnEmpty)) {
-				queue.thread = nullptr;
 				SDL_AtomicUnlock(&queue.lock);
 				break;
 			}
 		}
 		SDL_AtomicUnlock(&queue.lock);
 	}
-	SDL_AtomicUnlock(&queue.loopLock);
+	queue.running = false;
 	return 0;
 }
 
@@ -161,42 +165,68 @@ int AsyncController::asyncLoop(AsyncInstructionQueue &queue) {
 void AsyncInstructionQueue::init() {
 	instructionsWaiting = SDL_CreateSemaphore(0);
 	resultsWaiting      = SDL_CreateSemaphore(0);
+	if (!instructionsWaiting || !resultsWaiting) {
+		destroy();
+		throw std::runtime_error(std::string("Could not initialize async queue '") +
+		                         name + "': " + SDL_GetError());
+	}
+}
+
+void AsyncInstructionQueue::destroy() {
+	if (thread)
+		throw std::logic_error(std::string("Destroying running async queue '") + name + "'");
+	if (instructionsWaiting) {
+		SDL_DestroySemaphore(instructionsWaiting);
+		instructionsWaiting = nullptr;
+	}
+	if (resultsWaiting) {
+		SDL_DestroySemaphore(resultsWaiting);
+		resultsWaiting = nullptr;
+	}
 }
 
 void defaultThreadEnd(AsyncInstructionQueue *qPtr) {
 	// It might be suspended on a semaphore waiting for an instruction. If so, wake it up so it can exit.
-	if (!qPtr->quitOnEmpty)
+	if (!qPtr->quitOnEmpty && qPtr->instructionsWaiting)
 		SDL_SemPost(qPtr->instructionsWaiting);
-	// Wait for the loop mutex to be given back (i.e. for the thread to exit)
-	SDL_AtomicLock(&qPtr->loopLock);
-	// Tidy up the queue state (remove all outstanding instructions and results)
+
+	// Retain the SDL thread handle until its resources have been joined.
 	SDL_AtomicLock(&qPtr->lock);
-	// Empty instructions queue
-	if (qPtr->thread) {
-		while (!qPtr->q.empty()) {
-			SDL_SemWait(qPtr->instructionsWaiting); // this should never suspend
-			qPtr->q.pop_front();
-		}
-	} else {
-		// The thread is gone, just reset the leftovers.
-		qPtr->q.clear();
-		while (SDL_SemValue(qPtr->instructionsWaiting))
-			SDL_SemWait(qPtr->instructionsWaiting);
-	}
-	// Empty results queue (semaphore -- we don't know anything about where the actual results are and will have to hope something else clears them up...)
-	// WARNING : This is unsafe if there is anything waiting on the results queue, but we should not call endThreads when we are waiting on a result anyway, I think
-	// (these are mutually exclusive actions by the main thread -- either we're in playSound etc or we are quitting)
-	SDL_DestroySemaphore(qPtr->resultsWaiting);
-	qPtr->resultsWaiting = SDL_CreateSemaphore(0); // recreate it at 0
+	SDL_Thread *thread = qPtr->thread;
 	SDL_AtomicUnlock(&qPtr->lock);
-	// Return the loop mutex (we don't need it)
-	SDL_AtomicUnlock(&qPtr->loopLock);
+	if (thread)
+		SDL_WaitThread(thread, nullptr);
+
+	// Reset queue state without invalidating semaphore pointers that other code owns.
+	SDL_AtomicLock(&qPtr->lock);
+	if (qPtr->thread == thread)
+		qPtr->thread = nullptr;
+	qPtr->running = false;
+	qPtr->q.clear();
+	while (qPtr->instructionsWaiting && onsTryWaitSemaphore(qPtr->instructionsWaiting)) {}
+	while (qPtr->resultsWaiting && onsTryWaitSemaphore(qPtr->resultsWaiting)) {}
+	SDL_AtomicUnlock(&qPtr->lock);
 }
 
 /* ---------------- Virtual Mutexes ----------------- */
 
 void VirtualMutexes::init() {
 	//currently empty
+}
+
+void VirtualMutexes::deinit() {
+	SDL_AtomicLock(&access_mutex);
+	for (auto &[ptr, mutex] : mutexes) {
+		(void)ptr;
+		SDL_DestroyMutex(mutex);
+	}
+	mutexes.clear();
+	for (auto &[id, semaphore] : semaphores) {
+		(void)id;
+		SDL_DestroySemaphore(semaphore);
+	}
+	semaphores.clear();
+	SDL_AtomicUnlock(&access_mutex);
 }
 
 void VirtualMutexes::setMutex(void *ptr) {
@@ -398,7 +428,7 @@ int loadSubtitleFramesThreadLoop(void *arg) {
 /* -------------- Play sound instruction -------------- */
 
 void PlaySoundInstruction::execute() {
-	auto r = static_cast<uintptr_t>(ons.playSound(filename, format, loop_flag, channel));
+	auto r = static_cast<uintptr_t>(ons.playSound(filename.c_str(), format, loop_flag, channel));
 	SDL_AtomicLock(&ac->playSoundQueue.resultsLock);
 	ac->playSoundQueue.results.push_back(reinterpret_cast<void *>(r));
 	SDL_AtomicUnlock(&ac->playSoundQueue.resultsLock);

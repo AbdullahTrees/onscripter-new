@@ -71,6 +71,10 @@ struct slre_regex_info {
 
   /* E.g. SLRE_IGNORE_CASE. See enum below */
   int flags;
+
+  /* Per-match work budget. Prevents crafted patterns from monopolizing the
+   * engine through recursive backtracking. Managed by slre_match_reuse(). */
+  unsigned long steps_remaining;
 };
 
 int slre_compile(const char *regexp, int re_len, int flags,
@@ -97,6 +101,7 @@ enum { SLRE_IGNORE_CASE = 1 };
 #define SLRE_CAPS_ARRAY_TOO_SMALL   (-7)
 #define SLRE_TOO_MANY_BRANCHES      (-8)
 #define SLRE_TOO_MANY_BRACKETS      (-9)
+#define SLRE_MATCH_LIMIT            (-10)
 
 #ifdef __cplusplus
 }

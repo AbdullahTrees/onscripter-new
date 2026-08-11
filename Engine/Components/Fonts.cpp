@@ -155,8 +155,11 @@ int FontsController::ownInit() {
 	}
 
 	// Now need to take a basedir from default.ttf and use it as a font dir
-	std::sprintf(fontdir, "%s", fonts[0].path.get());
-	*(std::strrchr(fontdir, DELIMITER) + 1) = '\0';
+	copystr(fontdir, fonts[0].path.get(), sizeof(fontdir));
+	if (char *separator = std::strrchr(fontdir, DELIMITER))
+		separator[1] = '\0';
+	else
+		fontdir[0] = '\0';
 
 	return 0;
 }

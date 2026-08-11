@@ -22,6 +22,9 @@
 #if defined(MACOSX) || defined(IOS)
 #include <mach-o/dyld.h>
 #include <fcntl.h>
+#if defined(MACOSX)
+#include <sys/wait.h>
+#endif
 #elif defined(WIN32)
 #include <windows.h>
 #include <shlobj.h>
@@ -34,6 +37,8 @@
 
 #include <cerrno>
 #include <cstdlib>
+#include <limits>
+#include <memory>
 
 static const char *providerName;
 static const char *applicationName;
@@ -337,6 +342,31 @@ bool FileIO::setArguments(int &argc, char **&argv, int sysargc, char **sysargv) 
 bool FileIO::restartApp(const std::vector<char *> &args) {
 	(void)args;
 #if defined(WIN32)
+	if (args.empty() || !args[0])
+		return false;
+
+	auto quoteArgument = [](const std::wstring &arg) {
+		if (!arg.empty() && arg.find_first_of(L" \t\n\v\"") == std::wstring::npos)
+			return arg;
+		std::wstring quoted(1, L'\"');
+		size_t backslashes = 0;
+		for (wchar_t ch : arg) {
+			if (ch == L'\\') {
+				++backslashes;
+			} else {
+				if (ch == L'\"')
+					quoted.append(backslashes * 2 + 1, L'\\');
+				else
+					quoted.append(backslashes, L'\\');
+				backslashes = 0;
+				quoted += ch;
+			}
+		}
+		quoted.append(backslashes * 2, L'\\');
+		quoted += L'\"';
+		return quoted;
+	};
+
 	// Create a new process and do not wait for it on Windows
 	PROCESS_INFORMATION processInfo{};
 	STARTUPINFOW startupInfo{};
@@ -345,13 +375,20 @@ bool FileIO::restartApp(const std::vector<char *> &args) {
 	std::wstring cmdArgs;
 	for (auto &arg : args) {
 		if (arg) {
-			cmdArgs += decodeUTF8StringWide(arg);
-			cmdArgs += L' ';
+			if (!cmdArgs.empty())
+				cmdArgs += L' ';
+			cmdArgs += quoteArgument(decodeUTF8StringWide(arg));
 		}
 	}
+	auto application = decodeUTF8StringWide(args[0]);
+	std::vector<wchar_t> mutableCommand(cmdArgs.begin(), cmdArgs.end());
+	mutableCommand.push_back(L'\0');
 
-	if (CreateProcessW(nullptr, const_cast<wchar_t *>(cmdArgs.c_str()), nullptr, nullptr, false, 0, nullptr, nullptr, &startupInfo, &processInfo))
+	if (CreateProcessW(application.c_str(), mutableCommand.data(), nullptr, nullptr, false, 0, nullptr, nullptr, &startupInfo, &processInfo)) {
+		CloseHandle(processInfo.hThread);
+		CloseHandle(processInfo.hProcess);
 		return true;
+	}
 #elif defined(MACOSX) || defined(LINUX)
 	// Use execv on macOS and Linux
 	execv(args[0], args.data());
@@ -369,11 +406,18 @@ bool FileIO::shellOpen(const std::string &path, FileType type) {
 	auto wpath = decodeUTF8StringWide(path.c_str());
 	return ShellExecuteW(nullptr, L"open", wpath.c_str(), nullptr, nullptr, SW_SHOWNORMAL) > reinterpret_cast<HINSTANCE>(32);
 #elif defined(MACOSX)
-	auto cmd = "open \"" + path + '"';
-	return !system(cmd.c_str());
+	pid_t child = fork();
+	if (child == 0) {
+		execlp("open", "open", "--", path.c_str(), nullptr);
+		_exit(EXIT_FAILURE);
+	}
+	if (child < 0)
+		return false;
+	int status = 0;
+	return waitpid(child, &status, 0) == child && WIFEXITED(status) && WEXITSTATUS(status) == 0;
 #elif defined(LINUX)
 	auto tryXdgOpen = [](const std::string &target) {
-		pid_t child = vfork();
+		pid_t child = fork();
 		if (child == -1) {
 			// Parent, failed
 			sendToLog(LogLevel::Error, "Could not open `%s': fork error: %s\n", target.c_str(), strerror(errno));
@@ -386,26 +430,16 @@ bool FileIO::shellOpen(const std::string &path, FileType type) {
 		} else {
 			// Child
 			execlp("xdg-open", "xdg-open", target.c_str(), nullptr);
-			std::exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 		return false;
 	};
-
-	auto trySystem = [](const std::string &target) {
-		auto browser = std::getenv("BROWSER");
-		if (browser) {
-			auto cmd = std::string(browser) + " \"" + target + '"';
-			return system(cmd.c_str()) == 0;
-		}
-		return false;
-	};
-
-	return tryXdgOpen(path) || (type == FileType::URL && trySystem(path));
+	return tryXdgOpen(path);
 #elif defined(IOS) && defined(USE_OBJC)
 	return (type == FileType::URL && openURL(path.c_str()));
 #elif defined(DROID)
 	if (type == FileType::URL) {
-		pid_t child = vfork();
+		pid_t child = fork();
 		if (child == -1) {
 			// Parent, failed
 			sendToLog(LogLevel::Error, "Could not open `%s': fork error: %s\n", path.c_str(), strerror(errno));
@@ -418,7 +452,7 @@ bool FileIO::shellOpen(const std::string &path, FileType type) {
 		} else {
 			// Child, --user 0 may not be necessary prior to 4.2 but it does not do any harm
 			execlp("/system/bin/am", "/system/bin/am", "start", "--user", "0", "-a", "android.intent.action.VIEW", "-d", path.c_str(), nullptr);
-			std::exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 	}
 	return false;
@@ -739,17 +773,27 @@ bool FileIO::readFile(FILE *fp, size_t &len, uint8_t **buffer, bool autoclose) {
 	if (!fp)
 		return false;
 
-	struct stat st;
-	if (fstat(fileno(fp), &st))
-		throw std::runtime_error("Error obtaining file size");
-	len = static_cast<size_t>(st.st_size);
+	try {
+		struct stat st;
+		if (fstat(fileno(fp), &st) || st.st_size < 0 ||
+		    static_cast<uintmax_t>(st.st_size) >= std::numeric_limits<size_t>::max())
+			throw std::runtime_error("Error obtaining file size");
+		len = static_cast<size_t>(st.st_size);
 
-	if (buffer && len > 0) {
-		*buffer = new uint8_t[len + 1];
-		seekFile(fp, 0, SEEK_SET);
-		if (std::fread(*buffer, len, 1, fp) != 1)
-			throw std::runtime_error("Error reading file");
-		(*buffer)[len] = 0x00;
+		if (buffer && len > 0) {
+			auto data = std::make_unique<uint8_t[]>(len + 1);
+			seekFile(fp, 0, SEEK_SET);
+			if (std::fread(data.get(), 1, len, fp) != len)
+				throw std::runtime_error("Error reading file");
+			data[len] = 0x00;
+			*buffer = data.release();
+		} else if (buffer) {
+			*buffer = nullptr;
+		}
+	} catch (...) {
+		if (autoclose)
+			std::fclose(fp);
+		throw;
 	}
 
 	if (autoclose)
@@ -758,22 +802,30 @@ bool FileIO::readFile(FILE *fp, size_t &len, uint8_t **buffer, bool autoclose) {
 	return true;
 }
 
-bool FileIO::readFile(FILE *fp, size_t &len, std::vector<uint8_t> &buffer, bool autoclose) {
+bool FileIO::readFile(FILE *fp, size_t &len, std::vector<uint8_t> &buffer, bool autoclose,
+                      size_t maximumLength) {
 	if (!fp)
 		return false;
 
-	struct stat st;
-	if (fstat(fileno(fp), &st))
-		throw std::runtime_error("Error obtaining file size");
-	len = static_cast<size_t>(st.st_size);
-
-	if (len > 0) {
-		if (buffer.size() < len + 1)
-			buffer.resize(len + 1);
-		seekFile(fp, 0, SEEK_SET);
-		if (std::fread(buffer.data(), len, 1, fp) != 1)
-			throw std::runtime_error("Error reading file");
+	try {
+		struct stat st;
+		if (fstat(fileno(fp), &st) || st.st_size < 0 ||
+		    static_cast<uintmax_t>(st.st_size) >= std::numeric_limits<size_t>::max())
+			throw std::runtime_error("Error obtaining file size");
+		len = static_cast<size_t>(st.st_size);
+		if (len > maximumLength)
+			throw std::runtime_error("File exceeds configured size limit");
+		buffer.resize(len + 1);
+		if (len > 0) {
+			seekFile(fp, 0, SEEK_SET);
+			if (std::fread(buffer.data(), 1, len, fp) != len)
+				throw std::runtime_error("Error reading file");
+		}
 		buffer[len] = 0x00;
+	} catch (...) {
+		if (autoclose)
+			std::fclose(fp);
+		throw;
 	}
 
 	if (autoclose)
@@ -786,10 +838,16 @@ bool FileIO::writeFile(FILE *fp, const uint8_t *buffer, size_t len, bool autoclo
 	if (!fp)
 		return false;
 
-	if (buffer && len > 0) {
-		seekFile(fp, 0, SEEK_SET);
-		if (std::fwrite(buffer, len, 1, fp) != 1)
-			throw std::runtime_error("Error wrting to file");
+	try {
+		if (buffer && len > 0) {
+			seekFile(fp, 0, SEEK_SET);
+			if (std::fwrite(buffer, 1, len, fp) != len)
+				throw std::runtime_error("Error writing to file");
+		}
+	} catch (...) {
+		if (autoclose)
+			std::fclose(fp);
+		throw;
 	}
 
 	if (autoclose)
@@ -858,7 +916,14 @@ std::vector<std::string> FileIO::scanDir(const std::string &path, FileType type)
 
 	FindClose(hFind);
 #else
+	struct stat rootStat{};
+	if (lstat(path.c_str(), &rootStat) != 0)
+		return errno == ENOENT;
+	if (!S_ISDIR(rootStat.st_mode))
+		return removeFile(path);
+
 	DIR *dir = opendir(path.c_str());
+	bool success = dir != nullptr;
 	if (dir) {
 		dirent *entry = nullptr;
 		while ((entry = readdir(dir))) {
@@ -889,18 +954,19 @@ bool FileIO::removeDir(const std::string &path) {
 		while ((entry = readdir(dir))) {
 			if (std::strcmp(entry->d_name, ".") && std::strcmp(entry->d_name, "..")) {
 				std::string tmp_path = path + DELIMITER + entry->d_name;
-				DIR *subdir          = opendir(tmp_path.c_str());
-				if (subdir) {
-					closedir(subdir);
-					removeDir(tmp_path);
+				struct stat entryStat{};
+				if (lstat(tmp_path.c_str(), &entryStat) != 0) {
+					success = false;
+				} else if (S_ISDIR(entryStat.st_mode)) {
+					success = removeDir(tmp_path) && success;
 				} else {
-					removeFile(tmp_path);
+					success = removeFile(tmp_path) && success;
 				}
 			}
 		}
 		closedir(dir);
 	}
-	return removeFile(path);
+	return removeFile(path) && success;
 #endif
 }
 
@@ -923,9 +989,7 @@ bool FileIO::removeFile(const std::string &path) {
 		//sendToLog(LogLevel::Error, "remove %s failed with %d\n", cpath, errno);
 	}
 
-	// There is no standard way to determine a successful removal without extra calls.
-	// Assume it worked for now.
-	return true;
+	return code == 0 || errno == ENOENT;
 }
 
 bool FileIO::renameFile(const std::string &src, const std::string &dst, bool overwrite) {

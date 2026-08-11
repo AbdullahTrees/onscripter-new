@@ -12,8 +12,14 @@
 #include "Engine/Components/Window.hpp"
 #include "Engine/Readers/Direct.hpp"
 #include "Support/FileIO.hpp"
+#include "Support/SerializedData.hpp"
 #include "Resources/Support/Version.hpp"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <limits>
+#include <stdexcept>
 #include <utility>
 
 using CommandFunc = int (ScriptParser::*)();
@@ -406,7 +412,7 @@ int ScriptParser::evaluateCommand(const char *cmd, bool builtin, bool textgosub_
 	}
 
 	char error[4096];
-	std::sprintf(error, "Failed to evaluate a command: %s builtin: %d", cmd, builtin);
+	std::snprintf(error, sizeof(error), "Failed to evaluate a command: %s builtin: %d", cmd, builtin);
 	errorAndExit(error);
 
 	return RET_CONTINUE;
@@ -534,6 +540,9 @@ void ScriptParser::saveGlovalData(bool no_error) {
 }
 
 int ScriptParser::saveFileIOBuf(const char *filename) {
+	constexpr size_t MaximumSerializedFileSize = 256ULL * 1024ULL * 1024ULL;
+	if (file_io_buf.size() > MaximumSerializedFileSize)
+		return -1;
 	// all files except envdata go in savedir
 	bool usesavedir = !equalstr(filename, "envdata");
 
@@ -553,12 +562,22 @@ int ScriptParser::saveFileIOBuf(const char *filename) {
 }
 
 int ScriptParser::loadFileIOBuf(const char *filename, bool savedata) {
+	constexpr size_t MaximumSerializedFileSize = 256ULL * 1024ULL * 1024ULL;
 	const char *root = nullptr;
 	if (savedata)
 		root = script_h.getSavePath(filename);
 
-	if (!FileIO::readFile(filename, root, file_io_read_len, file_io_buf))
+	try {
+		if (!FileIO::readFile(filename, root, file_io_read_len, file_io_buf,
+		                      MaximumSerializedFileSize))
+			return -1;
+	} catch (const std::exception &exception) {
+		file_io_buf.clear();
+		file_io_read_len = 0;
+		sendToLog(LogLevel::Error, "Could not read serialized file '%s': %s\n",
+		          filename, exception.what());
 		return -1;
+	}
 
 	if (file_io_read_len == 0)
 		return -2;
@@ -573,10 +592,29 @@ void ScriptParser::write8s(int8_t i) {
 	file_io_buf.emplace_back(i);
 }
 
+void ScriptParser::requireFileIOBytes(size_t bytes) const {
+	if (file_io_buf_ptr > file_io_read_len || bytes > file_io_read_len - file_io_buf_ptr)
+		throw std::runtime_error("Truncated serialized data");
+}
+
+void ScriptParser::moveFileIOPosition(int64_t delta) {
+	if (delta >= 0) {
+		const auto distance = static_cast<uint64_t>(delta);
+		if (distance > std::numeric_limits<size_t>::max())
+			throw std::runtime_error("Serialized data offset overflow");
+		requireFileIOBytes(static_cast<size_t>(distance));
+		file_io_buf_ptr += static_cast<size_t>(distance);
+	} else {
+		const uint64_t distance = static_cast<uint64_t>(-(delta + 1)) + 1;
+		if (distance > file_io_buf_ptr)
+			throw std::runtime_error("Serialized data offset underflow");
+		file_io_buf_ptr -= static_cast<size_t>(distance);
+	}
+}
+
 int8_t ScriptParser::read8s() {
-	if (file_io_buf_ptr + sizeof(int8_t) > file_io_read_len)
-		return 0;
-	return static_cast<int8_t>(file_io_buf[file_io_buf_ptr++]);
+	SerializedData::Reader reader(std::span<const uint8_t>(file_io_buf.data(), file_io_read_len), file_io_buf_ptr);
+	return reader.readI8();
 }
 
 void ScriptParser::write16s(int16_t i) {
@@ -585,15 +623,8 @@ void ScriptParser::write16s(int16_t i) {
 }
 
 int16_t ScriptParser::read16s() {
-	if (file_io_buf_ptr + sizeof(int16_t) > file_io_read_len)
-		return 0;
-
-	int16_t i =
-	    static_cast<uint32_t>(file_io_buf[file_io_buf_ptr + 1]) << 8 |
-	    static_cast<uint32_t>(file_io_buf[file_io_buf_ptr]);
-	file_io_buf_ptr += sizeof(int16_t);
-
-	return i;
+	SerializedData::Reader reader(std::span<const uint8_t>(file_io_buf.data(), file_io_read_len), file_io_buf_ptr);
+	return reader.readI16LE();
 }
 
 void ScriptParser::write32s(int32_t i) {
@@ -604,17 +635,8 @@ void ScriptParser::write32s(int32_t i) {
 }
 
 int32_t ScriptParser::read32s() {
-	if (file_io_buf_ptr + sizeof(int16_t) > file_io_read_len)
-		return 0;
-
-	int32_t i =
-	    static_cast<uint32_t>(file_io_buf[file_io_buf_ptr + 3]) << 24 |
-	    static_cast<uint32_t>(file_io_buf[file_io_buf_ptr + 2]) << 16 |
-	    static_cast<uint32_t>(file_io_buf[file_io_buf_ptr + 1]) << 8 |
-	    static_cast<uint32_t>(file_io_buf[file_io_buf_ptr]);
-	file_io_buf_ptr += sizeof(int32_t);
-
-	return i;
+	SerializedData::Reader reader(std::span<const uint8_t>(file_io_buf.data(), file_io_read_len), file_io_buf_ptr);
+	return reader.readI32LE();
 }
 
 void ScriptParser::write32u(uint32_t i) {
@@ -651,21 +673,11 @@ void ScriptParser::writeStr(const char *s) {
 }
 
 void ScriptParser::readStr(char **s) {
-	size_t counter = 0;
-
-	while (file_io_buf_ptr + counter < file_io_read_len) {
-		if (file_io_buf[file_io_buf_ptr + counter++] == 0)
-			break;
-	}
-
+	SerializedData::Reader reader(std::span<const uint8_t>(file_io_buf.data(), file_io_read_len), file_io_buf_ptr);
+	const std::string value = reader.readCString();
 	freearr(s);
-
-	if (counter > 1) {
-		*s = new char[counter + 1];
-		std::memcpy(*s, file_io_buf.data() + file_io_buf_ptr, counter);
-		(*s)[counter] = 0;
-	}
-	file_io_buf_ptr += counter;
+	if (!value.empty())
+		*s = copystr(value.c_str());
 }
 
 void ScriptParser::readFilePath(char **s) {
@@ -692,11 +704,18 @@ void ScriptParser::writeArrayVariable() {
 	ArrayVariable *av = script_h.getRootArrayVariable();
 
 	while (av) {
-		int i, dim = 1;
-		for (i = 0; i < av->num_dim; i++)
-			dim *= av->dim[i];
+		if (av->num_dim < 0 || av->num_dim > 20)
+			throw std::runtime_error("Invalid array dimension count");
+		size_t dim = 1;
+		for (int i = 0; i < av->num_dim; i++) {
+			if (av->dim[i] <= 0 || static_cast<size_t>(av->dim[i]) > std::numeric_limits<size_t>::max() / dim)
+				throw std::runtime_error("Invalid array dimensions");
+			dim *= static_cast<size_t>(av->dim[i]);
+		}
+		if (dim != 0 && !av->data)
+			throw std::runtime_error("Missing array storage");
 
-		for (i = 0; i < dim; i++) {
+		for (size_t i = 0; i < dim; i++) {
 			write32s(av->data[i]);
 		}
 		av = av->next;
@@ -707,11 +726,20 @@ void ScriptParser::readArrayVariable() {
 	ArrayVariable *av = script_h.getRootArrayVariable();
 
 	while (av) {
-		int i, dim = 1;
-		for (i = 0; i < av->num_dim; i++)
-			dim *= av->dim[i];
+		if (av->num_dim < 0 || av->num_dim > 20)
+			throw std::runtime_error("Invalid array dimension count");
+		size_t dim = 1;
+		for (int i = 0; i < av->num_dim; i++) {
+			if (av->dim[i] <= 0 || static_cast<size_t>(av->dim[i]) > std::numeric_limits<size_t>::max() / dim)
+				throw std::runtime_error("Invalid array dimensions");
+			dim *= static_cast<size_t>(av->dim[i]);
+		}
+		if (file_io_buf_ptr > file_io_read_len ||
+		    dim > (file_io_read_len - file_io_buf_ptr) / sizeof(int32_t) ||
+		    (dim != 0 && !av->data))
+			throw std::runtime_error("Truncated array data");
 
-		for (i = 0; i < dim; i++) {
+		for (size_t i = 0; i < dim; i++) {
 			av->data[i] = read32s();
 		}
 		av = av->next;
@@ -721,9 +749,9 @@ void ScriptParser::readArrayVariable() {
 void ScriptParser::writeLog(ScriptHandler::LogInfo &info) {
 	file_io_buf.clear();
 
-	char buf[10];
+	char buf[32];
 
-	std::sprintf(buf, "%zu", info.num_logs);
+	std::snprintf(buf, sizeof(buf), "%zu", info.num_logs);
 	for (size_t i = 0, len = std::strlen(buf); i < len; i++)
 		write8s(buf[i]);
 	write8s(0x0a);
@@ -747,22 +775,39 @@ void ScriptParser::writeLog(ScriptHandler::LogInfo &info) {
 void ScriptParser::readLog(ScriptHandler::LogInfo &info) {
 	script_h.resetLog(info);
 
-	if (script_h.save_path && loadFileIOBuf(info.filename) == 0) {
-		int i, ch, count = 0;
-		char buf[100];
+	if (!script_h.save_path || loadFileIOBuf(info.filename) != 0)
+		return;
 
-		while ((ch = read8s()) != 0x0a) {
+	try {
+		static constexpr size_t MaximumLogEntries = 100000;
+		static constexpr size_t MaximumLogNameLength = 4095;
+		size_t count = 0;
+		while (true) {
+			const uint8_t ch = static_cast<uint8_t>(read8s());
+			if (ch == '\n')
+				break;
+			if (ch < '0' || ch > '9' || count > (MaximumLogEntries - (ch - '0')) / 10)
+				throw std::runtime_error("Invalid log entry count");
 			count = count * 10 + ch - '0';
 		}
 
-		for (i = 0; i < count; i++) {
-			read8s();
-			int j = 0;
-			while ((ch = read8s()) != '"') buf[j++] = ch ^ 0x84;
-			buf[j] = '\0';
-
-			script_h.findAndAddLog(info, buf, true);
+		for (size_t i = 0; i < count; ++i) {
+			if (read8s() != '"')
+				throw std::runtime_error("Invalid log entry delimiter");
+			std::string name;
+			while (true) {
+				const uint8_t ch = static_cast<uint8_t>(read8s());
+				if (ch == '"')
+					break;
+				if (name.size() >= MaximumLogNameLength)
+					throw std::runtime_error("Oversized log entry");
+				name.push_back(static_cast<char>(ch ^ 0x84));
+			}
+			script_h.findAndAddLog(info, name.c_str(), true);
 		}
+	} catch (const std::exception &exception) {
+		sendToLog(LogLevel::Error, "Ignoring malformed %s: %s\n", info.filename, exception.what());
+		script_h.resetLog(info);
 	}
 }
 

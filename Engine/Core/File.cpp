@@ -16,6 +16,8 @@
 #include <zlib.h>
 
 #include <ctime>
+#include <limits>
+#include <stdexcept>
 #include <vector>
 
 const uint32_t SAVEFILE_MAGIC_NUMBER = 0x534E4F52; // RONS
@@ -362,12 +364,16 @@ void ONScripter::readAnimationInfo(AnimationInfo &ai, std::vector<AnimationInfo 
 		readTransforms(ai.spriteTransforms);
 		readCamera(ai.camera);
 
-		AnimationInfo *set = ai.type == SPRITE_LSP ? sprite_info : sprite2_info;
-		int32_t s          = read32s();
+		int32_t s = read32s();
+		if (s < 0 || s > MAX_SPRITE_NUM)
+			throw std::runtime_error("Invalid child sprite count in save file");
 		for (int32_t i = 0; i < s; i++) {
-			int32_t id                  = read32s();
-			set[id].childImages[i].no   = read32s();
-			set[id].childImages[i].lsp2 = read32s();
+			const int32_t zOrder = read32s();
+			const int32_t child = read32s();
+			const int32_t lsp2 = read32s();
+			if (child < 0 || child >= MAX_SPRITE_NUM || (lsp2 != 0 && lsp2 != 1))
+				throw std::runtime_error("Invalid child sprite reference in save file");
+			ai.childImages[zOrder] = {child, lsp2 != 0};
 		}
 		ai.parentImage.no   = read32s();
 		ai.parentImage.lsp2 = read32s();
@@ -529,32 +535,42 @@ void ONScripter::writeGlobalFlags() {
 
 void ONScripter::readNestedInfo() {
 	deleteNestInfo();
-	int32_t num_nest = read32s();
-	if (num_nest > 0) {
-		file_io_buf_ptr += (num_nest - 1) * 4;
-		while (num_nest > 0) {
+	const int32_t serializedWords = read32s();
+	if (serializedWords < 0)
+		throw std::runtime_error("Invalid nested-call word count in save file");
+	if (serializedWords > 0) {
+		const size_t words = static_cast<size_t>(serializedWords);
+		if (words > (file_io_read_len - file_io_buf_ptr) / sizeof(int32_t))
+			throw std::runtime_error("Truncated nested-call data in save file");
+		const size_t recordsStart = file_io_buf_ptr;
+		const size_t recordsEnd = recordsStart + words * sizeof(int32_t);
+		size_t wordsRemaining = words;
+		while (wordsRemaining > 0) {
+			file_io_buf_ptr = recordsStart + (wordsRemaining - 1) * sizeof(int32_t);
+			const int32_t offset = read32s();
 			callStack.emplace_front();
 			auto &front = callStack.front();
-
-			int32_t i = read32s();
-			if (i > 0) {
+			if (offset > 0) {
+				if (static_cast<size_t>(offset) >= script_h.getScriptLength())
+					throw std::runtime_error("Nested label offset exceeds the script");
 				front.nest_mode   = NestInfo::LABEL;
-				front.next_script = script_h.getAddress(i);
-				file_io_buf_ptr -= 8;
-				num_nest--;
+				front.next_script = script_h.getAddress(offset);
+				wordsRemaining--;
 			} else {
+				if (wordsRemaining < 4 || offset == std::numeric_limits<int32_t>::min())
+					throw std::runtime_error("Invalid FOR nesting record in save file");
+				if (static_cast<size_t>(-offset) >= script_h.getScriptLength())
+					throw std::runtime_error("Nested FOR offset exceeds the script");
 				front.nest_mode   = NestInfo::FOR;
-				front.next_script = script_h.getAddress(-i);
-				file_io_buf_ptr -= 16;
+				front.next_script = script_h.getAddress(-offset);
+				file_io_buf_ptr = recordsStart + (wordsRemaining - 4) * sizeof(int32_t);
 				front.var_no = read32s();
 				front.to     = read32s();
 				front.step   = read32s();
-				file_io_buf_ptr -= 16;
-				num_nest -= 4;
+				wordsRemaining -= 4;
 			}
 		}
-		num_nest = read32s();
-		file_io_buf_ptr += num_nest * 4;
+		file_io_buf_ptr = recordsEnd;
 	}
 }
 
@@ -582,8 +598,13 @@ void ONScripter::writeNestedInfo() {
 
 void ONScripter::readSpritesetInfo(std::map<int, SpritesetInfo> &si) {
 	resetSpritesets();
-	for (int32_t i = 0, s = read32s(); i < s; i++) {
+	const int32_t count = read32s();
+	if (count < 0 || count > MAX_SPRITE_NUM)
+		throw std::runtime_error("Invalid spriteset count in save file");
+	for (int32_t i = 0; i < count; i++) {
 		int32_t id = read32s();
+		if (id < 0 || id >= MAX_SPRITE_NUM)
+			throw std::runtime_error("Invalid spriteset id in save file");
 
 		SpritesetInfo ss;
 		ss.setEnable(read8s());
@@ -715,6 +736,9 @@ void ONScripter::readParamData(AnimationInfo *&p, bool bar, int id) {
 		p->max_width  = read32s();
 		p->orig_pos.h = read32s();
 		p->max_param  = read32s();
+		if (p->max_width < 0 || p->orig_pos.h < 0 || p->max_param <= 0 ||
+		    p->max_width > 32768 || p->orig_pos.h > 32768)
+			throw std::runtime_error("Invalid bar geometry in save file");
 		p->color.x    = read8s();
 		p->color.y    = read8s();
 		p->color.z    = read8s();
@@ -734,6 +758,9 @@ void ONScripter::readParamData(AnimationInfo *&p, bool bar, int id) {
 		p->color_list      = new uchar3[1];
 		p->font_size_xy[0] = read32s();
 		p->font_size_xy[1] = read32s();
+		if (p->font_size_xy[0] <= 0 || p->font_size_xy[1] <= 0 ||
+		    p->font_size_xy[0] > 4096 || p->font_size_xy[1] > 4096)
+			throw std::runtime_error("Invalid parameter font size in save file");
 		p->color_list[0].x = read8s();
 		p->color_list[0].y = read8s();
 		p->color_list[0].z = read8s();
@@ -815,6 +842,8 @@ void ONScripter::loadSaveFileData(int file_version) {
 
 	// Command data
 	readStr(&str);
+	if (!str)
+		throw std::runtime_error("Missing save label");
 	auto label = script_h.lookupLabel(str);
 	if (!label) {
 		errorAndExit("Failed to find save label!");
@@ -823,11 +852,16 @@ void ONScripter::loadSaveFileData(int file_version) {
 	current_label_info = label;
 	current_line       = read32s();
 	int32_t command    = read32s();
+	if (current_line < 0 || current_line > label->num_of_lines || command < 0)
+		throw std::runtime_error("Invalid script position in save file");
 	//sendToLog(LogLevel::Info, "load %d:%d:%d\n", current_label_info->start_line, current_line, command);
 
 	const char *buf = script_h.getAddressByLine(label->start_line + current_line);
+	const char *scriptEnd = script_h.getAddress(0) + script_h.getScriptLength();
 	for (int32_t i = 0; i < command; i++) {
-		while (*buf != ':') buf++;
+		while (buf < scriptEnd && *buf != ':') buf++;
+		if (buf == scriptEnd)
+			throw std::runtime_error("Save command offset exceeds the script");
 		buf++;
 	}
 	script_h.setCurrent(buf);
@@ -868,9 +902,15 @@ void ONScripter::loadSaveFileData(int file_version) {
 	}
 
 	nontransitioningSprites.clear();
-	for (int32_t i = 0, s = read32s(); i < s; i++) {
+	const int32_t nontransitioningCount = read32s();
+	if (nontransitioningCount < 0 || nontransitioningCount > MAX_SPRITE_NUM)
+		throw std::runtime_error("Invalid nontransitioning sprite count in save file");
+	for (int32_t i = 0; i < nontransitioningCount; i++) {
 		auto ais = read8s() == 1 ? sprite2_info : sprite_info;
-		nontransitioningSprites.insert(&ais[read32s()]);
+		const int32_t id = read32s();
+		if (id < 0 || id >= MAX_SPRITE_NUM)
+			throw std::runtime_error("Invalid nontransitioning sprite id in save file");
+		nontransitioningSprites.insert(&ais[id]);
 	}
 
 	readSpritesetInfo(spritesets);
@@ -984,47 +1024,55 @@ bool ONScripter::readSaveFileHeader(int no, SaveFileInfo *save_file_info) {
 		return false;
 	}
 
-	if (read32u() != SAVEFILE_MAGIC_NUMBER) {
-		sendToLog(LogLevel::Error, "Save file has unsupport magic header.\n");
-		return false;
-	}
+	try {
+		if (read32u() != SAVEFILE_MAGIC_NUMBER) {
+			sendToLog(LogLevel::Error, "Save file has unsupported magic header.\n");
+			return false;
+		}
 
-	int file_version = read8s() * 100;
-	file_version += read8s();
+		int file_version = read8s() * 100;
+		file_version += read8s();
 
 	//sendToLog(LogLevel::Info, "Save file version is %d.%d\n", file_version/100, file_version%100);
-	if (file_version > SAVEFILE_VERSION_MAJOR * 100 + SAVEFILE_VERSION_MINOR) {
-		sendToLog(LogLevel::Error, "Save file is newer than %d.%d, please use the latest onscripter-new.\n", SAVEFILE_VERSION_MAJOR, SAVEFILE_VERSION_MINOR);
+		if (file_version > SAVEFILE_VERSION_MAJOR * 100 + SAVEFILE_VERSION_MINOR) {
+			sendToLog(LogLevel::Error, "Save file is newer than %d.%d, please use the latest onscripter-new.\n", SAVEFILE_VERSION_MAJOR, SAVEFILE_VERSION_MINOR);
+			return false;
+		}
+
+		if (file_version < SAVEFILE_VERSION_MAJOR * 100) {
+			sendToLog(LogLevel::Error, "Save file is too old %d vs %d needed.\n", file_version, SAVEFILE_VERSION_MAJOR * 100);
+			return false;
+		}
+
+		int8_t day    = read8s();
+		int8_t month  = read8s();
+		int16_t year  = read16s();
+		int8_t hour   = read8s();
+		int8_t minute = read8s();
+		if (day < 1 || day > 31 || month < 1 || month > 12 ||
+		    hour < 0 || hour > 23 || minute < 0 || minute > 59)
+			throw std::runtime_error("Invalid save timestamp");
+
+		char *descr{nullptr};
+		readStr(&descr);
+
+		if (save_file_info) {
+			save_file_info->day     = day;
+			save_file_info->month   = month;
+			save_file_info->year    = year;
+			save_file_info->hour    = hour;
+			save_file_info->minute  = minute;
+			save_file_info->descr   = std::unique_ptr<char[]>(descr);
+			save_file_info->version = file_version;
+		} else {
+			freearr(&descr);
+		}
+
+		return true;
+	} catch (const std::exception &exception) {
+		sendToLog(LogLevel::Error, "Invalid save header: %s\n", exception.what());
 		return false;
 	}
-
-	if (file_version < SAVEFILE_VERSION_MAJOR * 100) {
-		sendToLog(LogLevel::Error, "Save file is too old %d vs %d needed.\n", file_version, SAVEFILE_VERSION_MAJOR * 100);
-		return false;
-	}
-
-	int8_t day    = read8s();
-	int8_t month  = read8s();
-	int16_t year  = read16s();
-	int8_t hour   = read8s();
-	int8_t minute = read8s();
-
-	char *descr{nullptr};
-	readStr(&descr);
-
-	if (save_file_info) {
-		save_file_info->day     = day;
-		save_file_info->month   = month;
-		save_file_info->year    = year;
-		save_file_info->hour    = hour;
-		save_file_info->minute  = minute;
-		save_file_info->descr   = std::unique_ptr<char[]>(descr);
-		save_file_info->version = file_version;
-	} else {
-		freearr(&descr);
-	}
-
-	return true;
 }
 
 void ONScripter::writeSaveFileHeader(const char *descr) {
@@ -1044,6 +1092,10 @@ void ONScripter::writeSaveFileHeader(const char *descr) {
 }
 
 bool ONScripter::verifyChecksum() {
+	if (file_io_read_len < sizeof(uint32_t)) {
+		sendToLog(LogLevel::Error, "Save file is truncated.\n");
+		return false;
+	}
 	auto prevPtr    = file_io_buf_ptr;
 	auto dataLen    = file_io_read_len - sizeof(uint32_t);
 	file_io_buf_ptr = dataLen;
@@ -1069,10 +1121,15 @@ int ONScripter::loadSaveFile(int no) {
 		return -1;
 	}
 
-	loadSaveFileData(info.version);
+	try {
+		loadSaveFileData(info.version);
 
-	if (file_io_read_len != file_io_buf_ptr + SAVEFILE_HASH_LENGH) {
-		ons.errorAndExit("Unrecognised data was discovered in the save file");
+		if (file_io_buf_ptr > file_io_read_len ||
+		    file_io_read_len - file_io_buf_ptr != SAVEFILE_HASH_LENGH)
+			throw std::runtime_error("Unrecognized trailing or missing save data");
+	} catch (const std::exception &exception) {
+		sendToLog(LogLevel::Error, "Unable to load malformed save file: %s\n", exception.what());
+		return -1;
 	}
 
 	return 0;
@@ -1210,15 +1267,25 @@ void ONScripter::loadReadLabels(const char *filename) {
 		return;
 	}
 
-	uint32_t labels = read32s(), index = 0, sequence_size = 0;
 	char *buf{nullptr};
-	for (uint32_t i = 0; i < labels; i++) {
-		readStr(&buf);
-		index = script_h.getLabelIndex(script_h.lookupLabel(buf));
-		for (sequence_size = read32s(); sequence_size > 0; sequence_size--, index++) {
-			if (static_cast<size_t>(index) < script_h.logState.readLabels.size()) {
-				script_h.logState.readLabels[index] = true;
-			}
+	try {
+		const uint32_t labels = read32u();
+		if (labels > script_h.logState.readLabels.size())
+			throw std::runtime_error("Invalid read-label sequence count");
+		for (uint32_t i = 0; i < labels; i++) {
+			readStr(&buf);
+			auto *label = buf ? script_h.lookupLabel(buf) : nullptr;
+			if (!label)
+				throw std::runtime_error("Unknown label in read-label data");
+			uint32_t index = script_h.getLabelIndex(label);
+			const uint32_t sequenceSize = read32u();
+			if (sequenceSize > script_h.logState.readLabels.size() - index)
+				throw std::runtime_error("Read-label sequence exceeds label table");
+			for (uint32_t j = 0; j < sequenceSize; ++j)
+				script_h.logState.readLabels[index + j] = true;
 		}
+	} catch (const std::exception &exception) {
+		sendToLog(LogLevel::Error, "Ignoring malformed %s: %s\n", filename, exception.what());
 	}
+	freearr(&buf);
 }

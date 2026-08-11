@@ -18,6 +18,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <climits>
+#include <limits>
 
 namespace FileIO {
 enum class LogMode {
@@ -56,7 +57,8 @@ bool accessFile(const std::string &path, FileType type = FileType::Any, size_t *
 int seekFile(FILE *fp, size_t off, int m);
 FILE *openFile(const std::string &path, const char *mode, bool unicode = true);
 bool readFile(FILE *fp, size_t &len, uint8_t **buffer, bool autoclose = false);
-bool readFile(FILE *fp, size_t &len, std::vector<uint8_t> &buffer, bool autoclose = false);
+bool readFile(FILE *fp, size_t &len, std::vector<uint8_t> &buffer, bool autoclose = false,
+              size_t maximumLength = std::numeric_limits<size_t>::max());
 bool writeFile(FILE *fp, const uint8_t *buffer, size_t len, bool autoclose = false);
 bool makeDir(const std::string &path, bool recursive = false);
 std::vector<std::string> scanDir(const std::string &path, FileType type = FileType::Any);
@@ -83,15 +85,17 @@ inline bool readFile(const char *path, const char *root, size_t &len, uint8_t **
 	auto fpath = std::string(root ? root : "") + path;
 	return readFile(openFile(fpath, "rb"), len, buffer, true);
 }
-inline bool readFile(const char *path, const char *root, size_t &len, std::vector<uint8_t> &buffer) {
+inline bool readFile(const char *path, const char *root, size_t &len, std::vector<uint8_t> &buffer,
+                     size_t maximumLength = std::numeric_limits<size_t>::max()) {
 	auto fpath = std::string(root ? root : "") + path;
-	return readFile(openFile(fpath, "rb"), len, buffer, true);
+	return readFile(openFile(fpath, "rb"), len, buffer, true, maximumLength);
 }
 inline bool readFile(const std::string &path, size_t &len, uint8_t **buffer) {
 	return readFile(openFile(path, "rb"), len, buffer, true);
 }
-inline bool readFile(const std::string &path, size_t &len, std::vector<uint8_t> &buffer) {
-	return readFile(openFile(path, "rb"), len, buffer, true);
+inline bool readFile(const std::string &path, size_t &len, std::vector<uint8_t> &buffer,
+                     size_t maximumLength = std::numeric_limits<size_t>::max()) {
+	return readFile(openFile(path, "rb"), len, buffer, true, maximumLength);
 }
 inline bool writeFile(const char *path, const char *root, const uint8_t *buffer, size_t len) {
 	auto fpath = std::string(root ? root : "") + path;

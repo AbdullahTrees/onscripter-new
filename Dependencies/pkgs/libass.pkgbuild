@@ -59,22 +59,4 @@ postbuild() {
     popd &>/dev/null
 }
 
-#
-download_file() {
-    local url=$1
-    local file=$2
-
-    local ret=0
-    if [ $USE_CURL ]; then
-        curl -kL "$url" -o "$dldir/$file" || ret=$?
-    else
-        wget --no-check-certificate "$url" -O "$dldir/$file" || ret=$?
-    fi
-    
-    if (( $ret )); then
-        rm -f "$dldir/$file"
-        error_out "Failed to download %s" "$file"
-    fi
-}
-
 # vim: set syntax=sh:

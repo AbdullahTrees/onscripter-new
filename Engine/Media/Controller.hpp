@@ -364,7 +364,7 @@ private:
 
 	std::atomic<int> decoderWorkerCount{0}; // equals number of unfinished workers (i.e. 0 when all are done)
 
-	std::array<long double, VideoPacketBufferSize> initVideoTimecodes; // video timecodes grabbed from the beginning of the file
+	std::array<long double, VideoPacketBufferSize> initVideoTimecodes{}; // video timecodes grabbed from the beginning of the file
 
 	std::unique_ptr<Decoder> decoders[3];
 	std::unique_ptr<MediaDemux> demux;

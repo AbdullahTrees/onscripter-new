@@ -30,6 +30,21 @@ int NsaReader::open(const char *nsa_path) {
 }
 
 int NsaReader::processArchives(const DirPaths &nsa_path) {
+	auto validateArchive = [this](ArchiveInfo &archive, int type, size_t offset, FILE *&fp) {
+		if (readArchive(&archive, type, offset) == 0)
+			return true;
+		if (archive.file_handle)
+			std::fclose(archive.file_handle);
+		archive.file_handle = nullptr;
+		delete[] archive.file_name;
+		archive.file_name = nullptr;
+		delete[] archive.fi_list;
+		archive.fi_list = nullptr;
+		archive.file_index.clear();
+		archive.num_of_files = 0;
+		fp = nullptr;
+		return false;
+	};
 
 	char archive_name[PATH_MAX];
 	sar_flag                = !SarReader::open("arc.sar");
@@ -50,11 +65,11 @@ int NsaReader::processArchives(const DirPaths &nsa_path) {
 				if (num_of_nsa_archives == 0) {
 					archive_info_nsa.file_handle = fp;
 					archive_info_nsa.file_name   = copystr(archive_name);
-					readArchive(&archive_info_nsa, ARCHIVE_TYPE_NSA, nsa_offset);
+					validateArchive(archive_info_nsa, ARCHIVE_TYPE_NSA, nsa_offset, fp);
 				} else {
 					archive_info2[num_of_nsa_archives - 1].file_handle = fp;
 					archive_info2[num_of_nsa_archives - 1].file_name   = copystr(archive_name);
-					readArchive(&archive_info2[num_of_nsa_archives - 1], ARCHIVE_TYPE_NSA, nsa_offset);
+					validateArchive(archive_info2[num_of_nsa_archives - 1], ARCHIVE_TYPE_NSA, nsa_offset, fp);
 				}
 			}
 		}
@@ -83,15 +98,16 @@ int NsaReader::processArchives(const DirPaths &nsa_path) {
 				if (fp) {
 					archive_info_ns2[num_of_ns2_archives].file_handle = fp;
 					archive_info_ns2[num_of_ns2_archives].file_name   = copystr(archive_name);
-					readArchive(&archive_info_ns2[num_of_ns2_archives], ARCHIVE_TYPE_NS2);
-					num_of_ns2_archives++;
-					break;
+					if (validateArchive(archive_info_ns2[num_of_ns2_archives], ARCHIVE_TYPE_NS2, 0, fp)) {
+						num_of_ns2_archives++;
+						break;
+					}
 				}
 			}
 		}
 	}
 
-	if (num_of_nsa_paths == 0 && num_of_ns2_archives == 0) {
+	if (!sar_flag && num_of_nsa_archives == 0 && num_of_ns2_archives == 0) {
 		// didn't find any (main) archive files
 		sendToLog(LogLevel::Error, "can't open nsa archive file %s.%s ns2_archive_ext\n", NSA_ARCHIVE_NAME, nsa_archive_ext, ns2_archive_ext);
 		return -1;
@@ -109,8 +125,10 @@ size_t NsaReader::getNumFiles() {
 
 	total += archive_info_nsa.num_of_files; // add in the arc.nsa files
 
-	for (size_t i = 0; i < num_of_nsa_archives - 1; i++)
-		total += archive_info2[i].num_of_files; // add in the arc?.nsa files
+	if (num_of_nsa_archives > 1) {
+		for (size_t i = 0; i < num_of_nsa_archives - 1; i++)
+			total += archive_info2[i].num_of_files; // add in the arc?.nsa files
+	}
 
 	for (size_t i = 0; i < num_of_ns2_archives; i++)
 		total += archive_info_ns2[i].num_of_files; // add in the ##.ns2 files

@@ -95,16 +95,29 @@ by that project.
 ## Building from source
 
 Most players should use the release packages. For contributors and platform
-maintainers, a normal host build is:
+maintainers, install a C++23 compiler, GNU Make, CMake, Meson, Ninja, NASM,
+`pkg-config`, and the normal POSIX build utilities. On Windows, use the MSYS2
+UCRT64 environment. A normal host build is:
 
 ```sh
-./configure
+./configure --release-build --std=gnu++23
 make -j8
 ```
 
-The detailed build notes, platform requirements, dependency history, and
-performance verification live in
+The maintained platform notes and exact Windows prerequisites live in
 [Resources/Docs/ProjectStatus.md](Resources/Docs/ProjectStatus.md).
+
+Security-sensitive native tests are independent of copyrighted game data:
+
+```sh
+cmake -S Tests -B DerivedData/tests -G Ninja
+cmake --build DerivedData/tests
+ctest --test-dir DerivedData/tests --output-on-failure
+```
+
+See [Tests/README.md](Tests/README.md) for sanitizer and fuzzing options and
+[SECURITY.md](SECURITY.md) for the vulnerability-reporting and trust-boundary
+policy.
 
 ## Credits
 
