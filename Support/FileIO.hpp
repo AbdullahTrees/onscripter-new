@@ -33,6 +33,9 @@ void prepareConsole(int cols, int lines, bool force = false);
 void waitConsole();
 LogMode getLogMode();
 void setLogMode(LogMode mode);
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((format(printf, 2, 0)))
+#endif
 void log(LogLevel level, const char *format, va_list args);
 
 size_t getLastDelimiter(const char *path);

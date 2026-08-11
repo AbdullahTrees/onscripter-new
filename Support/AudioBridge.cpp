@@ -89,11 +89,11 @@ bool AudioBridge::prepare() {
 	rawChunk = Mix_QuickLoad_RAW(rawBuffer.get(), static_cast<uint32_t>(rawBufferSize));
 
 	if (!rawChunk) {
-		sendToLog(LogLevel::Error, "Failed to prepare an audio stream %d\n", Mix_GetError());
+		sendToLog(LogLevel::Error, "Failed to prepare an audio stream: %s\n", Mix_GetError());
 		ret = false;
 	} else {
 		if (!Mix_RegisterEffect(channelNumber, fillBuffers, nullptr, static_cast<void *>(this))) {
-			sendToLog(LogLevel::Error, "Failed to prepare audio update function: %d\n", Mix_GetError());
+			sendToLog(LogLevel::Error, "Failed to prepare audio update function: %s\n", Mix_GetError());
 			ret = false;
 		}
 	}

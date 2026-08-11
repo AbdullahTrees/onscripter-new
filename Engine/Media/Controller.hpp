@@ -340,6 +340,9 @@ private:
 		std::atomic<Uint64> packetPoolPeak{0};
 	};
 
+#if defined(__GNUC__) || defined(__clang__)
+	__attribute__((format(printf, 3, 0)))
+#endif
 	static void logLine(void *inst, int level, const char *fmt, va_list args);
 
 	std::unique_ptr<Decoder> findDecoder(AVMediaType type, unsigned streamNumber = 1, AVCodecID restrictCodecId = AV_CODEC_ID_NONE);

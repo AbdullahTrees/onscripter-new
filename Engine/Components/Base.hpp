@@ -29,7 +29,11 @@ public:
 		controllers.insert(controllers.begin(), c);
 	}
 
-	[[noreturn]] void quit(int c, const char *message = nullptr, ...) {
+	[[noreturn]]
+#if defined(__GNUC__) || defined(__clang__)
+	__attribute__((format(printf, 3, 4)))
+#endif
+	void quit(int c, const char *message = nullptr, ...) {
 		if (message) {
 			va_list args;
 			va_start(args, message);

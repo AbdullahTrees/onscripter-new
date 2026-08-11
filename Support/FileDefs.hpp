@@ -32,6 +32,9 @@ enum class LogLevel {
 	Error
 };
 
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((format(printf, 2, 3)))
+#endif
 void sendToLog(LogLevel level, const char *fmt, ...);
 
 #ifdef WIN32

@@ -109,7 +109,8 @@ int NsaReader::processArchives(const DirPaths &nsa_path) {
 
 	if (!sar_flag && num_of_nsa_archives == 0 && num_of_ns2_archives == 0) {
 		// didn't find any (main) archive files
-		sendToLog(LogLevel::Error, "can't open nsa archive file %s.%s ns2_archive_ext\n", NSA_ARCHIVE_NAME, nsa_archive_ext, ns2_archive_ext);
+		sendToLog(LogLevel::Error, "can't open nsa archive file %s.%s or an ns2 archive (*.%s)\n",
+		          NSA_ARCHIVE_NAME, nsa_archive_ext, ns2_archive_ext);
 		return -1;
 	}
 

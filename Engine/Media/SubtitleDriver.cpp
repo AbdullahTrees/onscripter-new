@@ -15,6 +15,9 @@
 #include "Support/SDLCompat.hpp"
 
 /* libass debug log function */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((format(printf, 2, 0)))
+#endif
 static void ass_msg_callback(int level, const char *fmt, va_list va, void * /*data*/) {
 #ifdef PUBLIC_RELEASE
 	if (level > 5)

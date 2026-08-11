@@ -916,14 +916,7 @@ std::vector<std::string> FileIO::scanDir(const std::string &path, FileType type)
 
 	FindClose(hFind);
 #else
-	struct stat rootStat{};
-	if (lstat(path.c_str(), &rootStat) != 0)
-		return errno == ENOENT;
-	if (!S_ISDIR(rootStat.st_mode))
-		return removeFile(path);
-
 	DIR *dir = opendir(path.c_str());
-	bool success = dir != nullptr;
 	if (dir) {
 		dirent *entry = nullptr;
 		while ((entry = readdir(dir))) {
@@ -948,7 +941,14 @@ bool FileIO::removeDir(const std::string &path) {
 	op.fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
 	return !SHFileOperationW(&op);
 #else
+	struct stat rootStat{};
+	if (lstat(path.c_str(), &rootStat) != 0)
+		return errno == ENOENT;
+	if (!S_ISDIR(rootStat.st_mode))
+		return removeFile(path);
+
 	DIR *dir = opendir(path.c_str());
+	bool success = dir != nullptr;
 	if (dir) {
 		dirent *entry = nullptr;
 		while ((entry = readdir(dir))) {

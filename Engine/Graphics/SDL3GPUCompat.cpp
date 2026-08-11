@@ -4933,6 +4933,9 @@ double benchmarkMs(Fn &&fn) {
 	return static_cast<double>(end - start) * 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((format(printf, 2, 3)))
+#endif
 void printBenchmarkLine(FILE *output, const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
@@ -6183,7 +6186,17 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 	}
 
 	auto writeLine = [&](const char *fmt, auto... args) {
+		// All call sites below pass literals; the forwarding generic lambda prevents
+		// Clang from proving that after template substitution.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#pragma clang diagnostic ignored "-Wformat-security"
+#endif
 		printBenchmarkLine(benchmarkOutput.file, fmt, args...);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 	};
 
 	if (!onsSDLInit(SDL_INIT_VIDEO)) {

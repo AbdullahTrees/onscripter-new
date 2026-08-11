@@ -2301,7 +2301,9 @@ int ONScripter::parseLine() {
 		for (auto &pair : profileData) {
 			const std::string &fn = pair.first;
 			ProfileData &pd       = pair.second;
-			sendToLog(LogLevel::Warn, "%s,%llu,%llu\n", fn.c_str(), pd.time, pd.runs);
+			sendToLog(LogLevel::Warn, "%s,%llu,%llu\n", fn.c_str(),
+			          static_cast<unsigned long long>(pd.time),
+			          static_cast<unsigned long long>(pd.runs));
 		}
 		profileData.clear();
 	}

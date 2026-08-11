@@ -312,7 +312,7 @@ void MediaProcController::logLine(void *inst, int level, const char *fmt, va_lis
 			break;
 	}
 
-	sendToLog(iolevel, "[ff %d/0x%x] %s", level, inst, msg);
+	sendToLog(iolevel, "[ff %d/%p] %s", level, inst, msg);
 }
 
 std::unique_ptr<MediaProcController::Decoder> MediaProcController::findDecoder(AVMediaType type, unsigned streamNumber, AVCodecID restrictCodecId) {
