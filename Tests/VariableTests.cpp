@@ -20,4 +20,17 @@ int main() {
 
 	copied.data[0] = 99;
 	assert(source.data[0] == 1);
+
+	ArrayVariable zeroIndexReference;
+	zeroIndexReference.no      = 18;
+	zeroIndexReference.num_dim = 2;
+	zeroIndexReference.dim[0]  = 0;
+	zeroIndexReference.dim[1]  = 4;
+
+	ArrayVariable copiedReference = zeroIndexReference;
+	assert(copiedReference.no == 18);
+	assert(copiedReference.num_dim == 2);
+	assert(copiedReference.dim[0] == 0);
+	assert(copiedReference.dim[1] == 4);
+	assert(copiedReference.data == nullptr);
 }

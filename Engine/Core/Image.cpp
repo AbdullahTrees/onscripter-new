@@ -323,7 +323,8 @@ SDL_Surface *ONScripter::createSurfaceFromFile(const char *filename) {
 			tmp = IMG_LoadJPG_RW(src);
 		}
 		if (!tmp)
-			sendToLog(LogLevel::Error, " *** can't load file [%s] with purported length %zu bytes: %s ***\n", filename, length, IMG_GetError());
+			sendToLog(LogLevel::Error, " *** can't load file [%s] with purported length %llu bytes: %s ***\n",
+			          filename, static_cast<unsigned long long>(length), IMG_GetError());
 	}
 
 	SDL_RWclose(src);
@@ -1157,7 +1158,7 @@ void ONScripter::printRetainedRainSceneTelemetry() const {
 	sendToLog(LogLevel::Info,
 	          "Retained rain telemetry: attempts=%llu composed_frames=%llu cache_hits=%llu cache_builds=%llu "
 	          "static_fallbacks=%llu ineligible_fallbacks=%llu invalidations=%llu band_blits=%llu rain_draws=%llu "
-	          "bands=%zu layers=%zu valid=%d disabled=%llu target_state=%llu background=%llu tachi=%llu "
+	          "bands=%llu layers=%llu valid=%d disabled=%llu target_state=%llu background=%llu tachi=%llu "
 	          "spriteset=%llu layer_layout=%llu no_rain=%llu unsupported_layer=%llu unsafe_blend=%llu memory=%llu "
 	          "invalidation_sprite=%llu invalidation_zlevel=%llu invalidation_canvas=%llu invalidation_explicit=%llu\n",
 	          static_cast<unsigned long long>(cache.attempts),
@@ -1169,7 +1170,8 @@ void ONScripter::printRetainedRainSceneTelemetry() const {
 	          static_cast<unsigned long long>(cache.invalidations),
 	          static_cast<unsigned long long>(cache.bandBlits),
 	          static_cast<unsigned long long>(cache.rainDraws),
-	          cache.bands.size(), cache.layers.size(), cache.valid ? 1 : 0,
+	          static_cast<unsigned long long>(cache.bands.size()),
+	          static_cast<unsigned long long>(cache.layers.size()), cache.valid ? 1 : 0,
 	          static_cast<unsigned long long>(cache.disabledFallbacks),
 	          static_cast<unsigned long long>(cache.targetStateFallbacks),
 	          static_cast<unsigned long long>(cache.backgroundFallbacks),

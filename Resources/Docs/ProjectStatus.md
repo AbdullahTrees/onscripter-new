@@ -5,6 +5,7 @@ history belongs in Git, issues, and release notes rather than this document.
 
 ## Supported release targets
 
+- Current release: 1.1 (`20260816-new`).
 - Windows 10 or newer, x86-64, built in MSYS2 UCRT64.
 - Android 14 or newer, arm64.
 - The SDL3/SDL3_GPU renderer is the only supported renderer.
@@ -62,11 +63,14 @@ and SDL3; retired SDL2 recipes were removed.
 
 ## Verification
 
-The repository has Windows build/test CI and standalone tests for archive
-indexes, command-line validation, serialized state, regular expressions, and
-multidimensional variables. Linux CI runs those tests under ASan/UBSan and runs
-four libFuzzer targets on pushes and a larger weekly budget. Static analysis
-remains part of the release audit.
+The repository has a CMake/CTest native test project and Windows build/test CI.
+Standalone tests cover archive indexes, command-line validation, serialized
+state, regular expressions, and multidimensional variables, including
+zero-index transient array references. Their assertions remain enabled in
+Release configurations so checks and setup expressions cannot be compiled out.
+Linux CI runs those tests under
+ASan/UBSan and runs four libFuzzer targets on pushes and a larger weekly budget.
+Static analysis remains part of the release audit.
 
 The synthetic compressed-script fixture verifies public-release startup and
 orderly shutdown without copyrighted assets. It is not a representative game

@@ -3293,7 +3293,9 @@ int ONScripter::cacheWaitCommand() {
 	preventExit(true);
 	while (true) {
 		SDL_AtomicLock(&queue.lock);
-		bool done = queue.q.empty() && !queue.thread;
+		// Finished thread handles remain non-null until they can be joined. The
+		// running flag, not handle ownership, determines whether work is active.
+		const bool done = queue.q.empty() && !queue.running.load(std::memory_order_acquire);
 		SDL_AtomicUnlock(&queue.lock);
 		if (done)
 			break;

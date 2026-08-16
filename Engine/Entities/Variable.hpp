@@ -35,18 +35,18 @@ struct ArrayVariable {
 		if (this != &av) {
 			if (av.num_dim < 0 || av.num_dim > 20)
 				throw std::runtime_error("Invalid array dimension count");
-			size_t total_dim = 1;
-			for (int32_t i = 0; i < 20; i++) {
-				if (i < av.num_dim) {
+
+			std::unique_ptr<int32_t[]> replacement;
+			// Declarations own storage and contain extents. Transient references have
+			// no storage and contain indices, which may legitimately be zero.
+			if (av.data) {
+				size_t total_dim = 1;
+				for (int32_t i = 0; i < av.num_dim; i++) {
 					if (av.dim[i] <= 0 || static_cast<size_t>(av.dim[i]) >
 					                       std::numeric_limits<size_t>::max() / total_dim)
 						throw std::runtime_error("Invalid or overflowing array dimensions");
 					total_dim *= static_cast<size_t>(av.dim[i]);
 				}
-			}
-
-			std::unique_ptr<int32_t[]> replacement;
-			if (av.data) {
 				if (total_dim > std::numeric_limits<size_t>::max() / sizeof(int32_t))
 					throw std::runtime_error("Array storage size overflow");
 				replacement = std::make_unique<int32_t[]>(total_dim);

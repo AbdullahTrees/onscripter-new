@@ -6185,20 +6185,6 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 		return 1;
 	}
 
-	auto writeLine = [&](const char *fmt, auto... args) {
-		// All call sites below pass literals; the forwarding generic lambda prevents
-		// Clang from proving that after template substitution.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wformat-nonliteral"
-#pragma clang diagnostic ignored "-Wformat-security"
-#endif
-		printBenchmarkLine(benchmarkOutput.file, fmt, args...);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
-	};
-
 	if (!onsSDLInit(SDL_INIT_VIDEO)) {
 		std::fprintf(stderr, "SDL init failed: %s\n", SDL_GetError());
 		return 1;
@@ -6371,12 +6357,14 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 	}
 	finishBenchmarkWork(target);
 
-	writeLine("onscripter-new Music Box benchmark\n");
-	writeLine("config: %dx%d, %d iterations, %d elements (%d visible/frame), scroll_y=%d\n",
-	          width, height, iterations, totalElements, visibleCount, scrollY);
-	writeLine("frame budget @144Hz: 6944 us | @120Hz: 8333 us | @60Hz: 16667 us\n\n");
+	printBenchmarkLine(benchmarkOutput.file, "onscripter-new Music Box benchmark\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "config: %dx%d, %d iterations, %d elements (%d visible/frame), scroll_y=%d\n",
+	                   width, height, iterations, totalElements, visibleCount, scrollY);
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "frame budget @144Hz: 6944 us | @120Hz: 8333 us | @60Hz: 16667 us\n\n");
 
-	writeLine("case,iterations,total_ms,avg_us\n");
+	printBenchmarkLine(benchmarkOutput.file, "case,iterations,total_ms,avg_us\n");
 
 	// --- find first visible element (getScrollableElementsVisibleAt) ---
 	printBenchmarkResult(benchmarkOutput.file, "musicbox_find_visible_uncached", iterations, benchmarkMs([&]() {
@@ -6508,52 +6496,92 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 	const double reorderedFps   = fullReorderedUs > 0.0 ? 1000000.0 / fullReorderedUs : 0.0;
 	const double speedup        = fullUncachedUs > 0.0 ? fullUncachedUs / std::max(0.001, fullReorderedUs) : 0.0;
 
-	writeLine("\n");
-	writeLine("==== Music Box bottleneck analysis ====\n");
-	writeLine("visible elements/frame: %d (2 columns x ~%.1f rows in 1080px)\n", visibleCount, visibleCount / 2.0);
-	writeLine("synthetic full-frame (find + lookups + bg blit + text blit + flush):\n");
-	writeLine("  current single-pass (uncached): %.3f us/frame  ->  ~%.1f FPS\n", fullUncachedUs, uncachedFps);
-	writeLine("  cached geometry only:           %.3f us/frame  ->  ~%.1f FPS\n", fullCachedUs, cachedFps);
-	writeLine("  cached geometry + two-pass:     %.3f us/frame  ->  ~%.1f FPS  (%.2fx faster)\n", fullReorderedUs, reorderedFps, speedup);
-	writeLine("\n");
-	writeLine("hotspots identified in Engine/Core/Animation.cpp drawSpecialScrollable():\n");
-	writeLine("  1. NATIVE BLIT SOURCE GROUPING (dominant measurable cost). The current\n");
-	writeLine("     loop draws each element's background plate and then immediately draws\n");
-	writeLine("     its text. The background and text come from different source textures,\n");
-	writeLine("     so a single-pass frame creates ~2 draw groups per element. The renderer\n");
-	writeLine("     keeps compatible source switches in one command buffer, but each group\n");
-	writeLine("     still needs a sampler bind and indexed draw.\n");
-	writeLine("     Fix: split the loop into two passes - draw every background plate first,\n");
-	writeLine("     then draw every element's text. This reduces source groups from ~48 to\n");
-	writeLine("     ~2 per frame while preserving one command-buffer flush per frame.\n");
-	writeLine("     Scrollable elements never overlap, so text still composites on top of\n");
-	writeLine("     its own background identically.\n");
-	writeLine("  2. getScrollableElementsVisibleAt() runs std::lower_bound with a comparator\n");
-	writeLine("     that does unordered_map hash lookups + std::stoi on every comparison.\n");
-	writeLine("     Fix: precompute a sorted y-end int array and lower_bound over it.\n");
-	writeLine("  3. For every visible element, every frame, the body re-queries the\n");
-	writeLine("     StringTree branches with has()/operator[] and re-parses x/y/width/\n");
-	writeLine("     height/textmargins/bg with std::stoi.\n");
-	writeLine("     Fix: cache decoded geometry + bg sprite index per element; rebuild only\n");
-	writeLine("     when the layout generation changes.\n");
-	writeLine("  4. PER-FRAME TEXT RELAYOUT (not measurable without the font stack). Each\n");
-	writeLine("     visible element calls DialogueController::renderToTarget() every frame,\n");
-	writeLine("     which re-runs decodeUTF8String + layoutSegment (markup parse + wrap) +\n");
-	writeLine("     layoutLines + per-glyph blits. In the Music Box the element text and\n");
-	writeLine("     style never change between frames while idle, so the layout work is\n");
-	writeLine("     redundant. The two-pass fix above reduces draw grouping overhead but each\n");
-	writeLine("     element still re-lays-out its text every frame.\n");
-	writeLine("     Fix: cache the laid-out TextRenderingState per element (keyed by text +\n");
-	writeLine("     style + multiply color + gradient + wrap width) and replay render() with\n");
-	writeLine("     a per-frame offset, re-laying out only on a key change.\n");
-	writeLine("\n");
-	writeLine("note: the synthetic text_draw_blit case measures one batched blit per element.\n");
-	writeLine("      The real per-frame text cost adds layoutSegment + glyph blits on top;\n");
-	writeLine("      hotspot 4 removes the relayout portion of that cost.\n");
+	printBenchmarkLine(benchmarkOutput.file, "\n");
+	printBenchmarkLine(benchmarkOutput.file, "==== Music Box bottleneck analysis ====\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "visible elements/frame: %d (2 columns x ~%.1f rows in 1080px)\n",
+	                   visibleCount, visibleCount / 2.0);
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "synthetic full-frame (find + lookups + bg blit + text blit + flush):\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "  current single-pass (uncached): %.3f us/frame  ->  ~%.1f FPS\n",
+	                   fullUncachedUs, uncachedFps);
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "  cached geometry only:           %.3f us/frame  ->  ~%.1f FPS\n",
+	                   fullCachedUs, cachedFps);
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "  cached geometry + two-pass:     %.3f us/frame  ->  ~%.1f FPS  (%.2fx faster)\n",
+	                   fullReorderedUs, reorderedFps, speedup);
+	printBenchmarkLine(benchmarkOutput.file, "\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "hotspots identified in Engine/Core/Animation.cpp drawSpecialScrollable():\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "  1. NATIVE BLIT SOURCE GROUPING (dominant measurable cost). The current\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     loop draws each element's background plate and then immediately draws\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     its text. The background and text come from different source textures,\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     so a single-pass frame creates ~2 draw groups per element. The renderer\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     keeps compatible source switches in one command buffer, but each group\n");
+	printBenchmarkLine(benchmarkOutput.file, "     still needs a sampler bind and indexed draw.\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     Fix: split the loop into two passes - draw every background plate first,\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     then draw every element's text. This reduces source groups from ~48 to\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     ~2 per frame while preserving one command-buffer flush per frame.\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     Scrollable elements never overlap, so text still composites on top of\n");
+	printBenchmarkLine(benchmarkOutput.file, "     its own background identically.\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "  2. getScrollableElementsVisibleAt() runs std::lower_bound with a comparator\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     that does unordered_map hash lookups + std::stoi on every comparison.\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     Fix: precompute a sorted y-end int array and lower_bound over it.\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "  3. For every visible element, every frame, the body re-queries the\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     StringTree branches with has()/operator[] and re-parses x/y/width/\n");
+	printBenchmarkLine(benchmarkOutput.file, "     height/textmargins/bg with std::stoi.\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     Fix: cache decoded geometry + bg sprite index per element; rebuild only\n");
+	printBenchmarkLine(benchmarkOutput.file, "     when the layout generation changes.\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "  4. PER-FRAME TEXT RELAYOUT (not measurable without the font stack). Each\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     visible element calls DialogueController::renderToTarget() every frame,\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     which re-runs decodeUTF8String + layoutSegment (markup parse + wrap) +\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     layoutLines + per-glyph blits. In the Music Box the element text and\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     style never change between frames while idle, so the layout work is\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     redundant. The two-pass fix above reduces draw grouping overhead but each\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     element still re-lays-out its text every frame.\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     Fix: cache the laid-out TextRenderingState per element (keyed by text +\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     style + multiply color + gradient + wrap width) and replay render() with\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "     a per-frame offset, re-laying out only on a key change.\n");
+	printBenchmarkLine(benchmarkOutput.file, "\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "note: the synthetic text_draw_blit case measures one batched blit per element.\n");
+	printBenchmarkLine(benchmarkOutput.file,
+	                   "      The real per-frame text cost adds layoutSegment + glyph blits on top;\n");
+	printBenchmarkLine(benchmarkOutput.file, "      hotspot 4 removes the relayout portion of that cost.\n");
 	if (reorderedFps >= 144.0)
-		writeLine("result: optimized scrollable draw path is within the 144Hz frame budget.\n");
+		printBenchmarkLine(benchmarkOutput.file,
+		                   "result: optimized scrollable draw path is within the 144Hz frame budget.\n");
 	else
-		writeLine("result: optimized draw path=%.1f FPS; inspect hotspots above for the remainder.\n", reorderedFps);
+		printBenchmarkLine(benchmarkOutput.file,
+		                   "result: optimized draw path=%.1f FPS; inspect hotspots above for the remainder.\n",
+		                   reorderedFps);
 
 	GPU_FreeImage(bgImage);
 	GPU_FreeImage(textImage);

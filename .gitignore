@@ -8,6 +8,7 @@ thumbs.db
 Tools/nscdec/nscdec
 Tools/nscmake/nscmake
 CMakeLists.txt
+!/Tests/CMakeLists.txt
 /Makefile
 /ciout
 .gradle/
