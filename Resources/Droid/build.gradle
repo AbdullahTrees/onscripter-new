@@ -125,4 +125,54 @@ Or reuse a binary from a release APK - see Resources/Docs/Android.md,
     }
 }
 
-tasks.matching { it.name == 'preBuild' }.configureEach { dependsOn 'syncEngineLibs' }
+// ---------------------------------------------------------------------------
+// Staleness guard.
+//
+// Gradle does not compile the engine - there is no externalNativeBuild here, so
+// a C++ edit followed by Run in the IDE would silently package the previous
+// binary. Compare engine sources against the staged library and stop if they
+// are newer. Pass -PallowStaleEngine to skip (useful when only Java changed and
+// a source file was touched incidentally).
+// ---------------------------------------------------------------------------
+tasks.register('checkEngineFreshness') {
+    description = 'Fails if engine sources are newer than the staged native library.'
+    def srcRoots = ['Engine', 'Support', 'External'].collect { rootProject.file("../../$it") }
+    def outDir = rootProject.file('lib')
+    doLast {
+        if (project.hasProperty('allowStaleEngine')) {
+            logger.lifecycle('checkEngineFreshness: skipped (-PallowStaleEngine)')
+            return
+        }
+        def libs = outDir.isDirectory() ?
+            outDir.listFiles().collect { new File(it, 'libmain.so') }.findAll { it.isFile() } : []
+        if (libs.isEmpty()) {
+            return   // syncEngineLibs already reports a missing binary
+        }
+        def libStamp = libs.collect { it.lastModified() }.min()
+
+        File newest = null
+        srcRoots.each { root ->
+            if (root.isDirectory()) {
+                root.eachFileRecurse { f ->
+                    if (f.isFile() && f.name =~ /\.(cpp|hpp|cc|cxx|c|h)$/ &&
+                        (newest == null || f.lastModified() > newest.lastModified())) {
+                        newest = f
+                    }
+                }
+            }
+        }
+        if (newest != null && newest.lastModified() > libStamp) {
+            throw new GradleException("""Engine sources are newer than the built library.
+  Newest source : ${rootProject.relativePath(newest)}
+  Staged library: ${libs.first()}
+Gradle does not compile the engine. Rebuild it, then run again:
+  make -j\$(nproc)          # or ./configure --droid-build --droid-arch=arm64 first
+Pass -PallowStaleEngine to package the existing binary anyway.""")
+        }
+    }
+}
+
+tasks.matching { it.name == 'preBuild' }.configureEach {
+    dependsOn 'syncEngineLibs', 'checkEngineFreshness'
+}
+tasks.named('checkEngineFreshness') { mustRunAfter 'syncEngineLibs' }

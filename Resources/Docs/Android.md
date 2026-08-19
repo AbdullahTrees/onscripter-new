@@ -146,9 +146,18 @@ a Windows path. Large data sets transfer faster over MTP.
 
 ### Iteration loop
 
-- **Java change** — press Run. No native rebuild.
-- **C++ change** — re-run `make` in a terminal, then press Run. `syncEngineLibs`
-  notices the newer binary and restages it.
+**Gradle never compiles the engine.** There is no `externalNativeBuild` in the
+project and no C++ task of any kind, so pressing Run after editing engine
+sources would otherwise package the previous binary and silently omit the
+change. `checkEngineFreshness` guards against that: it compares the newest file
+under `Engine/`, `Support/` and `External/` against the staged library and fails
+the build if sources are newer.
+
+- **Java change** — press Run. No native rebuild needed.
+- **C++ change** — re-run `make` in a terminal *first*, then press Run.
+  `syncEngineLibs` notices the newer binary and restages it.
+- **Only touched a C++ file incidentally** — pass `-PallowStaleEngine` (or add it
+  to the run configuration) to package the existing binary anyway.
 - **Native breakpoints** — set the run configuration's debugger to **Dual**.
   Symbols come from the unstripped binary in `DerivedData`.
 
@@ -161,6 +170,7 @@ release packaging; it stages a copy of this same Gradle project under
 | Symptom | Cause and fix |
 | --- | --- |
 | Build fails in `:syncEngineLibs` with `No engine binary found` | No engine binary yet. Do step 1. |
+| Build fails in `:checkEngineFreshness` with `Engine sources are newer` | A C++ change has not been compiled. Run `make`, or `-PallowStaleEngine` to ignore. |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | An existing install was signed with a different key. `adb uninstall org.umineko_project.onscripter_ru` first. |
 | `Unable to strip the following libraries` | Benign. AGP has no NDK; the APK is packaged unstripped. |
 | `Invalid launch directory!` then exit | No game data at the scoped path. Do step 3. |
