@@ -72,3 +72,46 @@ androidComponents {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Android Studio support.
+//
+// The engine is built outside Gradle by ./configure --droid-build && make,
+// which drops a binary in DerivedData/Droid-<arch>/onscripter-new. Copy it into
+// jniLibs so this project can be opened, run and debugged directly from
+// Android Studio without going through Scripts/apkbuild.tool.
+//
+// This resolves correctly both in-tree (Resources/Droid) and from the staging
+// copy apkbuild.tool makes (DerivedData/Droid-package).
+// ---------------------------------------------------------------------------
+tasks.register('syncEngineLibs') {
+    description = 'Copies engine binaries built by configure/make into jniLibs.'
+    def derivedData = rootProject.file('../../DerivedData')
+    def outDir = rootProject.file('lib')
+    doLast {
+        def mapping = ['arm64-v8a': ['Droid-aarch64', 'Droid-arm64'],
+                       'x86_64'   : ['Droid-x86_64']]
+        def found = false
+        mapping.each { abi, dirs ->
+            for (d in dirs) {
+                def src = new File(derivedData, "$d/onscripter-new")
+                if (src.isFile()) {
+                    def dst = new File(outDir, "$abi/libmain.so")
+                    dst.parentFile.mkdirs()
+                    if (!dst.exists() || dst.lastModified() < src.lastModified()) {
+                        dst.bytes = src.bytes
+                        logger.lifecycle("engine: ${src} -> ${dst}")
+                    }
+                    found = true
+                    break
+                }
+            }
+        }
+        if (!found) {
+            logger.warn("syncEngineLibs: no engine binary under ${derivedData}. " +
+                        "Run ./configure --droid-build --droid-arch=arm64 && make first.")
+        }
+    }
+}
+
+tasks.matching { it.name == 'preBuild' }.configureEach { dependsOn 'syncEngineLibs' }

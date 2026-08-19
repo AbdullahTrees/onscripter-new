@@ -106,6 +106,8 @@ find_existing_ndk() {
     candidates+=(
         "/c/droid/ndk/$ndkfullver"
         "$HOME/Android/Sdk/ndk/$ndkfullver"
+        "$HOME/AppData/Local/Android/Sdk/ndk/$ndkfullver"
+        "$HOME/Library/Android/sdk/ndk/$ndkfullver"
         "$ndkpath/android-ndk-$ndkver"
     )
 

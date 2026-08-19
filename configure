@@ -621,7 +621,10 @@ case "$CXX_TMP:$SYS" in
     LINK_END_GROUP="-Wl,--end-group"
     EXTRACFLAGS="$EXTRACFLAGS -fPIC"
     EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DDROID"
-    EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -shared -static-libstdc++"
+    # -lmediandk provides AMediaCodec_*/AMediaFormat_*, referenced by FFmpeg's
+    # MediaCodec hwaccel. Nothing else propagates it, so without it libmain.so
+    # has ~20 undefined symbols and dlopen fails at launch.
+    EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -shared -static-libstdc++ -lmediandk"
   ;;
   *g++*:"MinGW")
     LINK_START_GROUP="-Wl,--start-group"

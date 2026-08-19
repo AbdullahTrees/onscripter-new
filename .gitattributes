@@ -33,3 +33,13 @@
 *.nsa binary
 *.ns2 binary
 *.sar binary
+
+# Shell scripts and the build driver must keep LF endings; MSYS/Android build
+# hosts cannot execute a CRLF shebang ("bad interpreter: /bin/bash^M").
+configure text eol=lf
+gradlew text eol=lf
+*.sh text eol=lf
+*.tool text eol=lf
+*.pkgbuild text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
