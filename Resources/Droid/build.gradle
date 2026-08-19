@@ -126,6 +126,77 @@ Or reuse a binary from a release APK - see Resources/Docs/Android.md,
 }
 
 // ---------------------------------------------------------------------------
+// Optional native build delegation.
+//
+// Gradle cannot build the engine itself - that is a 17-package source build
+// driven by configure/make. It can shell out to `make`, which is already
+// incremental: after the initial dependency build a single .cpp change takes
+// seconds, which makes IDE-driven C++ iteration practical.
+//
+// Off by default: the FIRST build takes hours and a Gradle task that long is
+// hostile inside an IDE. Enable per-invocation with -PbuildEngine, or
+// permanently with ons.buildEngine=true in gradle.properties.
+//
+// On Windows the build must run inside MSYS2 (UCRT64), per README.md - the
+// dependency recipes need its autotools, cmake, meson, ninja and nasm. We
+// invoke MSYS2's own bash so make and its shell come from one runtime; mixing
+// Git Bash with MSYS2 make loads two msys-2.0.dll copies and misbehaves.
+//
+// Requires ./configure --droid-build --droid-arch=<arch> to have been run once,
+// which is what generates the Makefile. Overrides: ons.msys2 (MSYS2 root),
+// ons.makeArgs (default -j<cpus>).
+// ---------------------------------------------------------------------------
+def engineBuildEnabled = project.hasProperty('buildEngine') ||
+    providers.gradleProperty('ons.buildEngine').getOrElse('false') == 'true'
+
+tasks.register('buildEngine', Exec) {
+    description = 'Runs make to (re)build the engine. Enable with -PbuildEngine.'
+    onlyIf { engineBuildEnabled }
+
+    def repoRoot = rootProject.file('../..')
+    def msys2Prop = providers.gradleProperty('ons.msys2').orNull
+    def makeArgs = providers.gradleProperty('ons.makeArgs')
+        .getOrElse("-j${Runtime.runtime.availableProcessors()}")
+    def onWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+
+    workingDir = repoRoot
+
+    doFirst {
+        if (!new File(repoRoot, 'Makefile').isFile()) {
+            throw new GradleException("""No Makefile at ${repoRoot}.
+configure generates it; run it once for the ABI you want, from an MSYS2 shell:
+  ./configure --droid-build --droid-arch=arm64""")
+        }
+
+        if (onWindows) {
+            def roots = []
+            if (msys2Prop) roots << msys2Prop
+            if (System.getenv('MSYS2_ROOT')) roots << System.getenv('MSYS2_ROOT')
+            roots += ['C:/msys64', 'C:/msys2', 'D:/msys64']
+            def msys2 = roots.find { new File(it, 'usr/bin/bash.exe').isFile() }
+            if (!msys2) {
+                throw new GradleException("""MSYS2 not found.
+The native build requires the MSYS2 UCRT64 environment (see README.md).
+Install it, or point at an existing install with -Pons.msys2=C:/msys64.""")
+            }
+            // C:\path\to\repo  ->  /c/path/to/repo
+            def wp = repoRoot.canonicalPath.replace(File.separatorChar, '/' as char)
+            def unix = '/' + wp[0].toLowerCase() + wp.substring(2)
+            environment 'MSYSTEM', 'UCRT64'
+            environment 'CHERE_INVOKING', '1'
+            commandLine "${msys2}/usr/bin/bash.exe", '-lc',
+                "cd '${unix}' && exec make ${makeArgs}"
+            logger.lifecycle("engine: MSYS2 ${msys2} (UCRT64) -> make ${makeArgs} in ${unix}")
+        } else {
+            commandLine 'make', *makeArgs.split(' ')
+            logger.lifecycle("engine: make ${makeArgs} in ${repoRoot}")
+        }
+    }
+}
+
+tasks.named('syncEngineLibs') { dependsOn 'buildEngine' }
+
+// ---------------------------------------------------------------------------
 // Staleness guard.
 //
 // Gradle does not compile the engine - there is no externalNativeBuild here, so

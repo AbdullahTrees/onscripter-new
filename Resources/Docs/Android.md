@@ -56,7 +56,20 @@ installs and then crashes on launch.
 | Android Studio, SDK platform 36, build-tools 36 | packaging, install, run, debug |
 | JDK 17+ | Android Studio's bundled JBR is fine |
 | NDK `29.0.14206865` | **only** to compile the engine |
-| MSYS2 (Windows) or a POSIX shell | the `configure`/`make` engine build |
+| MSYS2 UCRT64 (Windows) or a POSIX shell | the `configure`/`make` engine build |
+
+On Windows the engine build must run in the MSYS2 UCRT64 environment. A base
+MSYS2 install is not enough — the dependency recipes need its toolchain:
+
+```sh
+pacman -S --needed base-devel \
+  mingw-w64-ucrt-x86_64-toolchain \
+  mingw-w64-ucrt-x86_64-cmake \
+  mingw-w64-ucrt-x86_64-meson \
+  mingw-w64-ucrt-x86_64-ninja \
+  mingw-w64-ucrt-x86_64-nasm \
+  mingw-w64-ucrt-x86_64-pkgconf
+```
 
 Note the split: **Gradle never compiles the engine.** If a `libmain.so` already
 exists you can build, install and run the APK with no NDK at all — AGP wants it
@@ -158,6 +171,30 @@ the build if sources are newer.
   `syncEngineLibs` notices the newer binary and restages it.
 - **Only touched a C++ file incidentally** — pass `-PallowStaleEngine` (or add it
   to the run configuration) to package the existing binary anyway.
+
+#### Letting Gradle run make for you
+
+Gradle cannot *build* the engine, but it can shell out to `make`, which is
+already incremental — after the initial dependency build a single `.cpp` change
+takes seconds. Enable it with `-PbuildEngine`, or permanently:
+
+```properties
+# Resources/Droid/gradle.properties
+ons.buildEngine=true
+```
+
+Then Run in the IDE compiles C++ and packages in one step. It is **off by
+default** because the first build takes hours, and a Gradle task that long is
+hostile inside an IDE — run that one from a terminal.
+
+On Windows the task invokes MSYS2's own `bash` with `MSYSTEM=UCRT64`, because the
+dependency recipes need MSYS2's autotools, cmake, meson, ninja and nasm. It
+deliberately does not use Git Bash: mixing that with MSYS2's `make` loads two
+`msys-2.0.dll` copies and misbehaves. Overrides are `-Pons.msys2=<root>` and
+`-Pons.makeArgs=-j8`.
+
+It still requires `configure` to have been run once, since that is what generates
+the Makefile.
 - **Native breakpoints** — set the run configuration's debugger to **Dual**.
   Symbols come from the unstripped binary in `DerivedData`.
 

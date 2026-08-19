@@ -14,6 +14,48 @@ Umineko Project installation.
 
 [**Download the latest release**](https://github.com/timftw21/onscripter-new/releases/latest)
 
+## Contents
+
+- [Building from source](#building-from-source)
+- [Why use onscripter-new?](#why-use-onscripter-new)
+- [How is it different from ONScripter-RU?](#how-is-it-different-from-onscripter-ru)
+- [Installation](#installation)
+  - [Windows](#windows)
+  - [Android](#android)
+  - [Verifying downloads](#verifying-downloads)
+- [Saves and compatibility](#saves-and-compatibility)
+- [Credits](#credits)
+
+## Building from source
+
+Most players should use the release packages. For contributors and platform
+maintainers, install a C++23 compiler, GNU Make, CMake, Meson, Ninja, NASM,
+`pkg-config`, and the normal POSIX build utilities. On Windows, use the MSYS2
+UCRT64 environment. A normal host build is:
+
+```sh
+./configure --release-build --std=gnu++23
+make -j8
+```
+
+Android has its own build, run and debug guide, including the Android Studio
+workflow: [Resources/Docs/Android.md](Resources/Docs/Android.md).
+
+The maintained platform notes and exact Windows prerequisites live in
+[Resources/Docs/ProjectStatus.md](Resources/Docs/ProjectStatus.md).
+
+Security-sensitive native tests are independent of copyrighted game data:
+
+```sh
+cmake -S Tests -B DerivedData/tests -G Ninja
+cmake --build DerivedData/tests
+ctest --test-dir DerivedData/tests --output-on-failure
+```
+
+See [Tests/README.md](Tests/README.md) for sanitizer and fuzzing options and
+[SECURITY.md](SECURITY.md) for the vulnerability-reporting and trust-boundary
+policy.
+
 ## Why use onscripter-new?
 
 - Smoother animation and rain effects, especially on high-refresh displays.
@@ -91,33 +133,6 @@ is recommended.
 This fork deliberately favors Umineko Project over compatibility with unrelated
 ONScripter games. For other titles, use ONScripter-RU or the engine recommended
 by that project.
-
-## Building from source
-
-Most players should use the release packages. For contributors and platform
-maintainers, install a C++23 compiler, GNU Make, CMake, Meson, Ninja, NASM,
-`pkg-config`, and the normal POSIX build utilities. On Windows, use the MSYS2
-UCRT64 environment. A normal host build is:
-
-```sh
-./configure --release-build --std=gnu++23
-make -j8
-```
-
-The maintained platform notes and exact Windows prerequisites live in
-[Resources/Docs/ProjectStatus.md](Resources/Docs/ProjectStatus.md).
-
-Security-sensitive native tests are independent of copyrighted game data:
-
-```sh
-cmake -S Tests -B DerivedData/tests -G Ninja
-cmake --build DerivedData/tests
-ctest --test-dir DerivedData/tests --output-on-failure
-```
-
-See [Tests/README.md](Tests/README.md) for sanitizer and fuzzing options and
-[SECURITY.md](SECURITY.md) for the vulnerability-reporting and trust-boundary
-policy.
 
 ## Credits
 
