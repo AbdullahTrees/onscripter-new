@@ -274,6 +274,16 @@ while getopts O:defphilm:a:o:r:b:c:g: o; do
             # that discovery, so Android-Initialize.cmake falls back to the
             # pre-r19 layout <ndk>/platforms/android-N/arch-* and aborts. Locate
             # the real sysroot and pass it explicitly.
+            # CMake appends the API level to the target triple only when it
+            # performed its own NDK discovery (CMAKE_ANDROID_NDK_TOOLCHAIN_UNIFIED).
+            # We pass an explicit compiler, so it emits a bare
+            # aarch64-none-linux-android and clang cannot find crtbegin_dynamic.o
+            # when linking executables. Android-Clang.cmake honours a
+            # pre-set CMAKE_<LANG>_COMPILER_TARGET, so supply the full triple.
+            ANDROID_TARGET_CMAKE=""
+            if [ "$CROSS_TRIPLE" != "" ] && [ "$ANDROID_API" != "" ]; then
+                ANDROID_TARGET_CMAKE="${CROSS_TRIPLE}${ANDROID_API}"
+            fi
             ANDROID_SYSROOT_CMAKE=""
             if [ "$ANDROID_NDK_ROOT" != "" ]; then
                 for _h in windows-x86_64 linux-x86_64 darwin-x86_64 darwin-arm64; do
@@ -307,7 +317,7 @@ while getopts O:defphilm:a:o:r:b:c:g: o; do
             CMAKE_NM="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-nm${TOOL_SUFFIX}"
             CMAKE_OBJCOPY="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-objcopy${TOOL_SUFFIX}"
             CMAKE_OBJDUMP="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-objdump${TOOL_SUFFIX}"
-            export ANDROID_API ANDROID_ABI ANDROID_NDK_ROOT ANDROID_NDK_ROOT_CMAKE ANDROID_SYSROOT_CMAKE
+            export ANDROID_API ANDROID_ABI ANDROID_NDK_ROOT ANDROID_NDK_ROOT_CMAKE ANDROID_SYSROOT_CMAKE ANDROID_TARGET_CMAKE
             export CMAKE_CC CMAKE_CXX CMAKE_AR CMAKE_RANLIB CMAKE_STRIP CMAKE_NM CMAKE_OBJCOPY CMAKE_OBJDUMP
             ;;
         o)
