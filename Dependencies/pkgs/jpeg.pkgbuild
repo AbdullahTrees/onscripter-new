@@ -14,6 +14,11 @@ cmakeopts=(
     '-DWITH_JPEG8=ON'
     '-DWITH_TURBOJPEG=OFF'
     '-DWITH_JAVA=OFF'
+    # Only libjpeg.a and its headers are consumed. The test programs and CLI
+    # tools are not, and bmpsizetest.c fails to cross-compile for Android
+    # (implicit fmemopen declaration), so building them is pure risk.
+    '-DWITH_TESTS=OFF'
+    '-DWITH_TOOLS=OFF'
 )
 
 cmake_command() {
