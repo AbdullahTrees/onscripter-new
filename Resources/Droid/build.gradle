@@ -107,9 +107,20 @@ tasks.register('syncEngineLibs') {
                 }
             }
         }
-        if (!found) {
-            logger.warn("syncEngineLibs: no engine binary under ${derivedData}. " +
-                        "Run ./configure --droid-build --droid-arch=arm64 && make first.")
+        // Fail rather than silently packaging an APK with no native library,
+        // which installs and then crashes on launch. Scripts/apkbuild.tool
+        // populates lib/ itself before invoking Gradle, so only error when
+        // nothing is available from either source.
+        def prestaged = outDir.isDirectory() &&
+            outDir.listFiles().any { new File(it, 'libmain.so').isFile() }
+        if (!found && !prestaged) {
+            throw new GradleException("""No engine binary found.
+  Looked in : ${derivedData}/Droid-{aarch64,arm64,x86_64}/onscripter-new
+  Prestaged : ${outDir}/<abi>/libmain.so
+Build the engine first:
+  ./configure --droid-build --droid-arch=arm64 && make
+Or reuse a binary from a release APK - see Resources/Docs/Android.md,
+"Step 1 - obtain an engine binary".""")
         }
     }
 }
