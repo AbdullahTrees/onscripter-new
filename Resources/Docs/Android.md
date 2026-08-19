@@ -6,6 +6,219 @@ the contracts between them, and the environment the build assumes.
 This documents current architecture, not change history — for what changed and
 when, read the git log.
 
+## Contents
+
+- [Building and testing with Android Studio](#building-and-testing-with-android-studio)
+  - [Prerequisites](#prerequisites)
+  - [Step 1 — obtain an engine binary](#step-1--obtain-an-engine-binary)
+  - [Step 2 — open and run](#step-2--open-and-run)
+  - [Step 3 — supply game data](#step-3--supply-game-data)
+  - [Iteration loop](#iteration-loop)
+  - [Troubleshooting](#troubleshooting)
+- [Build pipeline](#build-pipeline)
+  - [Why the first build is slow](#why-the-first-build-is-slow)
+- [Build environment](#build-environment)
+  - [Line endings](#line-endings)
+  - [NDK discovery](#ndk-discovery)
+- [Supported target](#supported-target)
+- [Native architecture](#native-architecture)
+- [Java to native contract](#java-to-native-contract)
+  - [The Java layer is not a launcher](#the-java-layer-is-not-a-launcher)
+  - [SDL version lock](#sdl-version-lock)
+  - [How complete the SDL3 port is](#how-complete-the-sdl3-port-is)
+  - [Why paths are passed as arguments, not environment variables](#why-paths-are-passed-as-arguments-not-environment-variables)
+- [Storage model](#storage-model)
+- [Android-specific code](#android-specific-code)
+  - [Tier 1 — wholly Android-only](#tier-1--wholly-android-only)
+  - [Tier 2 — shared files with Android-only regions](#tier-2--shared-files-with-android-only-regions)
+  - [Tier 3 — do not touch for Android work](#tier-3--do-not-touch-for-android-work)
+- [Debugging](#debugging)
+  - [Log tags](#log-tags)
+  - [Always force-stop between launches](#always-force-stop-between-launches)
+  - [Test a Java-only change without a native rebuild](#test-a-java-only-change-without-a-native-rebuild)
+  - [Test a link-flag change without relinking](#test-a-link-flag-change-without-relinking)
+- [Known gaps](#known-gaps)
+
+## Building and testing with Android Studio
+
+`Resources/Droid` is a complete Gradle project — own `settings.gradle`, wrapper
+and namespace — but it is **not hermetic and not buildable from a bare clone**.
+It reaches outside itself into `../../DerivedData` for the engine binary, and
+that binary is never committed. A fresh clone therefore has no `libmain.so` and
+`syncEngineLibs` fails the build until step 1 is done. That failure is
+deliberate: warning instead would produce an APK with no native library, which
+installs and then crashes on launch.
+
+### Prerequisites
+
+| Component | Needed for |
+| --- | --- |
+| Android Studio, SDK platform 36, build-tools 36 | packaging, install, run, debug |
+| JDK 17+ | Android Studio's bundled JBR is fine |
+| NDK `29.0.14206865` | **only** to compile the engine |
+| MSYS2 (Windows) or a POSIX shell | the `configure`/`make` engine build |
+
+Note the split: **Gradle never compiles the engine.** If a `libmain.so` already
+exists you can build, install and run the APK with no NDK at all — AGP wants it
+only to strip symbols, and that degrades to a warning:
+
+```
+Unable to strip the following libraries, packaging them as they are: libmain.so
+```
+
+The APK is simply packaged unstripped, which is fine for development.
+
+### Step 1 — obtain an engine binary
+
+`syncEngineLibs` in `build.gradle` copies `DerivedData/Droid-<arch>/onscripter-new`
+into `lib/<abi>/libmain.so` before every Gradle build. There are two ways to
+produce that file.
+
+**Path A — build from source.** Authoritative, and required for any C++ or
+link-flag change.
+
+```sh
+export ANDROID_SDK_ROOT="$HOME/AppData/Local/Android/Sdk"   # Windows
+./configure --droid-build --droid-arch=arm64
+make -j$(nproc)
+```
+
+The first run compiles 17 dependencies from source — see *Why the first build is
+slow*. Later runs reuse the `.pkgs` stamps and only recompile engine code.
+
+**Path B — reuse a released binary.** Fast, and sufficient for all Java-side
+work.
+
+Because everything is statically linked into `libmain.so` (see *Native
+architecture*), a binary from any release is self-contained and can be dropped
+straight into `DerivedData`:
+
+```sh
+# from a connected device, or just unzip a downloaded release APK
+adb pull "$(adb shell pm path org.umineko_project.onscripter_ru | sed 's/package://')" base.apk
+unzip -q base.apk -d apkx
+mkdir -p DerivedData/Droid-aarch64
+cp apkx/lib/arm64-v8a/libmain.so DerivedData/Droid-aarch64/onscripter-new
+```
+
+This skips hours of dependency compilation. Understand what it is not: the
+binary embeds whatever engine sources that release was cut from, so it cannot
+validate C++ or link changes, and the next `make` overwrites it. If the release
+predates a link fix you need, patch its `DT_NEEDED` first — see *Test a
+link-flag change without relinking*.
+
+Engine binaries are deliberately **not** committed to the repository. They are
+12 MB each, change on every build, would bloat history permanently, and — worst
+— a stale checked-in binary silently masks source changes. Path B gets the same
+speed from an artifact that is already published and versioned.
+
+### Step 2 — open and run
+
+Open **`Resources/Droid`** as the project. Not the repository root; that is not
+a Gradle project.
+
+Android Studio writes `local.properties` on first sync, or create it manually:
+
+```
+sdk.dir=C:/Users/<you>/AppData/Local/Android/Sdk
+```
+
+Then select a device and press **Run**. The command-line equivalent is:
+
+```sh
+cd Resources/Droid
+./gradlew assembleDebug
+adb install -r build/outputs/apk/debug/onscripter-new-debug.apk
+```
+
+### Step 3 — supply game data
+
+The engine exits immediately without it. Push a legally obtained Umineko
+Project installation to the app-scoped directory:
+
+```sh
+MSYS_NO_PATHCONV=1 adb push <game-dir>/. \
+  /sdcard/Android/data/org.umineko_project.onscripter_ru/files/ONScripter-RU/
+```
+
+`MSYS_NO_PATHCONV=1` is required on Windows or the destination is rewritten as
+a Windows path. Large data sets transfer faster over MTP.
+
+### Iteration loop
+
+- **Java change** — press Run. No native rebuild.
+- **C++ change** — re-run `make` in a terminal, then press Run. `syncEngineLibs`
+  notices the newer binary and restages it.
+- **Native breakpoints** — set the run configuration's debugger to **Dual**.
+  Symbols come from the unstripped binary in `DerivedData`.
+
+`Scripts/apkbuild.tool` remains the path for reproducible command-line and
+release packaging; it stages a copy of this same Gradle project under
+`DerivedData/Droid-package`.
+
+### Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| Build fails in `:syncEngineLibs` with `No engine binary found` | No engine binary yet. Do step 1. |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | An existing install was signed with a different key. `adb uninstall org.umineko_project.onscripter_ru` first. |
+| `Unable to strip the following libraries` | Benign. AGP has no NDK; the APK is packaged unstripped. |
+| `Invalid launch directory!` then exit | No game data at the scoped path. Do step 3. |
+| `UnsatisfiedLinkError` on a `native` method | The library failed to load entirely. Read the `dlopen failed:` line from `nativeloader`, not the stack trace. |
+| App resumes instead of restarting | Force-stop first; the engine aborts on a reused pid. |
+
+## Build pipeline
+
+```
+Scripts/ndktoolchain.sh    → wrapper toolchains under DerivedData/ndk/toolchain-<arch>
+./configure --droid-build --droid-arch=arm64
+make                       → DerivedData/Droid-aarch64/onscripter-new
+make apk                   → Scripts/apkbuild.tool → Gradle → onscripter-new.apk
+```
+
+`Scripts/quickdroid.tool [--release|--debug]` runs the whole ABI matrix.
+
+### Why the first build is slow
+
+`make` builds **17 dependencies from source** before it touches engine code, once
+per ABI. The bottleneck is not compilation — that is parallel at `-j$(nproc)` —
+but the autotools `configure` scripts, which are strictly serial and spawn one
+compiler process per feature probe (FFmpeg's runs on the order of a thousand).
+MSYS emulates `fork()`, making process creation 10–50x more expensive than on
+Linux, so the serial probe phase dominates wall clock. The project's own CI
+budgets 90 minutes for a single Windows target.
+
+Completed packages are stamped in `DerivedData/onscrlib/.pkgs/<name>` with
+`pkgver-pkgrel` and skipped on later runs, so the cost is paid once. Building
+only `arm64` roughly halves it; `x86_64` is emulator-only.
+
+No prebuilt dependency bundles are published — `onscrlib` is only a meta-package
+listing dependencies, and releases ship just the APK and a Windows zip. The
+dependency build can still be skipped entirely for Java-side work by reusing the
+already-linked `libmain.so` from a release APK; see *Step 1 — obtain an engine
+binary*.
+
+## Build environment
+
+### Line endings
+
+`.gitattributes` pins `configure`, `gradlew`, `*.sh`, `*.tool` and `*.pkgbuild`
+to `eol=lf`. Without this, a Windows clone with `core.autocrlf=true` produces
+CRLF shebangs that MSYS bash refuses (`bad interpreter: /bin/bash^M`). A clone
+predating those rules needs `git add --renormalize .` once.
+
+### NDK discovery
+
+`Scripts/ndktoolchain.sh` looks for NDK `29.0.14206865` in `ANDROID_NDK_HOME`,
+`ANDROID_NDK_ROOT`, `$ANDROID_SDK_ROOT/ndk/`, `$ANDROID_HOME/ndk/`, then the
+default SDK locations for Windows, macOS and Linux. If none match it downloads
+its own copy into `DerivedData/ndk`. Setting `ANDROID_SDK_ROOT` avoids a
+redundant multi-gigabyte download when Android Studio already has the NDK.
+
+It generates thin wrapper scripts (`clang`, `clang++`, plus `.cmd` variants on
+Windows) pinning `--target=<abi><api>`, rather than using the removed
+`make_standalone_toolchain.py`.
+
 ## Supported target
 
 Defined in `Resources/Droid/build.gradle` and `Scripts/ndktoolchain.sh`:
@@ -200,186 +413,6 @@ Build files with Android-only regions: the `*clang*:"Droid")` branch of
 
 Everything else, including the rest of `Engine/`, `Engine/Graphics/SDL3GPU*`,
 `Tests/`, `Resources/Windows/` and `Support/Apple/`.
-
-## Build pipeline
-
-```
-Scripts/ndktoolchain.sh    → wrapper toolchains under DerivedData/ndk/toolchain-<arch>
-./configure --droid-build --droid-arch=arm64
-make                       → DerivedData/Droid-aarch64/onscripter-new
-make apk                   → Scripts/apkbuild.tool → Gradle → onscripter-new.apk
-```
-
-`Scripts/quickdroid.tool [--release|--debug]` runs the whole ABI matrix.
-
-### Why the first build is slow
-
-`make` builds **17 dependencies from source** before it touches engine code, once
-per ABI. The bottleneck is not compilation — that is parallel at `-j$(nproc)` —
-but the autotools `configure` scripts, which are strictly serial and spawn one
-compiler process per feature probe (FFmpeg's runs on the order of a thousand).
-MSYS emulates `fork()`, making process creation 10–50x more expensive than on
-Linux, so the serial probe phase dominates wall clock. The project's own CI
-budgets 90 minutes for a single Windows target.
-
-Completed packages are stamped in `DerivedData/onscrlib/.pkgs/<name>` with
-`pkgver-pkgrel` and skipped on later runs, so the cost is paid once. Building
-only `arm64` roughly halves it; `x86_64` is emulator-only.
-
-No prebuilt dependency bundles are published — `onscrlib` is only a meta-package
-listing dependencies, and releases ship just the APK and a Windows zip. The
-dependency build can still be skipped entirely for Java-side work by reusing the
-already-linked `libmain.so` from a release APK; see *Step 1 — obtain an engine
-binary*.
-
-## Build environment
-
-### Line endings
-
-`.gitattributes` pins `configure`, `gradlew`, `*.sh`, `*.tool` and `*.pkgbuild`
-to `eol=lf`. Without this, a Windows clone with `core.autocrlf=true` produces
-CRLF shebangs that MSYS bash refuses (`bad interpreter: /bin/bash^M`). A clone
-predating those rules needs `git add --renormalize .` once.
-
-### NDK discovery
-
-`Scripts/ndktoolchain.sh` looks for NDK `29.0.14206865` in `ANDROID_NDK_HOME`,
-`ANDROID_NDK_ROOT`, `$ANDROID_SDK_ROOT/ndk/`, `$ANDROID_HOME/ndk/`, then the
-default SDK locations for Windows, macOS and Linux. If none match it downloads
-its own copy into `DerivedData/ndk`. Setting `ANDROID_SDK_ROOT` avoids a
-redundant multi-gigabyte download when Android Studio already has the NDK.
-
-It generates thin wrapper scripts (`clang`, `clang++`, plus `.cmd` variants on
-Windows) pinning `--target=<abi><api>`, rather than using the removed
-`make_standalone_toolchain.py`.
-
-## Building and testing with Android Studio
-
-`Resources/Droid` is a complete Gradle project — own `settings.gradle`, wrapper
-and namespace — but it is **not hermetic and not buildable from a bare clone**.
-It reaches outside itself into `../../DerivedData` for the engine binary, and
-that binary is never committed. A fresh clone therefore has no `libmain.so` and
-`syncEngineLibs` fails the build until step 1 is done. That failure is
-deliberate: warning instead would produce an APK with no native library, which
-installs and then crashes on launch.
-
-### Prerequisites
-
-| Component | Needed for |
-| --- | --- |
-| Android Studio, SDK platform 36, build-tools 36 | packaging, install, run, debug |
-| JDK 17+ | Android Studio's bundled JBR is fine |
-| NDK `29.0.14206865` | **only** to compile the engine |
-| MSYS2 (Windows) or a POSIX shell | the `configure`/`make` engine build |
-
-Note the split: **Gradle never compiles the engine.** If a `libmain.so` already
-exists you can build, install and run the APK with no NDK at all — AGP wants it
-only to strip symbols, and that degrades to a warning:
-
-```
-Unable to strip the following libraries, packaging them as they are: libmain.so
-```
-
-The APK is simply packaged unstripped, which is fine for development.
-
-### Step 1 — obtain an engine binary
-
-`syncEngineLibs` in `build.gradle` copies `DerivedData/Droid-<arch>/onscripter-new`
-into `lib/<abi>/libmain.so` before every Gradle build. There are two ways to
-produce that file.
-
-**Path A — build from source.** Authoritative, and required for any C++ or
-link-flag change.
-
-```sh
-export ANDROID_SDK_ROOT="$HOME/AppData/Local/Android/Sdk"   # Windows
-./configure --droid-build --droid-arch=arm64
-make -j$(nproc)
-```
-
-The first run compiles 17 dependencies from source — see *Why the first build is
-slow*. Later runs reuse the `.pkgs` stamps and only recompile engine code.
-
-**Path B — reuse a released binary.** Fast, and sufficient for all Java-side
-work.
-
-Because everything is statically linked into `libmain.so` (see *Native
-architecture*), a binary from any release is self-contained and can be dropped
-straight into `DerivedData`:
-
-```sh
-# from a connected device, or just unzip a downloaded release APK
-adb pull "$(adb shell pm path org.umineko_project.onscripter_ru | sed 's/package://')" base.apk
-unzip -q base.apk -d apkx
-mkdir -p DerivedData/Droid-aarch64
-cp apkx/lib/arm64-v8a/libmain.so DerivedData/Droid-aarch64/onscripter-new
-```
-
-This skips hours of dependency compilation. Understand what it is not: the
-binary embeds whatever engine sources that release was cut from, so it cannot
-validate C++ or link changes, and the next `make` overwrites it. If the release
-predates a link fix you need, patch its `DT_NEEDED` first — see *Test a
-link-flag change without relinking*.
-
-Engine binaries are deliberately **not** committed to the repository. They are
-12 MB each, change on every build, would bloat history permanently, and — worst
-— a stale checked-in binary silently masks source changes. Path B gets the same
-speed from an artifact that is already published and versioned.
-
-### Step 2 — open and run
-
-Open **`Resources/Droid`** as the project. Not the repository root; that is not
-a Gradle project.
-
-Android Studio writes `local.properties` on first sync, or create it manually:
-
-```
-sdk.dir=C:/Users/<you>/AppData/Local/Android/Sdk
-```
-
-Then select a device and press **Run**. The command-line equivalent is:
-
-```sh
-cd Resources/Droid
-./gradlew assembleDebug
-adb install -r build/outputs/apk/debug/onscripter-new-debug.apk
-```
-
-### Step 3 — supply game data
-
-The engine exits immediately without it. Push a legally obtained Umineko
-Project installation to the app-scoped directory:
-
-```sh
-MSYS_NO_PATHCONV=1 adb push <game-dir>/. \
-  /sdcard/Android/data/org.umineko_project.onscripter_ru/files/ONScripter-RU/
-```
-
-`MSYS_NO_PATHCONV=1` is required on Windows or the destination is rewritten as
-a Windows path. Large data sets transfer faster over MTP.
-
-### Iteration loop
-
-- **Java change** — press Run. No native rebuild.
-- **C++ change** — re-run `make` in a terminal, then press Run. `syncEngineLibs`
-  notices the newer binary and restages it.
-- **Native breakpoints** — set the run configuration's debugger to **Dual**.
-  Symbols come from the unstripped binary in `DerivedData`.
-
-`Scripts/apkbuild.tool` remains the path for reproducible command-line and
-release packaging; it stages a copy of this same Gradle project under
-`DerivedData/Droid-package`.
-
-### Troubleshooting
-
-| Symptom | Cause and fix |
-| --- | --- |
-| Build fails in `:syncEngineLibs` with `No engine binary found` | No engine binary yet. Do step 1. |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | An existing install was signed with a different key. `adb uninstall org.umineko_project.onscripter_ru` first. |
-| `Unable to strip the following libraries` | Benign. AGP has no NDK; the APK is packaged unstripped. |
-| `Invalid launch directory!` then exit | No game data at the scoped path. Do step 3. |
-| `UnsatisfiedLinkError` on a `native` method | The library failed to load entirely. Read the `dlopen failed:` line from `nativeloader`, not the stack trace. |
-| App resumes instead of restarting | Force-stop first; the engine aborts on a reused pid. |
 
 ## Debugging
 
