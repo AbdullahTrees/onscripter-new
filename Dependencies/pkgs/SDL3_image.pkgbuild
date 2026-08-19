@@ -100,6 +100,7 @@ configure() {
             "-DCMAKE_SYSTEM_NAME=Android"
             "-DCMAKE_SYSTEM_VERSION=${ANDROID_API:-34}"
             "-DCMAKE_ANDROID_ARCH_ABI=$ANDROID_ABI"
+            "-DCMAKE_SYSROOT=$ANDROID_SYSROOT_CMAKE"
             "-DSDL3_DIR=$cmake_outdir/lib/cmake/SDL3"
             "-DJPEG_LIBRARY=$cmake_outdir/lib/libjpeg.a"
             "-DJPEG_INCLUDE_DIR=$cmake_outdir/include"

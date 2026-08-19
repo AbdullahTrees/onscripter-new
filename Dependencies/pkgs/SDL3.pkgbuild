@@ -88,6 +88,7 @@ configure() {
             "-DCMAKE_SYSTEM_NAME=Android"
             "-DCMAKE_SYSTEM_VERSION=${ANDROID_API:-34}"
             "-DCMAKE_ANDROID_ARCH_ABI=$ANDROID_ABI"
+            "-DCMAKE_SYSROOT=$ANDROID_SYSROOT_CMAKE"
         )
         [ "$ANDROID_NDK_ROOT_CMAKE" != "" ] && cmake_tool_opts+=("-DCMAKE_ANDROID_NDK=$ANDROID_NDK_ROOT_CMAKE")
     fi
