@@ -62,6 +62,70 @@ overrides are load-bearing; removing any of them breaks startup.
 | `getMainFunction()` | `"main"` | Engine exports `main`, not `SDL_main` |
 | `getArguments()` | `{"--root", <scoped path>}` | Points the engine at app-scoped storage |
 
+### The Java layer is not a launcher
+
+It is tempting to read `SDLActivity` as a thin shim that opens a native
+application. It is not. Android exposes no way for native code to obtain a
+window, input events or an audio device on its own, so the Java side owns all of
+it and bridges back over JNI. Current size:
+
+| File | Lines | Native methods |
+| --- | --- | --- |
+| `SDLActivity.java` | 2240 | 56 |
+| `SDLControllerManager.java` | 1010 | 10 |
+| `HIDDeviceBLESteamController.java` | 829 | 1 |
+| `HIDDeviceManager.java` | 698 | 8 |
+| `SDLSurface.java` | 464 | 0 |
+| `HIDDeviceUSB.java` | 354 | 0 |
+| `SDLInputConnection.java` | 135 | 2 |
+| `SDLAudioManager.java` | 126 | 3 |
+| `SDL.java` | 90 | 2 |
+| `ONSActivity.java` | 81 | 1 |
+| `SDLDummyEdit.java` | 65 | 0 |
+| `SDLSensorManager.java` | 31 | 0 |
+| `HIDDevice.java` | 21 | 0 |
+
+That is ~6100 lines and 82 native entry points covering the rendering surface,
+touch/key/mouse/gamepad input, sensors, IME and soft keyboard, audio device
+lifecycle, USB and Bluetooth HID, clipboard, permissions, and translation of the
+activity lifecycle into SDL events. Treat it as a port layer, not glue.
+
+Only `ONSActivity.java` is project code. The rest are vendored SDL3 sources and
+should be replaced wholesale on an SDL upgrade rather than edited.
+
+### SDL version lock
+
+There is no separate SDL3 runtime — it is compiled into `libmain.so` — and the
+vendored Java sources are pinned to the exact version they came from.
+`SDLActivity.java` hardcodes the expected version and verifies it at startup:
+
+```java
+private static final int SDL_MAJOR_VERSION = 3;
+private static final int SDL_MINOR_VERSION = 4;
+private static final int SDL_MICRO_VERSION = 10;
+...
+String version = nativeGetVersion();
+if (!version.equals(expected_version))
+    errorMsgBrokenLib = "SDL C/Java version mismatch (expected ..., got ...)";
+```
+
+Those constants must match `pkgver` in `Dependencies/pkgs/SDL3.pkgbuild`
+(currently `3.4.10`). Bumping SDL3 therefore means re-vendoring the Java sources
+from the matching SDL release and updating these constants, or the app refuses
+to start with a mismatch dialog.
+
+### How complete the SDL3 port is
+
+The renderer is a genuine full port: the third-party SDL_gpu dependency was
+removed and replaced with SDL3's native `SDL_GPU` API plus precompiled
+SPIR-V/DXIL/MSL shaders under `Engine/Graphics/SDL3GPUShaders/`.
+
+Elsewhere, SDL2 assumptions survive in places and are worth suspecting first when
+Android startup misbehaves. Two known examples, both of which prevented launch:
+the engine declares a plain `main` with no `SDL_main.h` (SDL2 supplied the
+`SDL_main` alias via macro), and the storage code assumed `nativeSetenv` writes
+to libc's `environ` (see below).
+
 ### Why paths are passed as arguments, not environment variables
 
 Under SDL2, `SDLActivity.nativeSetenv` wrapped POSIX `setenv()`. Under **SDL3 it
@@ -95,6 +159,11 @@ On Android 13+ that path is unreachable from most on-device file managers; use
 `adb push` or MTP. Saves live in a `SaveData` subdirectory of the launch dir.
 
 ## Android-specific code
+
+Android work is not confined to `Resources/Droid`. It spans that directory, the
+`Support/Droid` sources, `#if defined(DROID)` regions inside otherwise shared
+files, and the Droid branch of `configure` — link flags in particular live there,
+not in the Gradle project.
 
 Work on this target should stay inside tiers 1 and 2.
 
@@ -185,6 +254,14 @@ Windows) pinning `--target=<abi><api>`, rather than using the removed
 `make_standalone_toolchain.py`.
 
 ## Building and testing with Android Studio
+
+`Resources/Droid` is a complete Gradle project — own `settings.gradle`, wrapper
+and namespace — but it is **not hermetic and not buildable from a bare clone**.
+It reaches outside itself into `../../DerivedData` for the engine binary, and
+that binary is never committed. A fresh clone therefore has no `libmain.so` and
+`syncEngineLibs` fails the build until step 1 is done. That failure is
+deliberate: warning instead would produce an APK with no native library, which
+installs and then crashes on launch.
 
 ### Prerequisites
 
@@ -297,7 +374,7 @@ release packaging; it stages a copy of this same Gradle project under
 
 | Symptom | Cause and fix |
 | --- | --- |
-| `syncEngineLibs: no engine binary under ...` | No engine built yet. Do step 1. |
+| Build fails in `:syncEngineLibs` with `No engine binary found` | No engine binary yet. Do step 1. |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | An existing install was signed with a different key. `adb uninstall org.umineko_project.onscripter_ru` first. |
 | `Unable to strip the following libraries` | Benign. AGP has no NDK; the APK is packaged unstripped. |
 | `Invalid launch directory!` then exit | No game data at the scoped path. Do step 3. |
