@@ -254,6 +254,25 @@ to `eol=lf`. Without this, a Windows clone with `core.autocrlf=true` produces
 CRLF shebangs that MSYS bash refuses (`bad interpreter: /bin/bash^M`). A clone
 predating those rules needs `git add --renormalize .` once.
 
+### Gradle wrapper provenance
+
+`gradle/wrapper/gradle-wrapper.jar` is an executable committed to the repository,
+so it is a supply-chain surface. It is generated from the pinned distribution and
+should be regenerated, never hand-copied:
+
+```sh
+cd Resources/Droid
+./gradlew wrapper --gradle-version <ver> --gradle-distribution-sha256-sum <sha>
+```
+
+`gradle-wrapper.properties` pins `distributionSha256Sum`, which the wrapper
+verifies before unpacking, and sets `validateDistributionUrl=true`. Verify the
+pin matches the cached download with
+`sha256sum ~/.gradle/wrapper/dists/gradle-*/*/gradle-*-bin.zip`.
+
+Adding `gradle/actions/wrapper-validation` to CI would check the jar against
+Gradle's published known-good checksums on every push.
+
 ### NDK discovery
 
 `Scripts/ndktoolchain.sh` looks for NDK `29.0.14206865` in `ANDROID_NDK_HOME`,
