@@ -254,6 +254,42 @@ to `eol=lf`. Without this, a Windows clone with `core.autocrlf=true` produces
 CRLF shebangs that MSYS bash refuses (`bad interpreter: /bin/bash^M`). A clone
 predating those rules needs `git add --renormalize .` once.
 
+### Windows pitfalls
+
+Three environment problems cause failures that look like something else. All
+three were hit on a clean machine.
+
+**Run inside MSYS2 with a clean PATH.** If Git for Windows' `usr/bin` precedes
+MSYS2's on PATH, `configure` picks up Git's `expr`, which mangles the
+backslashes in a BRE when invoked from an MSYS2 process. `expr` then returns `0`
+instead of the matched value, so `--droid-arch=arm64` is parsed as arch `0`:
+
+```
+Error: unsupported droid arch '0'.
+```
+
+Launch with `MSYS2_PATH_TYPE=strict` so the Windows PATH is not inherited, or use
+a real MSYS2 shell. `configure` no longer uses `expr` for this, but other scripts
+may still be affected, so a clean PATH remains the rule.
+
+**Do not extract the NDK with Info-ZIP `unzip`.** UnZip 6.00 silently applies
+LF-to-CRLF translation to the NDK's executables. `clang.exe` comes out ~300 KB
+larger than the archive records and Windows refuses to load it:
+
+```
+cannot execute binary file: Exec format error      # from a shell
+This app can't run on your PC                      # from Explorer
+```
+
+The `MZ` header and `file` output still look valid, so it reads as a wrong
+architecture or permissions problem rather than corruption. Compare the extracted
+size against `unzip -l` to confirm. `ndktoolchain.sh` now prefers `bsdtar`, which
+is correct and roughly an order of magnitude faster.
+
+**Pass an absolute path to `ndktoolchain.sh`.** The generated wrappers embed the
+path they were given, so a relative one yields wrappers that only resolve from
+one directory. The script now absolutises its argument.
+
 ### Gradle wrapper provenance
 
 `gradle/wrapper/gradle-wrapper.jar` is an executable committed to the repository,

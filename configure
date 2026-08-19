@@ -142,7 +142,15 @@ do
     prev=
     continue
   fi
-  arg=`expr "x$opt" : 'x[^=]*=\(.*\)'`
+  # Do not use expr here. A Git-for-Windows expr ahead of MSYS2's on PATH
+  # mangles the backslashes in the BRE when invoked from an MSYS2 process,
+  # silently yielding "0" instead of the value - which then reaches option
+  # handling as a bogus argument. Bash parameter expansion is exact and has no
+  # external dependency.
+  case $opt in
+    *=*) arg=${opt#*=} ;;
+    *)   arg= ;;
+  esac
   case $opt in
       --prefix=* | -prefix=*)
         PREFIX=$arg ;;

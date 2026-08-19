@@ -18,6 +18,17 @@ if [ "$#" != "1" ]; then
 fi
 
 dstdir="$1"
+
+# Absolutise before anything is written. The generated wrappers embed this path,
+# and a relative one produces wrappers that only resolve when the caller happens
+# to sit in the right directory.
+mkdir -p "$dstdir" 2>/dev/null
+dstdir="$(cd "$dstdir" 2>/dev/null && pwd)"
+if [ "$dstdir" == "" ]; then
+    error "Unable to resolve destination directory '$1'"
+    exit 1
+fi
+
 ndkpath="$dstdir/ndk"
 
 ndkver="r29"
@@ -236,7 +247,25 @@ download_ndk() {
 
     msg "Extracting Android NDK %s..." "$ndkver" >&2
     rm -rf "$ndkpath/$ndkdir"
-    unzip -q "$ndkpath/$package" -d "$ndkpath" || return 1
+
+    # Do NOT use Info-ZIP unzip here. UnZip 6.00 silently applies LF->CRLF
+    # translation to the NDK's executables, inflating clang.exe by ~300 KB and
+    # producing binaries Windows refuses to load ("Exec format error" from a
+    # shell, "This app can't run on your PC" from Explorer). Prefer libarchive's
+    # bsdtar, which also handles this zip64 archive correctly and is much faster.
+    local extractor=""
+    for e in bsdtar 7z unzip; do
+        if command -v "$e" >/dev/null 2>&1; then extractor="$e"; break; fi
+    done
+
+    case "$extractor" in
+        bsdtar) bsdtar -xf "$ndkpath/$package" -C "$ndkpath" || return 1 ;;
+        7z)     7z x -y -o"$ndkpath" "$ndkpath/$package" >/dev/null || return 1 ;;
+        unzip)
+            warn "Falling back to unzip; verify the extracted NDK if the build fails." >&2
+            unzip -qo "$ndkpath/$package" -d "$ndkpath" || return 1 ;;
+        *)      error "No archive extractor found (need bsdtar, 7z or unzip)." >&2; return 1 ;;
+    esac
     [ -d "$ndkpath/$ndkdir" ] || return 1
     echo "$ndkpath/$ndkdir"
 }

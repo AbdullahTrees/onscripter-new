@@ -184,6 +184,9 @@ Install it, or point at an existing install with -Pons.msys2=C:/msys64.""")
             def unix = '/' + wp[0].toLowerCase() + wp.substring(2)
             environment 'MSYSTEM', 'UCRT64'
             environment 'CHERE_INVOKING', '1'
+            // Do not inherit the Windows PATH. A Git-for-Windows expr/sed ahead
+            // of MSYS2's own breaks configure when invoked from an MSYS2 process.
+            environment 'MSYS2_PATH_TYPE', 'strict'
             commandLine "${msys2}/usr/bin/bash.exe", '-lc',
                 "cd '${unix}' && exec make ${makeArgs}"
             logger.lifecycle("engine: MSYS2 ${msys2} (UCRT64) -> make ${makeArgs} in ${unix}")
