@@ -130,7 +130,7 @@ host_tag() {
         MINGW*|MSYS*) echo "windows-x86_64" ;;
         Linux*)  echo "linux-x86_64" ;;
         *)
-            error "Unsupported NDK host: %s" "$(uname)"
+            error "Unsupported NDK host: %s" "$(uname)" >&2
             return 1 ;;
     esac
 }
@@ -144,7 +144,7 @@ tool_path() {
     elif [ -x "$bindir/$tool.exe" ]; then
         echo "$bindir/$tool.exe"
     else
-        error "Unable to find NDK tool %s in %s" "$tool" "$bindir"
+        error "Unable to find NDK tool %s in %s" "$tool" "$bindir" >&2
         return 1
     fi
 }
@@ -209,14 +209,14 @@ download_ndk() {
 
     mkdir -p "$ndkpath"
     if [ ! -f "$ndkpath/$package" ]; then
-        msg "Downloading Android NDK %s..." "$ndkver"
+        msg "Downloading Android NDK %s..." "$ndkver" >&2
         if command -v wget >/dev/null 2>&1; then
             wget -O "$ndkpath/$package" "$url"
         else
             curl -o "$ndkpath/$package" "$url"
         fi
         if [ ! -f "$ndkpath/$package" ]; then
-            error "Unable to download NDK!"
+            error "Unable to download NDK!" >&2
             return 1
         fi
     fi
@@ -229,12 +229,12 @@ download_ndk() {
     fi
 
     if [ "$nhash" != "$hash" ]; then
-        error "Invalid NDK hash %s, expected %s" "$nhash" "$hash"
+        error "Invalid NDK hash %s, expected %s" "$nhash" "$hash" >&2
         rm -f "$ndkpath/$package"
         return 1
     fi
 
-    msg "Extracting Android NDK %s..." "$ndkver"
+    msg "Extracting Android NDK %s..." "$ndkver" >&2
     rm -rf "$ndkpath/$ndkdir"
     unzip -q "$ndkpath/$package" -d "$ndkpath" || return 1
     [ -d "$ndkpath/$ndkdir" ] || return 1
