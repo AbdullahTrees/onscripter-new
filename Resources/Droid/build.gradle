@@ -65,6 +65,12 @@ android {
     }
 }
 
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.8.0'
+    implementation 'com.google.android.material:material:1.14.0'
+    implementation 'androidx.core:core:1.15.0'
+}
+
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.outputs.each { output ->
