@@ -157,8 +157,11 @@ Completed packages are stamped in `DerivedData/onscrlib/.pkgs/<name>` with
 `pkgver-pkgrel` and skipped on later runs, so the cost is paid once. Building
 only `arm64` roughly halves it; `x86_64` is emulator-only.
 
-There are no prebuilt library bundles to download — `onscrlib` is a meta-package
-listing dependencies, and releases ship only the APK and a Windows zip.
+No prebuilt dependency bundles are published — `onscrlib` is only a meta-package
+listing dependencies, and releases ship just the APK and a Windows zip. The
+dependency build can still be skipped entirely for Java-side work by reusing the
+already-linked `libmain.so` from a release APK; see *Step 1 — obtain an engine
+binary*.
 
 ## Build environment
 
@@ -181,29 +184,125 @@ It generates thin wrapper scripts (`clang`, `clang++`, plus `.cmd` variants on
 Windows) pinning `--target=<abi><api>`, rather than using the removed
 `make_standalone_toolchain.py`.
 
-## Working in Android Studio
+## Building and testing with Android Studio
 
-Open **`Resources/Droid`** as the project, not the repository root.
+### Prerequisites
 
-Gradle does not build the engine and is not intended to — the native side is a
-17-package source build driven by `configure`/`make`. The `syncEngineLibs` task
-in `build.gradle` copies `DerivedData/Droid-<arch>/onscripter-new` into
-`lib/<abi>/libmain.so` and runs before every build, so the IDE handles only
-packaging, install, run and debug.
+| Component | Needed for |
+| --- | --- |
+| Android Studio, SDK platform 36, build-tools 36 | packaging, install, run, debug |
+| JDK 17+ | Android Studio's bundled JBR is fine |
+| NDK `29.0.14206865` | **only** to compile the engine |
+| MSYS2 (Windows) or a POSIX shell | the `configure`/`make` engine build |
 
-One-time: install **NDK 29.0.14206865** and the API 36 platform via SDK Manager
-(AGP needs the NDK to strip native libraries even though it does not compile
-them), then export `ANDROID_SDK_ROOT`.
+Note the split: **Gradle never compiles the engine.** If a `libmain.so` already
+exists you can build, install and run the APK with no NDK at all — AGP wants it
+only to strip symbols, and that degrades to a warning:
 
-Then build the engine once from a terminal and press **Run**. Java changes need
-no native rebuild; after a C++ change re-run `make` and press Run again — the
-copy task picks up the newer binary. For native breakpoints set the run
-configuration's debugger to **Dual**; symbols come from the unstripped binary in
-`DerivedData`.
+```
+Unable to strip the following libraries, packaging them as they are: libmain.so
+```
+
+The APK is simply packaged unstripped, which is fine for development.
+
+### Step 1 — obtain an engine binary
+
+`syncEngineLibs` in `build.gradle` copies `DerivedData/Droid-<arch>/onscripter-new`
+into `lib/<abi>/libmain.so` before every Gradle build. There are two ways to
+produce that file.
+
+**Path A — build from source.** Authoritative, and required for any C++ or
+link-flag change.
+
+```sh
+export ANDROID_SDK_ROOT="$HOME/AppData/Local/Android/Sdk"   # Windows
+./configure --droid-build --droid-arch=arm64
+make -j$(nproc)
+```
+
+The first run compiles 17 dependencies from source — see *Why the first build is
+slow*. Later runs reuse the `.pkgs` stamps and only recompile engine code.
+
+**Path B — reuse a released binary.** Fast, and sufficient for all Java-side
+work.
+
+Because everything is statically linked into `libmain.so` (see *Native
+architecture*), a binary from any release is self-contained and can be dropped
+straight into `DerivedData`:
+
+```sh
+# from a connected device, or just unzip a downloaded release APK
+adb pull "$(adb shell pm path org.umineko_project.onscripter_ru | sed 's/package://')" base.apk
+unzip -q base.apk -d apkx
+mkdir -p DerivedData/Droid-aarch64
+cp apkx/lib/arm64-v8a/libmain.so DerivedData/Droid-aarch64/onscripter-new
+```
+
+This skips hours of dependency compilation. Understand what it is not: the
+binary embeds whatever engine sources that release was cut from, so it cannot
+validate C++ or link changes, and the next `make` overwrites it. If the release
+predates a link fix you need, patch its `DT_NEEDED` first — see *Test a
+link-flag change without relinking*.
+
+Engine binaries are deliberately **not** committed to the repository. They are
+12 MB each, change on every build, would bloat history permanently, and — worst
+— a stale checked-in binary silently masks source changes. Path B gets the same
+speed from an artifact that is already published and versioned.
+
+### Step 2 — open and run
+
+Open **`Resources/Droid`** as the project. Not the repository root; that is not
+a Gradle project.
+
+Android Studio writes `local.properties` on first sync, or create it manually:
+
+```
+sdk.dir=C:/Users/<you>/AppData/Local/Android/Sdk
+```
+
+Then select a device and press **Run**. The command-line equivalent is:
+
+```sh
+cd Resources/Droid
+./gradlew assembleDebug
+adb install -r build/outputs/apk/debug/onscripter-new-debug.apk
+```
+
+### Step 3 — supply game data
+
+The engine exits immediately without it. Push a legally obtained Umineko
+Project installation to the app-scoped directory:
+
+```sh
+MSYS_NO_PATHCONV=1 adb push <game-dir>/. \
+  /sdcard/Android/data/org.umineko_project.onscripter_ru/files/ONScripter-RU/
+```
+
+`MSYS_NO_PATHCONV=1` is required on Windows or the destination is rewritten as
+a Windows path. Large data sets transfer faster over MTP.
+
+### Iteration loop
+
+- **Java change** — press Run. No native rebuild.
+- **C++ change** — re-run `make` in a terminal, then press Run. `syncEngineLibs`
+  notices the newer binary and restages it.
+- **Native breakpoints** — set the run configuration's debugger to **Dual**.
+  Symbols come from the unstripped binary in `DerivedData`.
 
 `Scripts/apkbuild.tool` remains the path for reproducible command-line and
-release packaging, staging a copy of this same project under
+release packaging; it stages a copy of this same Gradle project under
 `DerivedData/Droid-package`.
+
+### Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `syncEngineLibs: no engine binary under ...` | No engine built yet. Do step 1. |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | An existing install was signed with a different key. `adb uninstall org.umineko_project.onscripter_ru` first. |
+| `Unable to strip the following libraries` | Benign. AGP has no NDK; the APK is packaged unstripped. |
+| `Invalid launch directory!` then exit | No game data at the scoped path. Do step 3. |
+| `UnsatisfiedLinkError` on a `native` method | The library failed to load entirely. Read the `dlopen failed:` line from `nativeloader`, not the stack trace. |
+| App resumes instead of restarting | Force-stop first; the engine aborts on a reused pid. |
 
 ## Debugging
 
