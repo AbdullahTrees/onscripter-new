@@ -248,23 +248,31 @@ download_ndk() {
     msg "Extracting Android NDK %s..." "$ndkver" >&2
     rm -rf "$ndkpath/$ndkdir"
 
-    # Do NOT use Info-ZIP unzip here. UnZip 6.00 silently applies LF->CRLF
+    # Do NOT use Info-ZIP unzip on Windows. UnZip 6.00 silently applies LF->CRLF
     # translation to the NDK's executables, inflating clang.exe by ~300 KB and
     # producing binaries Windows refuses to load ("Exec format error" from a
     # shell, "This app can't run on your PC" from Explorer). Prefer libarchive's
     # bsdtar, which also handles this zip64 archive correctly and is much faster.
     local extractor=""
-    for e in bsdtar 7z unzip; do
+    local extractors=(bsdtar 7z)
+    if ! is_windows_host; then
+        extractors+=(unzip)
+    fi
+    for e in "${extractors[@]}"; do
         if command -v "$e" >/dev/null 2>&1; then extractor="$e"; break; fi
     done
 
     case "$extractor" in
         bsdtar) bsdtar -xf "$ndkpath/$package" -C "$ndkpath" || return 1 ;;
         7z)     7z x -y -o"$ndkpath" "$ndkpath/$package" >/dev/null || return 1 ;;
-        unzip)
-            warn "Falling back to unzip; verify the extracted NDK if the build fails." >&2
-            unzip -qo "$ndkpath/$package" -d "$ndkpath" || return 1 ;;
-        *)      error "No archive extractor found (need bsdtar, 7z or unzip)." >&2; return 1 ;;
+        unzip)  unzip -qo "$ndkpath/$package" -d "$ndkpath" || return 1 ;;
+        *)
+            if is_windows_host; then
+                error "No safe NDK archive extractor found; install bsdtar or 7z." >&2
+            else
+                error "No archive extractor found (need bsdtar, 7z or unzip)." >&2
+            fi
+            return 1 ;;
     esac
     [ -d "$ndkpath/$ndkdir" ] || return 1
     echo "$ndkpath/$ndkdir"

@@ -268,34 +268,6 @@ while getopts O:defphilm:a:o:r:b:c:g: o; do
             if { [[ $(uname) == MINGW* ]] || [[ $(uname) == MSYS* ]]; } && [ "$ANDROID_NDK_ROOT_CMAKE" != "" ] && command -v cygpath >/dev/null 2>&1; then
                 ANDROID_NDK_ROOT_CMAKE="$(cygpath -m "$ANDROID_NDK_ROOT_CMAKE")"
             fi
-            # CMake's built-in Android support only derives the unified sysroot
-            # while it is discovering the NDK's compiler itself. We pass an
-            # explicit CMAKE_C_COMPILER (the toolchain wrappers), which skips
-            # that discovery, so Android-Initialize.cmake falls back to the
-            # pre-r19 layout <ndk>/platforms/android-N/arch-* and aborts. Locate
-            # the real sysroot and pass it explicitly.
-            # CMake appends the API level to the target triple only when it
-            # performed its own NDK discovery (CMAKE_ANDROID_NDK_TOOLCHAIN_UNIFIED).
-            # We pass an explicit compiler, so it emits a bare
-            # aarch64-none-linux-android and clang cannot find crtbegin_dynamic.o
-            # when linking executables. Android-Clang.cmake honours a
-            # pre-set CMAKE_<LANG>_COMPILER_TARGET, so supply the full triple.
-            ANDROID_TARGET_CMAKE=""
-            if [ "$CROSS_TRIPLE" != "" ] && [ "$ANDROID_API" != "" ]; then
-                ANDROID_TARGET_CMAKE="${CROSS_TRIPLE}${ANDROID_API}"
-            fi
-            ANDROID_SYSROOT_CMAKE=""
-            if [ "$ANDROID_NDK_ROOT" != "" ]; then
-                for _h in windows-x86_64 linux-x86_64 darwin-x86_64 darwin-arm64; do
-                    if [ -d "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$_h/sysroot" ]; then
-                        ANDROID_SYSROOT_CMAKE="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$_h/sysroot"
-                        break
-                    fi
-                done
-                if { [[ $(uname) == MINGW* ]] || [[ $(uname) == MSYS* ]]; } && [ "$ANDROID_SYSROOT_CMAKE" != "" ] && command -v cygpath >/dev/null 2>&1; then
-                    ANDROID_SYSROOT_CMAKE="$(cygpath -m "$ANDROID_SYSROOT_CMAKE")"
-                fi
-            fi
             case "$CROSS_TRIPLE" in
                 aarch64-linux-android) ANDROID_ABI="arm64-v8a" ;;
                 x86_64-linux-android)  ANDROID_ABI="x86_64" ;;
@@ -317,7 +289,7 @@ while getopts O:defphilm:a:o:r:b:c:g: o; do
             CMAKE_NM="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-nm${TOOL_SUFFIX}"
             CMAKE_OBJCOPY="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-objcopy${TOOL_SUFFIX}"
             CMAKE_OBJDUMP="${CROSS_SYS_PREFIX}${CROSS_TRIPLE}-objdump${TOOL_SUFFIX}"
-            export ANDROID_API ANDROID_ABI ANDROID_NDK_ROOT ANDROID_NDK_ROOT_CMAKE ANDROID_SYSROOT_CMAKE ANDROID_TARGET_CMAKE
+            export ANDROID_API ANDROID_ABI ANDROID_NDK_ROOT ANDROID_NDK_ROOT_CMAKE
             export CMAKE_CC CMAKE_CXX CMAKE_AR CMAKE_RANLIB CMAKE_STRIP CMAKE_NM CMAKE_OBJCOPY CMAKE_OBJDUMP
             ;;
         o)

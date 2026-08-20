@@ -66,16 +66,14 @@ configure() {
         llf="${llf//$outdir/$cmake_outdir}"
     fi
 
-    local cmake_compiler_opts=()
-    if [ "$(getTarget)" != "droid" ]; then
-        cmake_compiler_opts+=("-DCMAKE_C_COMPILER=$cmake_cc")
-        [ "${cmake_cxx:-}" != "" ] && cmake_compiler_opts+=("-DCMAKE_CXX_COMPILER=${cmake_cxx}")
-    fi
-
     local cmake_cmd="$(cmake_command)"
     local generator="$(cmake_generator)"
     local cmake_cc="$(getCC)"
     [ "$CMAKE_CC" != "" ] && cmake_cc="$CMAKE_CC"
+    local cmake_compiler_opts=()
+    if [ "$(getTarget)" != "droid" ]; then
+        cmake_compiler_opts+=("-DCMAKE_C_COMPILER=$cmake_cc")
+    fi
     local cmake_tool_opts=()
     [ "${CMAKE_AR:-$AR}" != "" ] && cmake_tool_opts+=("-DCMAKE_AR=${CMAKE_AR:-$AR}")
     [ "${CMAKE_RANLIB:-$RANLIB}" != "" ] && cmake_tool_opts+=("-DCMAKE_RANLIB=${CMAKE_RANLIB:-$RANLIB}")

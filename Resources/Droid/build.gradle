@@ -104,10 +104,21 @@ tasks.register('syncEngineLibs') {
                 if (src.isFile()) {
                     def dst = new File(outDir, "$abi/libmain.so")
                     dst.parentFile.mkdirs()
-                    if (!dst.exists() || dst.lastModified() < src.lastModified()) {
-                        dst.bytes = src.bytes
+                    def srcPath = src.toPath()
+                    def dstPath = dst.toPath()
+                    if (!dst.isFile() || java.nio.file.Files.mismatch(srcPath, dstPath) != -1L) {
+                        java.nio.file.Files.copy(
+                            srcPath,
+                            dstPath,
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                            java.nio.file.StandardCopyOption.COPY_ATTRIBUTES)
                         logger.lifecycle("engine: ${src} -> ${dst}")
                     }
+                    // The freshness guard compares against the staged file. Preserve
+                    // the source binary's timestamp even when an identical file was
+                    // staged by an older build that refreshed its modification time.
+                    java.nio.file.Files.setLastModifiedTime(
+                        dstPath, java.nio.file.Files.getLastModifiedTime(srcPath))
                     found = true
                     break
                 }
@@ -210,7 +221,8 @@ tasks.named('syncEngineLibs') { dependsOn 'buildEngine' }
 //
 // Gradle does not compile the engine - there is no externalNativeBuild here, so
 // a C++ edit followed by Run in the IDE would silently package the previous
-// binary. Compare engine sources against the staged library and stop if they
+// binary. syncEngineLibs preserves the built binary's modification time when
+// staging it, so compare engine sources against that timestamp and stop if they
 // are newer. Pass -PallowStaleEngine to skip (useful when only Java changed and
 // a source file was touched incidentally).
 // ---------------------------------------------------------------------------

@@ -726,9 +726,15 @@ fi
 mkdir -p "${BUILD_PATH}/Dependencies"
 
 pushd "$ONSCRLIB" &> /dev/null
-find . -type d -exec mkdir -p "${BUILD_PATH}/Dependencies"/{} \;
-find . -type f -exec cp {} "${BUILD_PATH}/Dependencies"/{} \;
-find . -type l -exec cp -a {} "${BUILD_PATH}/Dependencies"/{} \;
+# Copy dependency recipes and tooling, but keep downloaded sources, logs, and
+# installed libraries target-local. Copying native outputs into a cross-build
+# directory can make version-only package stamps accept incompatible archives.
+find . \( -path './download' -o -path './log' -o -path './onscrlib' -o -path './src' \) -prune -o \
+  -type d -exec mkdir -p "${BUILD_PATH}/Dependencies"/{} \;
+find . \( -path './download' -o -path './log' -o -path './onscrlib' -o -path './src' \) -prune -o \
+  -type f -exec cp {} "${BUILD_PATH}/Dependencies"/{} \;
+find . \( -path './download' -o -path './log' -o -path './onscrlib' -o -path './src' \) -prune -o \
+  -type l -exec cp -a {} "${BUILD_PATH}/Dependencies"/{} \;
 popd &> /dev/null
 
 chmod +x "${BUILD_PATH}/Dependencies/build.sh"
