@@ -65,6 +65,12 @@ android {
     }
 }
 
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.8.0'
+    implementation 'com.google.android.material:material:1.14.0'
+    implementation 'androidx.core:core:1.15.0'
+}
+
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.outputs.each { output ->
@@ -72,3 +78,193 @@ androidComponents {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Android Studio support.
+//
+// The engine is built outside Gradle by ./configure --droid-build && make,
+// which drops a binary in DerivedData/Droid-<arch>/onscripter-new. Copy it into
+// jniLibs so this project can be opened, run and debugged directly from
+// Android Studio without going through Scripts/apkbuild.tool.
+//
+// This resolves correctly both in-tree (Resources/Droid) and from the staging
+// copy apkbuild.tool makes (DerivedData/Droid-package).
+// ---------------------------------------------------------------------------
+tasks.register('syncEngineLibs') {
+    description = 'Copies engine binaries built by configure/make into jniLibs.'
+    def derivedData = rootProject.file('../../DerivedData')
+    def outDir = rootProject.file('lib')
+    doLast {
+        def mapping = ['arm64-v8a': ['Droid-aarch64', 'Droid-arm64'],
+                       'x86_64'   : ['Droid-x86_64']]
+        def found = false
+        mapping.each { abi, dirs ->
+            for (d in dirs) {
+                def src = new File(derivedData, "$d/onscripter-new")
+                if (src.isFile()) {
+                    def dst = new File(outDir, "$abi/libmain.so")
+                    dst.parentFile.mkdirs()
+                    def srcPath = src.toPath()
+                    def dstPath = dst.toPath()
+                    if (!dst.isFile() || java.nio.file.Files.mismatch(srcPath, dstPath) != -1L) {
+                        java.nio.file.Files.copy(
+                            srcPath,
+                            dstPath,
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                            java.nio.file.StandardCopyOption.COPY_ATTRIBUTES)
+                        logger.lifecycle("engine: ${src} -> ${dst}")
+                    }
+                    // The freshness guard compares against the staged file. Preserve
+                    // the source binary's timestamp even when an identical file was
+                    // staged by an older build that refreshed its modification time.
+                    java.nio.file.Files.setLastModifiedTime(
+                        dstPath, java.nio.file.Files.getLastModifiedTime(srcPath))
+                    found = true
+                    break
+                }
+            }
+        }
+        // Fail rather than silently packaging an APK with no native library,
+        // which installs and then crashes on launch. Scripts/apkbuild.tool
+        // populates lib/ itself before invoking Gradle, so only error when
+        // nothing is available from either source.
+        def prestaged = outDir.isDirectory() &&
+            outDir.listFiles().any { new File(it, 'libmain.so').isFile() }
+        if (!found && !prestaged) {
+            throw new GradleException("""No engine binary found.
+  Looked in : ${derivedData}/Droid-{aarch64,arm64,x86_64}/onscripter-new
+  Prestaged : ${outDir}/<abi>/libmain.so
+Build the engine first:
+  ./configure --droid-build --droid-arch=arm64 && make
+Or reuse a binary from a release APK - see Resources/Docs/Android.md,
+"Step 1 - obtain an engine binary".""")
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Optional native build delegation.
+//
+// Gradle cannot build the engine itself - that is a 17-package source build
+// driven by configure/make. It can shell out to `make`, which is already
+// incremental: after the initial dependency build a single .cpp change takes
+// seconds, which makes IDE-driven C++ iteration practical.
+//
+// Off by default: the FIRST build takes hours and a Gradle task that long is
+// hostile inside an IDE. Enable per-invocation with -PbuildEngine, or
+// permanently with ons.buildEngine=true in gradle.properties.
+//
+// On Windows the build must run inside MSYS2 (UCRT64), per README.md - the
+// dependency recipes need its autotools, cmake, meson, ninja and nasm. We
+// invoke MSYS2's own bash so make and its shell come from one runtime; mixing
+// Git Bash with MSYS2 make loads two msys-2.0.dll copies and misbehaves.
+//
+// Requires ./configure --droid-build --droid-arch=<arch> to have been run once,
+// which is what generates the Makefile. Overrides: ons.msys2 (MSYS2 root),
+// ons.makeArgs (default -j<cpus>).
+// ---------------------------------------------------------------------------
+def engineBuildEnabled = project.hasProperty('buildEngine') ||
+    providers.gradleProperty('ons.buildEngine').getOrElse('false') == 'true'
+
+tasks.register('buildEngine', Exec) {
+    description = 'Runs make to (re)build the engine. Enable with -PbuildEngine.'
+    onlyIf { engineBuildEnabled }
+
+    def repoRoot = rootProject.file('../..')
+    def msys2Prop = providers.gradleProperty('ons.msys2').orNull
+    def makeArgs = providers.gradleProperty('ons.makeArgs')
+        .getOrElse("-j${Runtime.runtime.availableProcessors()}")
+    def onWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+
+    workingDir = repoRoot
+
+    doFirst {
+        if (!new File(repoRoot, 'Makefile').isFile()) {
+            throw new GradleException("""No Makefile at ${repoRoot}.
+configure generates it; run it once for the ABI you want, from an MSYS2 shell:
+  ./configure --droid-build --droid-arch=arm64""")
+        }
+
+        if (onWindows) {
+            def roots = []
+            if (msys2Prop) roots << msys2Prop
+            if (System.getenv('MSYS2_ROOT')) roots << System.getenv('MSYS2_ROOT')
+            roots += ['C:/msys64', 'C:/msys2', 'D:/msys64']
+            def msys2 = roots.find { new File(it, 'usr/bin/bash.exe').isFile() }
+            if (!msys2) {
+                throw new GradleException("""MSYS2 not found.
+The native build requires the MSYS2 UCRT64 environment (see README.md).
+Install it, or point at an existing install with -Pons.msys2=C:/msys64.""")
+            }
+            // C:\path\to\repo  ->  /c/path/to/repo
+            def wp = repoRoot.canonicalPath.replace(File.separatorChar, '/' as char)
+            def unix = '/' + wp[0].toLowerCase() + wp.substring(2)
+            environment 'MSYSTEM', 'UCRT64'
+            environment 'CHERE_INVOKING', '1'
+            // Do not inherit the Windows PATH. A Git-for-Windows expr/sed ahead
+            // of MSYS2's own breaks configure when invoked from an MSYS2 process.
+            environment 'MSYS2_PATH_TYPE', 'strict'
+            commandLine "${msys2}/usr/bin/bash.exe", '-lc',
+                "cd '${unix}' && exec make ${makeArgs}"
+            logger.lifecycle("engine: MSYS2 ${msys2} (UCRT64) -> make ${makeArgs} in ${unix}")
+        } else {
+            commandLine 'make', *makeArgs.split(' ')
+            logger.lifecycle("engine: make ${makeArgs} in ${repoRoot}")
+        }
+    }
+}
+
+tasks.named('syncEngineLibs') { dependsOn 'buildEngine' }
+
+// ---------------------------------------------------------------------------
+// Staleness guard.
+//
+// Gradle does not compile the engine - there is no externalNativeBuild here, so
+// a C++ edit followed by Run in the IDE would silently package the previous
+// binary. syncEngineLibs preserves the built binary's modification time when
+// staging it, so compare engine sources against that timestamp and stop if they
+// are newer. Pass -PallowStaleEngine to skip (useful when only Java changed and
+// a source file was touched incidentally).
+// ---------------------------------------------------------------------------
+tasks.register('checkEngineFreshness') {
+    description = 'Fails if engine sources are newer than the staged native library.'
+    def srcRoots = ['Engine', 'Support', 'External'].collect { rootProject.file("../../$it") }
+    def outDir = rootProject.file('lib')
+    doLast {
+        if (project.hasProperty('allowStaleEngine')) {
+            logger.lifecycle('checkEngineFreshness: skipped (-PallowStaleEngine)')
+            return
+        }
+        def libs = outDir.isDirectory() ?
+            outDir.listFiles().collect { new File(it, 'libmain.so') }.findAll { it.isFile() } : []
+        if (libs.isEmpty()) {
+            return   // syncEngineLibs already reports a missing binary
+        }
+        def libStamp = libs.collect { it.lastModified() }.min()
+
+        File newest = null
+        srcRoots.each { root ->
+            if (root.isDirectory()) {
+                root.eachFileRecurse { f ->
+                    if (f.isFile() && f.name =~ /\.(cpp|hpp|cc|cxx|c|h)$/ &&
+                        (newest == null || f.lastModified() > newest.lastModified())) {
+                        newest = f
+                    }
+                }
+            }
+        }
+        if (newest != null && newest.lastModified() > libStamp) {
+            throw new GradleException("""Engine sources are newer than the built library.
+  Newest source : ${rootProject.relativePath(newest)}
+  Staged library: ${libs.first()}
+Gradle does not compile the engine. Rebuild it, then run again:
+  make -j\$(nproc)          # or ./configure --droid-build --droid-arch=arm64 first
+Pass -PallowStaleEngine to package the existing binary anyway.""")
+        }
+    }
+}
+
+tasks.matching { it.name == 'preBuild' }.configureEach {
+    dependsOn 'syncEngineLibs', 'checkEngineFreshness'
+}
+tasks.named('checkEngineFreshness') { mustRunAfter 'syncEngineLibs' }

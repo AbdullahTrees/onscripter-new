@@ -85,6 +85,10 @@ configure() {
     local generator="$(cmake_generator)"
     local cmake_cc="$(getCC)"
     [ "$CMAKE_CC" != "" ] && cmake_cc="$CMAKE_CC"
+    local cmake_compiler_opts=()
+    if [ "$(getTarget)" != "droid" ]; then
+        cmake_compiler_opts+=("-DCMAKE_C_COMPILER=$cmake_cc")
+    fi
     local cmake_tool_opts=()
     [ "${CMAKE_AR:-$AR}" != "" ] && cmake_tool_opts+=("-DCMAKE_AR=${CMAKE_AR:-$AR}")
     [ "${CMAKE_RANLIB:-$RANLIB}" != "" ] && cmake_tool_opts+=("-DCMAKE_RANLIB=${CMAKE_RANLIB:-$RANLIB}")
@@ -93,22 +97,24 @@ configure() {
     [ "${CMAKE_OBJCOPY:-$OBJCOPY}" != "" ] && cmake_tool_opts+=("-DCMAKE_OBJCOPY=${CMAKE_OBJCOPY:-$OBJCOPY}")
     [ "${CMAKE_OBJDUMP:-$OBJDUMP}" != "" ] && cmake_tool_opts+=("-DCMAKE_OBJDUMP=${CMAKE_OBJDUMP:-$OBJDUMP}")
     if [ "$(getTarget)" == "droid" ]; then
-        cmake_tool_opts+=(
-            "-DCMAKE_SYSTEM_NAME=Android"
-            "-DCMAKE_SYSTEM_VERSION=${ANDROID_API:-34}"
-            "-DCMAKE_ANDROID_ARCH_ABI=$ANDROID_ABI"
+        # The NDK toolchain file sets compilers, sysroot, triple, STL and binutils.
+        # Assign rather than append so the host tool overrides above are dropped.
+        cmake_tool_opts=(
+            "-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT_CMAKE/build/cmake/android.toolchain.cmake"
+            "-DANDROID_ABI=$ANDROID_ABI"
+            "-DANDROID_PLATFORM=android-${ANDROID_API:-34}"
+            "-DANDROID_STL=c++_static"
             "-DSDL3_DIR=$cmake_outdir/lib/cmake/SDL3"
             "-DVorbis_vorbisfile_LIBRARY=$cmake_outdir/lib/libvorbisfile.a"
             "-DVorbis_vorbisfile_INCLUDE_PATH=$cmake_outdir/include"
             "-DVorbis_vorbisfile_LINK_LIBRARIES=$cmake_outdir/lib/libvorbis.a;$cmake_outdir/lib/libogg.a"
         )
-        [ "$ANDROID_NDK_ROOT_CMAKE" != "" ] && cmake_tool_opts+=("-DCMAKE_ANDROID_NDK=$ANDROID_NDK_ROOT_CMAKE")
     fi
 
     "$cmake_cmd" -S . -B build -G "$generator" \
         -DCMAKE_INSTALL_PREFIX="$cmake_outdir" \
         -DCMAKE_PREFIX_PATH="$cmake_outdir" \
-        -DCMAKE_C_COMPILER="$cmake_cc" \
+        "${cmake_compiler_opts[@]}" \
         -DCMAKE_C_FLAGS="$lcf" \
         -DCMAKE_EXE_LINKER_FLAGS="$llf" \
         "${cmake_tool_opts[@]}" \

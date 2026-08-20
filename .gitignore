@@ -29,3 +29,6 @@ build
 # IDEA
 .idea
 cmake-build-*/
+
+# Engine binaries staged into the Gradle project by syncEngineLibs
+/Resources/Droid/lib/

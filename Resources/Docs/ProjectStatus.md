@@ -38,6 +38,16 @@ make -j8
 `configure` downloads source archives for the pinned dependency graph, verifies
 their SHA-256 hashes, and builds static libraries below `DerivedData`.
 
+## Android builds
+
+The Android engine is built with NDK 29 through `configure` and GNU Make, then
+staged into the Gradle application. Gradle rejects missing native binaries and
+preserves their original timestamps so C/C++ changes cannot be hidden by a
+newer staging copy. Windows NDK extraction requires `bsdtar` or 7-Zip because
+Info-ZIP can corrupt executable line endings on that host. The Java/native
+startup contract, scoped-storage layout, and Android Studio workflow are
+documented in `Resources/Docs/Android.md`.
+
 ## Other host builds
 
 A C++23 compiler, GNU Make, CMake, Meson, Ninja, NASM, `pkg-config`, and normal
@@ -56,10 +66,13 @@ should only be claimed after a clean build and runtime smoke test on that target
 Active dependencies are pinned in `Dependencies/pkgs` with cryptographic hashes.
 The aggregate package stamp depends on every active recipe and patch, so a
 recipe change forces version evaluation instead of silently retaining an old
-static library. Patch releases should be reviewed monthly and security fixes
-expedited. Major upgrades of FFmpeg, Lua, or SDL still require game-data and
-media regression testing. The current audited lines are FFmpeg 8.1, Lua 5.5,
-and SDL3; retired SDL2 recipes were removed.
+static library. Configure copies only recipes and tooling into build trees;
+downloaded sources and installed libraries stay target-local so native and
+cross-compiled archives cannot contaminate one another. Patch releases should
+be reviewed monthly and security fixes expedited. Major upgrades of FFmpeg,
+Lua, or SDL still require game-data and media regression testing. The current
+audited lines are FFmpeg 8.1, Lua 5.5, and SDL3; retired SDL2 recipes were
+removed.
 
 ## Verification
 

@@ -24,8 +24,8 @@
         android:label="onscripter-new"
         android:icon="@drawable/ic_launcher"
         android:allowBackup="false"
-        android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
-        android:enableOnBackInvokedCallback="false"
+        android:theme="@style/Theme.ONScripterRU"
+        android:enableOnBackInvokedCallback="true"
         android:hardwareAccelerated="true"
         android:resizeableActivity="true">
 

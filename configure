@@ -142,7 +142,15 @@ do
     prev=
     continue
   fi
-  arg=`expr "x$opt" : 'x[^=]*=\(.*\)'`
+  # Do not use expr here. A Git-for-Windows expr ahead of MSYS2's on PATH
+  # mangles the backslashes in the BRE when invoked from an MSYS2 process,
+  # silently yielding "0" instead of the value - which then reaches option
+  # handling as a bogus argument. Bash parameter expansion is exact and has no
+  # external dependency.
+  case $opt in
+    *=*) arg=${opt#*=} ;;
+    *)   arg= ;;
+  esac
   case $opt in
       --prefix=* | -prefix=*)
         PREFIX=$arg ;;
@@ -621,7 +629,10 @@ case "$CXX_TMP:$SYS" in
     LINK_END_GROUP="-Wl,--end-group"
     EXTRACFLAGS="$EXTRACFLAGS -fPIC"
     EXTRAOSCFLAGS="$EXTRAOSCFLAGS -DDROID"
-    EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -shared -static-libstdc++"
+    # -lmediandk provides AMediaCodec_*/AMediaFormat_*, referenced by FFmpeg's
+    # MediaCodec hwaccel. Nothing else propagates it, so without it libmain.so
+    # has ~20 undefined symbols and dlopen fails at launch.
+    EXTRAOSLDFLAGS="$EXTRAOSLDFLAGS -shared -static-libstdc++ -lmediandk"
   ;;
   *g++*:"MinGW")
     LINK_START_GROUP="-Wl,--start-group"
@@ -715,9 +726,15 @@ fi
 mkdir -p "${BUILD_PATH}/Dependencies"
 
 pushd "$ONSCRLIB" &> /dev/null
-find . -type d -exec mkdir -p "${BUILD_PATH}/Dependencies"/{} \;
-find . -type f -exec cp {} "${BUILD_PATH}/Dependencies"/{} \;
-find . -type l -exec cp -a {} "${BUILD_PATH}/Dependencies"/{} \;
+# Copy dependency recipes and tooling, but keep downloaded sources, logs, and
+# installed libraries target-local. Copying native outputs into a cross-build
+# directory can make version-only package stamps accept incompatible archives.
+find . \( -path './download' -o -path './log' -o -path './onscrlib' -o -path './src' \) -prune -o \
+  -type d -exec mkdir -p "${BUILD_PATH}/Dependencies"/{} \;
+find . \( -path './download' -o -path './log' -o -path './onscrlib' -o -path './src' \) -prune -o \
+  -type f -exec cp {} "${BUILD_PATH}/Dependencies"/{} \;
+find . \( -path './download' -o -path './log' -o -path './onscrlib' -o -path './src' \) -prune -o \
+  -type l -exec cp -a {} "${BUILD_PATH}/Dependencies"/{} \;
 popd &> /dev/null
 
 chmod +x "${BUILD_PATH}/Dependencies/build.sh"

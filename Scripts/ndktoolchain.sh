@@ -18,6 +18,17 @@ if [ "$#" != "1" ]; then
 fi
 
 dstdir="$1"
+
+# Absolutise before anything is written. The generated wrappers embed this path,
+# and a relative one produces wrappers that only resolve when the caller happens
+# to sit in the right directory.
+mkdir -p "$dstdir" 2>/dev/null
+dstdir="$(cd "$dstdir" 2>/dev/null && pwd)"
+if [ "$dstdir" == "" ]; then
+    error "Unable to resolve destination directory '$1'"
+    exit 1
+fi
+
 ndkpath="$dstdir/ndk"
 
 ndkver="r29"
@@ -106,6 +117,8 @@ find_existing_ndk() {
     candidates+=(
         "/c/droid/ndk/$ndkfullver"
         "$HOME/Android/Sdk/ndk/$ndkfullver"
+        "$HOME/AppData/Local/Android/Sdk/ndk/$ndkfullver"
+        "$HOME/Library/Android/sdk/ndk/$ndkfullver"
         "$ndkpath/android-ndk-$ndkver"
     )
 
@@ -128,7 +141,7 @@ host_tag() {
         MINGW*|MSYS*) echo "windows-x86_64" ;;
         Linux*)  echo "linux-x86_64" ;;
         *)
-            error "Unsupported NDK host: %s" "$(uname)"
+            error "Unsupported NDK host: %s" "$(uname)" >&2
             return 1 ;;
     esac
 }
@@ -142,7 +155,7 @@ tool_path() {
     elif [ -x "$bindir/$tool.exe" ]; then
         echo "$bindir/$tool.exe"
     else
-        error "Unable to find NDK tool %s in %s" "$tool" "$bindir"
+        error "Unable to find NDK tool %s in %s" "$tool" "$bindir" >&2
         return 1
     fi
 }
@@ -207,14 +220,14 @@ download_ndk() {
 
     mkdir -p "$ndkpath"
     if [ ! -f "$ndkpath/$package" ]; then
-        msg "Downloading Android NDK %s..." "$ndkver"
+        msg "Downloading Android NDK %s..." "$ndkver" >&2
         if command -v wget >/dev/null 2>&1; then
             wget -O "$ndkpath/$package" "$url"
         else
             curl -o "$ndkpath/$package" "$url"
         fi
         if [ ! -f "$ndkpath/$package" ]; then
-            error "Unable to download NDK!"
+            error "Unable to download NDK!" >&2
             return 1
         fi
     fi
@@ -227,14 +240,40 @@ download_ndk() {
     fi
 
     if [ "$nhash" != "$hash" ]; then
-        error "Invalid NDK hash %s, expected %s" "$nhash" "$hash"
+        error "Invalid NDK hash %s, expected %s" "$nhash" "$hash" >&2
         rm -f "$ndkpath/$package"
         return 1
     fi
 
-    msg "Extracting Android NDK %s..." "$ndkver"
+    msg "Extracting Android NDK %s..." "$ndkver" >&2
     rm -rf "$ndkpath/$ndkdir"
-    unzip -q "$ndkpath/$package" -d "$ndkpath" || return 1
+
+    # Do NOT use Info-ZIP unzip on Windows. UnZip 6.00 silently applies LF->CRLF
+    # translation to the NDK's executables, inflating clang.exe by ~300 KB and
+    # producing binaries Windows refuses to load ("Exec format error" from a
+    # shell, "This app can't run on your PC" from Explorer). Prefer libarchive's
+    # bsdtar, which also handles this zip64 archive correctly and is much faster.
+    local extractor=""
+    local extractors=(bsdtar 7z)
+    if ! is_windows_host; then
+        extractors+=(unzip)
+    fi
+    for e in "${extractors[@]}"; do
+        if command -v "$e" >/dev/null 2>&1; then extractor="$e"; break; fi
+    done
+
+    case "$extractor" in
+        bsdtar) bsdtar -xf "$ndkpath/$package" -C "$ndkpath" || return 1 ;;
+        7z)     7z x -y -o"$ndkpath" "$ndkpath/$package" >/dev/null || return 1 ;;
+        unzip)  unzip -qo "$ndkpath/$package" -d "$ndkpath" || return 1 ;;
+        *)
+            if is_windows_host; then
+                error "No safe NDK archive extractor found; install bsdtar or 7z." >&2
+            else
+                error "No archive extractor found (need bsdtar, 7z or unzip)." >&2
+            fi
+            return 1 ;;
+    esac
     [ -d "$ndkpath/$ndkdir" ] || return 1
     echo "$ndkpath/$ndkdir"
 }
