@@ -539,3 +539,20 @@ inline Uint32 onsMapRGBA(SDL_Surface *surface, Uint8 r, Uint8 g, Uint8 b, Uint8 
 	return SDL_MapRGBA(surface->format, r, g, b, a);
 #endif
 }
+
+/**
+ * Event timestamp in milliseconds.
+ *
+ * SDL2 stamped events in milliseconds. SDL3 stamps them in nanoseconds --
+ * SDL_CommonEvent::timestamp is documented as "In nanoseconds, populated using
+ * SDL_GetTicksNS()". Any comparison against a millisecond constant therefore
+ * needs converting, or the window it believes it is using is a million times
+ * too short.
+ */
+inline uint32_t onsEventTimestampMs(const SDL_Event &event) {
+#if defined(ONS_USE_SDL3)
+	return static_cast<uint32_t>(event.common.timestamp / 1000000ULL);
+#else
+	return event.common.timestamp;
+#endif
+}

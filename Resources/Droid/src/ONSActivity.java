@@ -1,14 +1,25 @@
 package org.umineko_project.onscripter_ru;
 
 import android.os.Bundle;
+import android.view.MotionEvent;
+import android.view.SurfaceView;
+import android.view.View;
+import android.view.ViewConfiguration;
+import android.view.ViewGroup;
 
 import org.libsdl.app.SDLActivity;
 
 import java.io.File;
 import java.util.Arrays;
 
-public class ONSActivity extends SDLActivity {
+public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper {
     private static final String C = "ONSActivity";
+
+    private TouchInput touchInput;
+
+    /** Screen position of the SDL surface, refreshed lazily. */
+    private final int[] surfaceOrigin = new int[2];
+    private SurfaceView surfaceView;
 
     @Override
     protected String[] getLibraries() {
@@ -34,7 +45,18 @@ public class ONSActivity extends SDLActivity {
     protected void onCreate(Bundle savedInstanceState) {
         Diag.i(C, "onCreate");
         super.onCreate(savedInstanceState);
+        touchInput = new TouchInput(ViewConfiguration.get(this), this);
         configureScopedStorage();
+    }
+
+    @Override
+    protected void onPause() {
+        // Losing the window mid-drag would otherwise leave SDL holding a button
+        // that never receives its release.
+        if (touchInput != null) {
+            touchInput.reset();
+        }
+        super.onPause();
     }
 
     @Override
@@ -43,6 +65,81 @@ public class ONSActivity extends SDLActivity {
         // Java line before the process goes away.
         Diag.i(C, "onDestroy");
         super.onDestroy();
+    }
+
+    /**
+     * Takes touch input before SDLSurface sees it.
+     *
+     * SDL's own listener stays installed for mice, styluses and everything else
+     * it handles; fingers are intercepted here and re-emitted as mouse events
+     * because the engine's SDL3 touch path cannot produce a right-click. See
+     * TouchInput for why. Returning true consumes the event, so a finger is
+     * never delivered twice.
+     */
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        if (touchInput != null
+                && event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER
+                && touchInput.onTouch(event)) {
+            return true;
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    @Override
+    public float toSurfaceX(float rawX) {
+        refreshSurfaceOrigin();
+        return rawX - surfaceOrigin[0];
+    }
+
+    @Override
+    public float toSurfaceY(float rawY) {
+        refreshSurfaceOrigin();
+        return rawY - surfaceOrigin[1];
+    }
+
+    @Override
+    public int surfaceWidth() {
+        refreshSurfaceOrigin();
+        return surfaceView != null ? surfaceView.getWidth() : 0;
+    }
+
+    @Override
+    public int surfaceHeight() {
+        refreshSurfaceOrigin();
+        return surfaceView != null ? surfaceView.getHeight() : 0;
+    }
+
+    /**
+     * Events arrive in screen coordinates, but the engine expects them relative
+     * to the SDL surface. The surface normally fills the window, so the offset
+     * is usually zero -- but not under a display cutout or split screen.
+     */
+    private void refreshSurfaceOrigin() {
+        if (surfaceView == null) {
+            surfaceView = findSurfaceView(findViewById(android.R.id.content));
+            if (surfaceView == null) {
+                surfaceOrigin[0] = surfaceOrigin[1] = 0;
+                return;
+            }
+        }
+        surfaceView.getLocationOnScreen(surfaceOrigin);
+    }
+
+    private static SurfaceView findSurfaceView(View root) {
+        if (root instanceof SurfaceView) {
+            return (SurfaceView) root;
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                SurfaceView found = findSurfaceView(group.getChildAt(i));
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
 
     /**
