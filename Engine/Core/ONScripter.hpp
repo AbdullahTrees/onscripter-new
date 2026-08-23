@@ -876,6 +876,10 @@ private:
 	bool needs_screenshot{false};
 	bool display_draw{false};
 	bool allow_rendering{true};
+#if defined(DROID)
+	// Set from the lifecycle event watch, consumed by the render thread.
+	std::atomic<bool> droidResumeRedraw{false};
+#endif
 
 	GPUImageChunkLoader imageLoader;
 

@@ -48,10 +48,17 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
+        <!--
+          launchMode=singleTask reuses the running instance. SetupActivity
+          starts this activity on every launch, and SDLActivity calls
+          System.exit rather than allow a second onCreate in one process, so
+          without it every return from the background killed the engine.
+        -->
         <activity
             android:name=".ONSActivity"
             android:label="onscripter-new"
             android:alwaysRetainTaskState="true"
+            android:launchMode="singleTask"
             android:configChanges="layoutDirection|locale|fontScale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:screenOrientation="sensorLandscape"
             android:preferMinimalPostProcessing="true"

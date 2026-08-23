@@ -649,6 +649,18 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 
 		const uint64_t frameTailStartNanos = highResolutionTicksNanos();
 
+#if defined(DROID)
+		if (droidResumeRedraw.exchange(false, std::memory_order_acq_rel)) {
+			// Android handed back a fresh surface. The scene itself did not
+			// change, so without forcing one frame nothing would ever be
+			// presented: the screen stays black while audio keeps playing.
+			allow_rendering = true;
+			markRetainedRainSceneStaticDirty();
+			before_dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
+			screenChanged = true;
+		}
+#endif
+
 		if (allow_rendering && !save_load_overlay_active && !(skip_mode & SKIP_SUPERSKIP) && !deferredLoadingEnabled) {
 			if (cursor)
 				SDL_SetCursor(nullptr);
