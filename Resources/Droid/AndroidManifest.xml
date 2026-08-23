@@ -48,6 +48,14 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
+        <!-- Shown after a crash; excluded from recents so it is not resumed later. -->
+        <activity
+            android:name=".CrashActivity"
+            android:label="onscripter-new"
+            android:excludeFromRecents="true"
+            android:process=":crash"
+            android:exported="false" />
+
         <!--
           launchMode=singleTask reuses the running instance. SetupActivity
           starts this activity on every launch, and SDLActivity calls

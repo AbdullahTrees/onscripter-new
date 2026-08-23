@@ -15,12 +15,14 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             style="@style/TextAppearance.Material3.HeadlineSmall"
+            android:textColor="?attr/colorOnSurface"
             android:text="@string/setup_title" />
 
         <com.google.android.material.textview.MaterialTextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             style="@style/TextAppearance.Material3.BodyMedium"
+            android:textColor="?attr/colorOnSurface"
             android:layout_marginTop="12dp"
             android:text="@string/setup_explanation" />
 
@@ -29,6 +31,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             style="@style/TextAppearance.Material3.BodySmall"
+            android:textColor="?attr/colorOnSurface"
             android:layout_marginTop="24dp"
             android:textIsSelectable="true" />
 

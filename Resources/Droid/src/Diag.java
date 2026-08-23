@@ -99,19 +99,26 @@ final class Diag {
      * The default handler is still invoked afterwards, so the usual
      * AndroidRuntime trace and crash dialog are unaffected.
      */
-    static void installCrashHandler() {
-        final Thread.UncaughtExceptionHandler previous =
-                Thread.getDefaultUncaughtExceptionHandler();
-
+    static void installCrashHandler(Context context) {
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
             try {
                 e("Diag", "uncaught exception on thread \"" + thread.getName() + "\"", error);
+                CrashReport.writeForException(context, thread, error);
+                context.startActivity(CrashActivity.intentFor(context));
             } catch (Throwable ignored) {
                 // Never let diagnostics replace the original failure.
             }
-            if (previous != null) {
-                previous.uncaughtException(thread, error);
-            }
+
+            // Deliberately not delegating to the platform handler. It would put
+            // its own "keeps stopping" dialog on top of the crash screen we just
+            // launched. Ending the process here leaves only our screen, which
+            // lives in a separate process and so survives this.
+            //
+            // The report is already on disk, so nothing is lost by skipping the
+            // system's own record. Native crashes never reach here anyway --
+            // those are found afterwards through ApplicationExitInfo.
+            android.os.Process.killProcess(android.os.Process.myPid());
+            System.exit(10);
         });
     }
 }

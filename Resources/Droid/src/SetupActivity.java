@@ -54,6 +54,14 @@ public class SetupActivity extends AppCompatActivity {
                 new ActivityResultContracts.OpenDocumentTree(),
                 this::onFolderPicked);
 
+        // A native crash kills the process before anything can be drawn, so the
+        // previous run's death is reported here instead, on the way back in.
+        if (CrashReport.captureNativeExitIfAny(this)) {
+            startActivity(CrashActivity.intentFor(this));
+            finish();
+            return;
+        }
+
         // Nothing to ask for: go straight to the game.
         if (!ACTION_RECONFIGURE.equals(getIntent().getAction()) && isConfigured()) {
             Diag.i(C, "already configured, skipping setup");

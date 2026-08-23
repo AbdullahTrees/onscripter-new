@@ -13,7 +13,7 @@ public class ONSApplication extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
-        Diag.installCrashHandler();
+        Diag.installCrashHandler(this);
         Diag.logEnvironment(this);
     }
 }
