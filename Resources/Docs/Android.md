@@ -28,12 +28,19 @@ when, read the git log.
   - [How complete the SDL3 port is](#how-complete-the-sdl3-port-is)
   - [Why paths are passed as arguments, not environment variables](#why-paths-are-passed-as-arguments-not-environment-variables)
 - [Storage model](#storage-model)
+  - [Why SAF alone cannot work](#why-saf-alone-cannot-work)
+  - [The flow](#the-flow)
+  - [What the picker refuses](#what-the-picker-refuses)
+  - [Fallback and recovery](#fallback-and-recovery)
+  - [Where saves go](#where-saves-go)
+  - [Diagnosing access from the shell](#diagnosing-access-from-the-shell)
 - [Android-specific code](#android-specific-code)
   - [Tier 1 — wholly Android-only](#tier-1--wholly-android-only)
   - [Tier 2 — shared files with Android-only regions](#tier-2--shared-files-with-android-only-regions)
   - [Tier 3 — do not touch for Android work](#tier-3--do-not-touch-for-android-work)
 - [Debugging](#debugging)
   - [Log tags](#log-tags)
+  - [Engine logging on Android](#engine-logging-on-android)
   - [Always force-stop between launches](#always-force-stop-between-launches)
   - [Test a Java-only change without a native rebuild](#test-a-java-only-change-without-a-native-rebuild)
   - [Test a link-flag change without relinking](#test-a-link-flag-change-without-relinking)
@@ -146,8 +153,16 @@ adb install -r build/outputs/apk/debug/onscripter-new-debug.apk
 
 ### Step 3 — supply game data
 
-The engine exits immediately without it. Push a legally obtained Umineko
-Project installation to the app-scoped directory:
+The engine exits immediately without it. There are two routes; see *Storage
+model* for why the permission is unavoidable.
+
+**Route A — any folder on shared storage.** Put a legally obtained Umineko
+Project installation in a folder you create — not `Download` itself, and not the
+top level of internal storage, as Android refuses to hand those to the picker.
+Launch the app, grant all-files access, and select the folder.
+
+**Route B — the app-scoped directory.** Needs no permission, but is hidden from
+most file managers:
 
 ```sh
 MSYS_NO_PATHCONV=1 adb push <game-dir>/. \
@@ -443,17 +458,24 @@ to libc's `environ` (see below).
 
 ### Why paths are passed as arguments, not environment variables
 
-Under SDL2, `SDLActivity.nativeSetenv` wrapped POSIX `setenv()`. Under **SDL3 it
-writes to SDL's own environment object**, which is disconnected from libc's
-`environ`. `Support/FileIO.cpp` resolves the launch directory with
-`std::getenv("EXTERNAL_STORAGE")`, so it never observes anything set that way and
-falls back to Android's default `/sdcard`. SDL also logs
-`Request to get environment variables before JNI is ready`.
+`nativeSetenv` **does** reach the engine. SDL3's implementation in
+`src/core/android/SDL_android.c` calls POSIX `setenv()` directly, and says so:
 
-`--root` is therefore the reliable channel; the engine treats it as authoritative
-and refuses to let a later path override it. A cleaner long-term fix is to call
-`SDL_GetAndroidExternalStoragePath()` directly in the `DROID` branch of
-`FileIO.cpp` and drop the environment dependency, which needs a native rebuild.
+```c
+// Note that we call setenv() directly to avoid affecting SDL environments
+setenv(utfname, utfvalue, 1); // This should NOT be SDL_setenv()
+```
+
+Confirmed at runtime: setting `EXTERNAL_STORAGE` to the game folder moved the
+directory the engine creates for `getStorageDir()` to match, which only works if
+`std::getenv` observed it.
+
+Arguments are still preferred, for a different reason. `--root` is
+*authoritative* — the engine refuses to let a later path override it, so the game
+folder cannot be second-guessed by a config file or by whatever `getLaunchDir()`
+derives from the environment. The environment variables remain set because
+`getLaunchDir()` reads them, and they decide where the engine puts files of its
+own; they are not how the game folder is located.
 
 Related: **Android's `System.loadLibrary` uses `RTLD_NOW` without `RTLD_GLOBAL`.**
 Preloading a system library from Java does not make its symbols visible to
@@ -462,16 +484,115 @@ way — it must be recorded in `libmain.so`'s own `DT_NEEDED`.
 
 ## Storage model
 
-No `WRITE_EXTERNAL_STORAGE`, no SAF import flow. `ONSActivity` resolves
-`getExternalFilesDir(null)`, appends `ONScripter-RU`, creates it, and passes it
-as `--root`. Game data belongs in:
+The engine reaches the filesystem through plain POSIX calls: `FileIO::accessFile`
+is a `stat(2)`, the readers are `fopen(3)`. Everything about the storage design
+follows from that one fact.
+
+### Why SAF alone cannot work
+
+`ACTION_OPEN_DOCUMENT_TREE` returns a `content://` tree URI. That grant lives in
+the DocumentsProvider layer — `ContentResolver`, `DocumentFile` — and puts
+nothing in the kernel's view of the path, so the engine still cannot `stat` or
+`open` anything inside it. Feeding the engine from SAF would mean copying the
+data into app-scoped storage first, which for a full Umineko install means
+duplicating on the order of 12 GB.
+
+`MANAGE_EXTERNAL_STORAGE` is what actually restores POSIX access to shared
+storage, and it is therefore required for any folder outside the app-scoped
+directories.
+
+The two mechanisms do different jobs and the app uses both:
+
+| Mechanism | Provides |
+| --- | --- |
+| `ACTION_OPEN_DOCUMENT_TREE` | names *which* folder the user means |
+| `MANAGE_EXTERNAL_STORAGE` | makes that folder readable by `stat`/`fopen` |
+
+### The flow
+
+`SetupActivity` is the launcher activity. It requests all-files access, runs the
+system picker, converts the tree URI back to a filesystem path, verifies that
+path is really readable, persists it, and only then starts `ONSActivity`.
+
+It is a separate activity because `SDLActivity` starts the native thread from
+its own lifecycle — the transition to RESUMED with a ready surface is the entry
+point to the C app — and `getArguments()` is read on that thread. There is no
+supported point inside that sequence at which to block for a permission dialog.
+Splitting the decision out also keeps the vendored `SDLActivity` a plain
+`android.app.Activity`; only `SetupActivity` depends on AppCompat.
+
+`GameStorage.resolveTreeUri` does the URI to path conversion. External-storage
+document ids are `<volume>:<relative path>`, with `primary` for built-in storage
+and a UUID such as `1D03-2E0F` for a card. Any other authority — Drive, a cloud
+provider — has no filesystem path and is rejected rather than guessed at.
+
+Validation uses `dir.list() != null`, not `exists()` or `canRead()`. Both of the
+latter answer from metadata and still succeed on directories that cannot be
+opened, which is precisely the shared-storage case being tested for.
+
+### What the picker refuses
+
+Android blocks `ACTION_OPEN_DOCUMENT_TREE` from returning the root of internal
+storage, the root of an SD card, and `Download` — these answer "To protect your
+privacy, choose another folder". Users must create a subfolder and select that.
+`SetupActivity`'s on-screen text says so.
+
+### Fallback and recovery
+
+With no folder configured the app falls back to the app-scoped directory:
 
 ```
 /sdcard/Android/data/org.umineko_project.onscripter_ru/files/ONScripter-RU/
 ```
 
-On Android 13+ that path is unreachable from most on-device file managers; use
-`adb push` or MTP. Saves live in a `SaveData` subdirectory of the launch dir.
+That location needs no permission at all, but on Android 13+ it is unreachable
+from most on-device file managers, so filling it means `adb push` or MTP.
+
+Only an explicitly chosen folder counts as configured. The app-scoped directory
+always exists and is always readable, so treating it as "ready" would skip the
+setup screen forever and drop straight into an engine with no data to open.
+
+Once a folder is set the launcher goes straight to the engine, so a wrong choice
+would otherwise be unrecoverable without clearing app data. A **Change folder**
+launcher shortcut (long-press the icon) re-opens `SetupActivity`. Static
+shortcut intents cannot carry extras, so it is dispatched by a dedicated action
+rather than a boolean.
+
+### Where saves go
+
+Saves live in `<game folder>/SaveData/`, pinned by passing `--save` alongside
+`--root`.
+
+That argument is not optional decoration. Without it the engine calls
+`lookupSavePath()`, which builds the path from `getStorageDir()` →
+`getLaunchDir()` → `$EXTERNAL_STORAGE` + `"ONScripter-RU"` — a chain that has
+nothing to do with `--root`. Choosing `/sdcard/Games/Umineko` would then write
+saves to `/sdcard/Games/ONScripter-RU/SaveData/`: a sibling of the game folder,
+created on launch, easy to lose track of and easy to delete by accident.
+`lookupSavePath()` only runs when `save_path` is unset, so passing `--save` wins
+outright.
+
+`EXTERNAL_STORAGE` is set to the game folder itself rather than its parent. The
+engine unconditionally creates `getStorageDir()` during startup and terminates
+with "Failed to access storage directory!" if that fails, so *something* is
+always created; pointing it inside the chosen folder keeps it there instead of
+littering the folder above. The result is one incidental empty directory,
+`<game folder>/ONScripter-RU/SaveData/`, which is only written to when
+`--use-logfile` is in effect.
+
+Verified on Android 15 with a folder at `/sdcard/Games/Umineko`: `SaveData` was
+created inside it, and nothing appeared at `/sdcard/ONScripter-RU`.
+
+### Diagnosing access from the shell
+
+`run-as` cannot answer whether the app can read shared storage. It runs in a
+restricted mount namespace that never receives the pass-through mount, so it
+reports shared storage as unreadable even when the app itself reads it fine.
+Confirmed on Android 15: `run-as ... ls /sdcard/Download` printed a denial while
+the app process logged `listed=20 entries` for the same volume.
+
+Use the in-app probe instead — `GameStorage.logAccessState` runs inside the app
+process and logs the permission flag next to what the app can actually list.
 
 ## Android-specific code
 
@@ -485,7 +606,9 @@ Work on this target should stay inside tiers 1 and 2.
 ### Tier 1 — wholly Android-only
 
 ```
-Resources/Droid/**        manifest, build.gradle, gradle wrapper, res/, 13 Java sources
+Resources/Droid/**        manifest, build.gradle, gradle wrapper, res/, 17 Java sources
+                          (project-owned: ONSActivity, SetupActivity, GameStorage,
+                           Diag, ONSApplication; the other 12 are vendored SDL3)
 Support/Droid/**          DroidProfile.cpp / .hpp
 Scripts/ndktoolchain.sh   NDK discovery and wrapper toolchain generation
 Scripts/apkbuild.tool     Gradle/AGP packaging
@@ -522,10 +645,53 @@ Everything else, including the rest of `Engine/`, `Engine/Graphics/SDL3GPU*`,
 
 | Tag | Source |
 | --- | --- |
+| `ONSJava` | every Java class this project owns, via `Diag` |
 | `ONScripter-RU` | engine, via `FileIO::log` and `__android_log_vprint` |
-| `ONSActivity` | the app's Activity subclass |
 | `SDL` | SDL3's Java and native layers |
 | `nativeloader`, `System.err` | dynamic linker — **where real `dlopen` failures appear** |
+| `libc`, `DEBUG` | native crashes (`Fatal signal 11`) and tombstones |
+
+One tag per side of the JNI boundary, so a single filter shows the whole startup
+and it is never ambiguous which half produced a line:
+
+```sh
+adb logcat -s ONSJava:V ONScripter-RU:V SDL:V
+```
+
+The handoff is explicit. `ONSActivity` logs the exact `argv` immediately before
+`nativeRunMain`, and the engine's first line follows it:
+
+```
+ONSJava      : ONSActivity: handing off to engine, argv [--root, /storage/.../ONScripter-RU]
+ONScripter-RU: Launched with pid 10854, previous pid 0
+ONScripter-RU: set:archive_path: "/storage/.../ONScripter-RU/"
+ONScripter-RU: Invalid launch directory!
+```
+
+If the `ONScripter-RU` tag never appears after the handoff line, `main()` was
+never reached and the fault is in loading, not in the engine.
+
+### Engine logging on Android
+
+Engine output reaches logcat by default: `FileIO::log` routes through
+`__android_log_vprint` under the provider name, mapping `LogLevel::Info/Warn/Error`
+onto `I/W/E`. `performTerminate` logs through the same path before showing its
+message box, so fatals are visible — the "Invalid launch directory!" line above
+is that path.
+
+Two things to know:
+
+**`--use-logfile` turns logcat output off.** The Android branch in `FileIO::log`
+is guarded by `logMode != LogMode::File`, so file mode falls through to
+`stdout`/`stderr` instead. Those are reopened onto `out.txt` and `err.txt` in
+`getStorageDir()` — see *Where saves go* for what that resolves to and why it is
+not the same directory as `--save`. Development builds
+(`#ifndef PUBLIC_RELEASE`) set `LogMode::Console`, which still reaches logcat.
+
+**Java-side crashes are logged separately.** `Diag.installCrashHandler`, wired up
+from `ONSApplication`, logs uncaught exceptions on `ONSJava` before delegating to
+the default handler, so the usual `AndroidRuntime` trace is unaffected. It cannot
+see native crashes; a SIGSEGV inside the engine appears under `libc`/`DEBUG`.
 
 A Java `UnsatisfiedLinkError` on a `native` method usually means the whole
 library failed to load, not that the method is missing. The named method is
