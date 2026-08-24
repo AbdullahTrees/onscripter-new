@@ -6,6 +6,8 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import org.libsdl.app.SDLActivity;
 
@@ -20,6 +22,8 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
     /** Screen position of the SDL surface, refreshed lazily. */
     private final int[] surfaceOrigin = new int[2];
     private SurfaceView surfaceView;
+
+    private final OnBackInvokedCallback backCallback = this::onSystemBack;
 
     @Override
     protected String[] getLibraries() {
@@ -47,6 +51,39 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         super.onCreate(savedInstanceState);
         touchInput = new TouchInput(ViewConfiguration.get(this), this);
         configureScopedStorage();
+
+        // Back has to be claimed, not merely observed. The manifest sets
+        // enableOnBackInvokedCallback, so on API 33+ onBackPressed is never
+        // called and SDL's own SDL_ANDROID_TRAP_BACK_BUTTON handling is dead
+        // code; without a callback here the system finishes the activity
+        // itself. minSdk is 34, so this API is always available.
+        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback);
+    }
+
+    /**
+     * What the Back gesture means inside the game.
+     *
+     * Today it is always handed to the engine as a right-click, so Back never
+     * leaves the app: the way out is Exit in the game's own menu, or Home.
+     *
+     * Letting Back exit at the "root" (the title screen) would go here, on the
+     * false branch. It needs care rather than just a finish() call. The engine
+     * gives no signal about whether it consumed a click, so knowing we are at
+     * the root would take a native callback; and quitting this way runs into a
+     * separate teardown bug -- SDL parks the engine thread in nativePause
+     * before onDestroy sends the quit, so mSDLThread.join(1000) expires and the
+     * engine's shutdown runs on after the window is gone, which is what aborts
+     * in hwuiTask1.
+     */
+    private void onSystemBack() {
+        if (touchInput != null && touchInput.systemBack()) {
+            return;
+        }
+        // The engine is not listening yet -- during startup, or once it has
+        // begun shutting down. Swallow the press rather than tearing the
+        // activity down underneath it.
+        Diag.i(C, "back pressed while engine not ready; ignoring");
     }
 
     @Override
@@ -64,6 +101,7 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         // The engine calls exit() on a fatal error, so this is often the last
         // Java line before the process goes away.
         Diag.i(C, "onDestroy");
+        getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
         super.onDestroy();
     }
 

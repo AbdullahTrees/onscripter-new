@@ -1637,6 +1637,13 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
     protected void messageboxCreateAndShow(Bundle args) {
 
+        if (isFinishing() || isDestroyed()) {
+            synchronized (messageboxSelection) {
+                messageboxSelection.notify();
+            }
+            return;
+        }
+
         // TODO set values from "flags" to messagebox dialog
 
         // get colors
