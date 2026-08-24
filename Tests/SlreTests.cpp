@@ -9,6 +9,11 @@ int main() {
 		slre_regex_info info{};
 		assert(slre_compile("[", 1, 0, &info) == SLRE_INVALID_CHARACTER_SET);
 		assert(slre_compile("[abc", 4, 0, &info) == SLRE_INVALID_CHARACTER_SET);
+
+		// A trailing escape has no byte after it. The compiler must reject the
+		// expression without letting its operator-length probe read past the end.
+		constexpr char TrailingEscape[] = {'\\'};
+		assert(slre_compile(TrailingEscape, 1, 0, &info) == SLRE_INVALID_METACHARACTER);
 	}
 
 	{
