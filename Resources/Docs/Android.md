@@ -347,7 +347,7 @@ Defined in `Resources/Droid/build.gradle` and `Scripts/ndktoolchain.sh`:
 
 | | |
 | --- | --- |
-| minSdk / targetSdk / compileSdk | 34 / 36 / 36 |
+| minSdk / targetSdk / compileSdk | 30 / 36 / 36 |
 | ABIs | `arm64-v8a`, `x86_64` |
 | NDK | r29 (`29.0.14206865`) |
 | Java | 17 |
@@ -783,22 +783,12 @@ Independently, a decoder that fails should not be reported as success. Treating 
 fatal error as recoverable is what turns a dead codec into an unbounded spin, and
 would do the same for any other fatal decode error.
 
-**No surface-resize handling outside macOS.** `SDL_WINDOWEVENT_RESIZED` is acted
-on only inside `#ifdef MACOSX` in `Engine/Core/Event.cpp`, and even there only
-for backing-scale changes. The manifest sets `configChanges` including
-`orientation|screenSize`, so Android resizes the surface in place without
-recreating the activity, leaving the engine responsible for a resize it ignores.
-Start the app while the display is asleep and it derives `screen_width` /
-`screen_height` from the pre-rotation portrait surface, never re-derives them,
-and renders into a full-width, vertically crushed band. Confirmed by control:
-identical build and video, correct when launched awake, squashed when launched
-dozing. Touch mapping divides by the same stale values in
-`translateWindowToScriptCoords`, so taps are expected to be mis-placed while
-squashed — worth confirming, since it would make this more than cosmetic.
-
-The fix has to adopt the size the system gives rather than push one back:
-`GPU_SetWindowResolution` calls `SDL_SetWindowSize`, which is wrong on Android
-where the system owns the surface size.
+**One stale frame when a window resizes.** The resize is handled on the event,
+but a frame can already be in flight with the previous canvas, so entering a
+floating window shows a single frame at the old geometry before correcting.
+Observed as `Swapchain 1920x1080, target 1920x1371` immediately before the
+matching `Surface resize` line. Cosmetic, and it would read as an intermittent
+glitch if found later without this note.
 
 **`VK_ERROR_SURFACE_LOST_KHR` on cold start with the screen off.** Launching
 against a sleeping display can fail renderer init outright. Racy — observed once,
@@ -869,17 +859,19 @@ MediaTek parts — with a fatal dialog, for the reason described under *Supporte
 target*. A whole GPU vendor was excluded, and it was found by chance rather than
 by testing. Assume other such gaps exist.
 
-**Lower minSdk if it can be done cheaply.** 34 is a high floor for a 2D visual
-novel and rules out a large installed base for no reason yet established. Nothing
-here obviously needs Android 14: the storage model needs
-`MANAGE_EXTERNAL_STORAGE` (API 30) and `ACTION_OPEN_DOCUMENT_TREE` (21), the
-crash reporting needs `ApplicationExitInfo` (30), and the Back handling needs
-`OnBackInvokedDispatcher` (33) — though that one only matters while
-`enableOnBackInvokedCallback` is set, and the older `onBackPressed` path still
-exists below it. So 30 looks plausible and 33 near-certain. Work needed: drop
-minSdk, see what the manifest merger and lint actually reject, then decide which
-of the resulting compat branches are worth carrying. The NDK API level is
-separate from minSdk, so the engine side is unaffected.
+**Verify API 30 on a device that actually runs it.** The floor is now 30, but
+both test devices are Android 15/16, so what has been shown is that an
+API-30-targeted binary runs on modern Android -- not that it runs on Android 11.
+The `onBackPressed` path added for 30-32 cannot execute on either device either,
+since both take the 33+ dispatcher route. Needs an emulator image in that range.
+
+`sw600dp` selects the phone/tablet split, and it measures the **window**, not the
+device. In split screen the tablet resolves `sw534dp` -- the phone bucket -- and
+a foldable changes bucket when it folds. Today that is harmless because
+`lock_landscape` is read once in `onCreate` while fullscreen, but the qualifier
+is a proxy for the question actually being asked, which is whether the portrait
+band would still be large enough to touch. Deriving it from the rendered band's
+physical size would say what is meant.
 
 Worth building a device matrix and working through it deliberately:
 
@@ -912,6 +904,11 @@ shipped binary rather than the source tree.
   regression corpus does, which limits confidence in renderer and media changes.
   `Tests/Fixtures/SmokeGame/0.txt` is a minimal script, not a runnable game — the
   engine still reports `Invalid launch directory!` with only that present.
+- Dependency stamps in `Dependencies/onscrlib/.pkgs` record `$pkgver-$pkgrel`
+  only, not the Android API level. Changing `droid_min_api` regenerates the
+  toolchain but leaves those stamps valid, so a plain `make` would relink
+  libraries built for the old API into a binary claiming the new one. Delete
+  `onscrlib` to force the rebuild.
 - `android:screenOrientation="sensorLandscape"` is ignored on targetSdk 36;
   Android 16 drops manifest-declared fixed orientation on large screens.
 - `Resources/Droid/gradle/gradle-daemon-jvm.properties` is untracked and
