@@ -1,6 +1,7 @@
 package org.umineko_project.onscripter_ru;
 
 import android.content.pm.ActivityInfo;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
@@ -9,6 +10,8 @@ import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
+
+import androidx.annotation.RequiresApi;
 
 import org.libsdl.app.SDLActivity;
 
@@ -24,7 +27,14 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
     private final int[] surfaceOrigin = new int[2];
     private SurfaceView surfaceView;
 
-    private final OnBackInvokedCallback backCallback = this::onSystemBack;
+    /**
+     * Created only on API 33+, never as a field initialiser.
+     *
+     * OnBackInvokedCallback does not exist below 33, and a field initialiser
+     * runs on every device, so building the lambda eagerly would fail to
+     * resolve the interface on the very versions this compatibility exists for.
+     */
+    private OnBackInvokedCallback backCallback;
 
     @Override
     protected String[] getLibraries() {
@@ -67,9 +77,40 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         // enableOnBackInvokedCallback, so on API 33+ onBackPressed is never
         // called and SDL's own SDL_ANDROID_TRAP_BACK_BUTTON handling is dead
         // code; without a callback here the system finishes the activity
-        // itself. minSdk is 34, so this API is always available.
+        // itself. Below 33 the attribute is ignored and onBackPressed is the
+        // only route, so exactly one of the two paths is live on any device.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerBackCallback();
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
+    private void registerBackCallback() {
+        backCallback = this::onSystemBack;
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
+    private void unregisterBackCallback() {
+        if (backCallback != null) {
+            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
+            backCallback = null;
+        }
+    }
+
+    /**
+     * The pre-33 half of the same gesture.
+     *
+     * Deliberately does not call super: that is what finishes the activity, and
+     * the whole point is that Back is a game action rather than an exit. The raw
+     * KEYCODE_BACK still reaches SDL as SDL_SCANCODE_AC_BACK, which the engine
+     * has no handler for, so nothing acts on it twice.
+     */
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+        onSystemBack();
     }
 
     /**
@@ -112,7 +153,9 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         // The engine calls exit() on a fatal error, so this is often the last
         // Java line before the process goes away.
         Diag.i(C, "onDestroy");
-        getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            unregisterBackCallback();
+        }
         super.onDestroy();
     }
 

@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         applicationId = 'org.umineko_project.onscripter_ru'
-        minSdk = 34
+        minSdk = 30
         targetSdk = 36
         versionCode = 3
         versionName = '1.2'
