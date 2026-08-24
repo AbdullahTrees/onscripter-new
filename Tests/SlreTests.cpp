@@ -17,6 +17,15 @@ int main() {
 	}
 
 	{
+		// Character sets consume one input byte and cannot inspect the byte past
+		// an empty input range.
+		constexpr char Expression[] = "[a]";
+		slre_regex_info info{};
+		assert(slre_compile(Expression, static_cast<int>(std::strlen(Expression)), 0, &info) > 0);
+		assert(slre_match_reuse(&info, "", 0, nullptr, 0) == SLRE_NO_MATCH);
+	}
+
+	{
 		constexpr char Expression[] = R"((\[.+?\]))";
 		slre_regex_info info{};
 		assert(slre_compile(Expression, static_cast<int>(std::strlen(Expression)), 0, &info) > 0);

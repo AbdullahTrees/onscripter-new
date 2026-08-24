@@ -93,10 +93,10 @@ Linux CI runs those tests under
 ASan/UBSan and runs four libFuzzer targets on pushes and a larger weekly budget.
 The CMake harness supplies the same host-platform macros as the production
 configure path, and source hygiene checks the complete changed range rather
-than a shallow checkout snapshot. SLRE operator-length parsing is bounded by
-the supplied expression size, including malformed trailing escapes exercised by
-the regression suite and fuzzer. Static analysis remains part of the release
-audit.
+than a shallow checkout snapshot. SLRE operator-length parsing and character-set
+matching are bounded by the supplied expression and input sizes, including
+malformed trailing escapes and empty inputs exercised by the regression suite
+and fuzzer. Static analysis remains part of the release audit.
 
 The synthetic compressed-script fixture verifies public-release startup and
 orderly shutdown without copyrighted assets. It is not a representative game
