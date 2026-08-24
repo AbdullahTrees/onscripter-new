@@ -304,6 +304,65 @@ bool WindowController::updateDisplayData(bool getpos) {
 	return false;
 }
 
+#if defined(DROID)
+void WindowController::refreshAfterSurfaceResize() {
+	// Android resizes the surface in place -- the manifest's configChanges
+	// covers orientation and screenSize, so the activity is never recreated --
+	// and nothing else recomputes the fullscreen geometry. changeMode() is the
+	// only other caller of updateDisplayData(), and it runs at startup and on
+	// explicit fullscreen toggles, neither of which a rotation triggers.
+	//
+	// Left stale, fullscript_* keeps the aspect of the previous orientation:
+	// a 1920x2688 portrait canvas presented into a 2800x2000 landscape
+	// swapchain, which is the squashed full-width band.
+	//
+	// Start from the windowed baseline every time so repeated resizes cannot
+	// compound: updateDisplayData() derives its stretch factors from
+	// screen_width/height, and the fullscreen branch below overwrites them.
+	// Derived from the window, not the display. updateDisplayData() sizes the
+	// canvas from displayData.fullscreenDisplay->native_*, which is the whole
+	// screen. Under split screen or a floating window the display does not
+	// change while the window does, so that path keeps returning the fullscreen
+	// answer: a 1918x1079 floating window -- almost exactly the game's own 16:9
+	// -- was handed a 1920x1371 canvas and squashed by 27%. The window size is
+	// correct for every cause, rotation included.
+	int winW = 0, winH = 0;
+	SDL_GetWindowSizeInPixels(window, &winW, &winH);
+	if (winW <= 0 || winH <= 0)
+		return;
+
+	// Largest whole-script scale that still fits, i.e. letterbox rather than
+	// crop or stretch.
+	const float scale = std::min(winW / static_cast<float>(script_width),
+	                             winH / static_cast<float>(script_height));
+	if (!(scale > 0.0f))
+		return;
+
+	fullscreen_width  = std::round(script_width * scale);
+	fullscreen_height = std::round(script_height * scale);
+	if (fullscreen_width <= 0 || fullscreen_height <= 0)
+		return;
+
+	// The whole window expressed in script units; the scene sits centred in it
+	// and the remainder is the letterbox.
+	fullscript_width    = script_width * winW / static_cast<float>(fullscreen_width);
+	fullscript_height   = script_height * winH / static_cast<float>(fullscreen_height);
+	fullscript_offset_x = (fullscript_width - script_width) / 2 - system_offset_x;
+	fullscript_offset_y = (fullscript_height - script_height) / 2 - system_offset_y;
+	fullscreen_reduced_clip = {fullscript_offset_x + 0.5f, fullscript_offset_y + 0.5f,
+	                           script_width - 1.0f, script_height - 1.0f};
+
+	screen_width  = fullscreen_width;
+	screen_height = fullscreen_height;
+
+	sendToLog(LogLevel::Info,
+	          "Surface resize: window %dx%d, fullscreen %dx%d, fullscript %dx%d\n",
+	          winW, winH, fullscreen_width, fullscreen_height, fullscript_width, fullscript_height);
+
+	gpu.setVirtualResolution(fullscript_width, fullscript_height);
+}
+#endif
+
 bool WindowController::changeMode(bool perform, bool correct, int mode) {
 	// To my regret SDL & SDL_gpu fullscreen APIs are neither convenient, nor perfect.
 	// This function needs some improvement I guess, because these clearWholeTargets shouldn't

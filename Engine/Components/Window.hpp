@@ -102,6 +102,9 @@ public:
 	void translateScriptToWindowCoords(int &x, int &y);
 
 	void applyDimensions(int rw, int rh, int cw, int ch, int dw);
+#if defined(DROID)
+	void refreshAfterSurfaceResize();
+#endif
 	void getWindowSize(int &w, int &h);
 	float currentDisplayRefreshRate() const;
 	bool updateDisplayData(bool getpos = false);

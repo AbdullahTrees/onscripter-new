@@ -2146,6 +2146,20 @@ void ONScripter::runEventLoop() {
 #else
 					case SDL_WINDOWEVENT:
 #endif
+#if defined(DROID)
+						// Android changes the surface under a live activity, so
+						// this is the only notice the engine gets that its
+						// fullscreen geometry is now for the wrong orientation.
+						if (onsWindowEventType(event->window) == SDL_WINDOWEVENT_RESIZED) {
+							window.refreshAfterSurfaceResize();
+							markRetainedRainSceneStaticDirty();
+							before_dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
+							// Nothing in the scene changed, so without asking
+							// for one the engine would not flip and the stale
+							// frame would stay on screen.
+							droidResumeRedraw.store(true, std::memory_order_release);
+						}
+#endif
 #ifdef MACOSX
 						// OS X specific: We are done exiting fullscreen mode and the animation has finished
 						if (onsWindowEventType(event->window) == SDL_WINDOWEVENT_RESTORED && window.getFullscreenFix() && !window.getFullscreen()) {

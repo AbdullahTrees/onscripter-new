@@ -5954,6 +5954,25 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 		return;
 	}
 
+#if defined(DROID)
+	// The surface can change size under us -- rotation, or starting up before
+	// the display has settled -- and everything downstream is scaled from these
+	// numbers, so log them whenever they move rather than guessing later.
+	{
+		static Uint32 lastSwapW = 0, lastSwapH = 0;
+		if (width != lastSwapW || height != lastSwapH) {
+			lastSwapW = width;
+			lastSwapH = height;
+			sendToLog(LogLevel::Info,
+			          "Swapchain %ux%u, target %dx%d (base %dx%d, virtual %d), image %dx%d\n",
+			          width, height, target->w, target->h, target->base_w, target->base_h,
+			          target->using_virtual_resolution ? 1 : 0,
+			          target->image ? target->image->w : -1,
+			          target->image ? target->image->h : -1);
+		}
+	}
+#endif
+
 	presentTarget(target, commands, swapchainTexture, width, height);
 	submitGPUCommandBuffer(commands);
 }
