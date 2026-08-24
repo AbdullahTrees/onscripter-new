@@ -439,29 +439,21 @@ bool FileIO::shellOpen(const std::string &path, FileType type) {
 	return (type == FileType::URL && openURL(path.c_str()));
 #elif defined(DROID)
 	if (type == FileType::URL) {
-		pid_t child = fork();
-		if (child == -1) {
-			// Parent, failed
-			sendToLog(LogLevel::Error, "Could not open `%s': fork error: %s\n", path.c_str(), strerror(errno));
-		} else if (child) {
-			// Parent, success
-			int status;
-			waitpid(child, &status, 0);
-			if (WIFEXITED(status))
-				return WEXITSTATUS(status) == 0;
-		} else {
-			// Child, --user 0 may not be necessary prior to 4.2 but it does not do any harm
-			execlp("/system/bin/am", "/system/bin/am", "start", "--user", "0", "-a", "android.intent.action.VIEW", "-d", path.c_str(), nullptr);
-			_exit(EXIT_FAILURE);
-		}
+		// This used to fork /system/bin/am. That worked when the port was
+		// written, but an app uid may not run am on modern Android, so it only
+		// ever failed and the caller fell back to printing the URL in a dialog.
+		// SDL asks Java to fire the ACTION_VIEW intent instead, through
+		// SDLActivity.openURL.
+#if defined(ONS_USE_SDL3)
+		if (SDL_OpenURL(path.c_str()))
+			return true;
+#else
+		if (SDL_OpenURL(path.c_str()) == 0)
+			return true;
+#endif
+		sendToLog(LogLevel::Error, "Could not open `%s': %s\n", path.c_str(), SDL_GetError());
 	}
 	return false;
-	//std::string cmd =
-	//char * args = {"/system/bin/am", "start", "-a", "android.intent.action.VIEW", "http://www.google.com/"};
-	//if(fork() == 0) {
-	//    execvp("/system/bin/am", args);
-	//}
-
 #else
 	return false;
 #endif
