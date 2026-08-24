@@ -5,7 +5,7 @@ history belongs in Git, issues, and release notes rather than this document.
 
 ## Supported release targets
 
-- Current release: 1.2 (`20260820-new`).
+- Current release: 1.3 (`20260824-new`).
 - Windows 10 or newer, x86-64, built in MSYS2 UCRT64.
 - Android 14 or newer, arm64.
 - The SDL3/SDL3_GPU renderer is the only supported renderer.
