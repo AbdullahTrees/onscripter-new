@@ -5878,6 +5878,13 @@ void SDLCALL GPU_FlushBlitBuffer(void) {
 #if defined(DROID)
 static std::atomic<bool> presentationSuspended{false};
 static std::atomic<bool> swapchainNeedsRebuild{false};
+// Set when the presented canvas no longer matches the swapchain's shape; the
+// engine owns the geometry, so it clears this and recomputes.
+static std::atomic<bool> surfaceGeometryStale{false};
+
+bool GPU_TakeSurfaceGeometryStale() {
+	return surfaceGeometryStale.exchange(false, std::memory_order_acq_rel);
+}
 
 void GPU_SetPresentationSuspended(bool suspended) {
 	const bool wasSuspended = presentationSuspended.exchange(suspended, std::memory_order_acq_rel);
@@ -5955,9 +5962,10 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 	}
 
 #if defined(DROID)
-	// The surface can change size under us -- rotation, or starting up before
-	// the display has settled -- and everything downstream is scaled from these
-	// numbers, so log them whenever they move rather than guessing later.
+	// The surface can change size under us -- rotation, multi-window, or
+	// starting up before the display has settled -- and everything downstream is
+	// scaled from these numbers, so log them whenever they move rather than
+	// guessing later.
 	{
 		static Uint32 lastSwapW = 0, lastSwapH = 0;
 		if (width != lastSwapW || height != lastSwapH) {
@@ -5969,6 +5977,19 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 			          target->using_virtual_resolution ? 1 : 0,
 			          target->image ? target->image->w : -1,
 			          target->image ? target->image->h : -1);
+		}
+
+		// The canvas is blitted to fill the swapchain, so if their aspects
+		// disagree the scene is stretched. Checking the two numbers we already
+		// have catches every cause, including the ones that arrive without a
+		// resize event: the engine computes its fullscreen geometry from display
+		// metrics, and at startup those can describe an orientation the window
+		// never had.
+		if (width > 0 && height > 0 && target->w > 0 && target->h > 0) {
+			const float swapAspect   = static_cast<float>(width) / static_cast<float>(height);
+			const float targetAspect = static_cast<float>(target->w) / static_cast<float>(target->h);
+			if (std::fabs(swapAspect - targetAspect) > 0.01f * swapAspect)
+				surfaceGeometryStale.store(true, std::memory_order_release);
 		}
 	}
 #endif
