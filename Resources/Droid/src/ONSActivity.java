@@ -1,5 +1,6 @@
 package org.umineko_project.onscripter_ru;
 
+import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
@@ -51,6 +52,16 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         super.onCreate(savedInstanceState);
         touchInput = new TouchInput(ViewConfiguration.get(this), this);
         configureScopedStorage();
+
+        // The manifest locks landscape so a phone is never briefly portrait
+        // before this runs; large screens relax it here. Doing it in code
+        // rather than trusting the manifest alone is deliberate: Android 16
+        // ignores a manifest-declared fixed orientation on large screens, so
+        // the manifest by itself gives the right answer for the wrong reason
+        // and only on that one OS version.
+        if (!getResources().getBoolean(R.bool.lock_landscape)) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        }
 
         // Back has to be claimed, not merely observed. The manifest sets
         // enableOnBackInvokedCallback, so on API 33+ onBackPressed is never
