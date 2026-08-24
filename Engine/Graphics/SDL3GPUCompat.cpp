@@ -5104,6 +5104,38 @@ bool downloadImageToSurface(GPU_Image *image, SDL_Surface *surface) {
 		noteReadback(downloadSize, "copy_surface_from_image");
 	return copied;
 }
+
+SDL_GPUDevice *createGPUDevice(bool debugDevice) {
+#if defined(DROID)
+	SDL_PropertiesID props = SDL_CreateProperties();
+	if (!props)
+		return nullptr;
+
+	// SDL's simple device constructor enables every optional Vulkan feature.
+	// This renderer does not use any of them, and requiring them rejects some
+	// otherwise capable Android GPUs. Match SDL's own compatibility renderer by
+	// requesting only the SPIR-V shader format and baseline Vulkan features.
+	const bool configured =
+	    SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, "vulkan") &&
+	    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, debugDevice) &&
+	    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true) &&
+	    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_CLIP_DISTANCE_BOOLEAN, false) &&
+	    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_DEPTH_CLAMPING_BOOLEAN, false) &&
+	    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_INDIRECT_DRAW_FIRST_INSTANCE_BOOLEAN, false) &&
+	    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_ANISOTROPY_BOOLEAN, false);
+
+	SDL_GPUDevice *device = configured ? SDL_CreateGPUDeviceWithProperties(props) : nullptr;
+	SDL_DestroyProperties(props);
+	return device;
+#else
+	const SDL_GPUShaderFormat shaderFormats = SDL_GPU_SHADERFORMAT_SPIRV |
+	                                          SDL_GPU_SHADERFORMAT_DXBC |
+	                                          SDL_GPU_SHADERFORMAT_DXIL |
+	                                          SDL_GPU_SHADERFORMAT_MSL |
+	                                          SDL_GPU_SHADERFORMAT_METALLIB;
+	return SDL_CreateGPUDevice(shaderFormats, debugDevice, "vulkan");
+#endif
+}
 } // namespace
 
 void SDLCALL GPU_PushTelemetryScope(const char *source) {
@@ -5165,13 +5197,7 @@ SDL_GPUPresentMode choosePresentMode(SDL_GPUDevice *device, SDL_Window *window) 
 GPU_Target *SDLCALL GPU_InitRendererByID(GPU_RendererID renderer_request, Uint16 w, Uint16 h, GPU_WindowFlagEnum SDL_flags) {
 	GPU_Quit();
 
-	const SDL_GPUShaderFormat shaderFormats = SDL_GPU_SHADERFORMAT_SPIRV |
-	                                          SDL_GPU_SHADERFORMAT_DXBC |
-	                                          SDL_GPU_SHADERFORMAT_DXIL |
-	                                          SDL_GPU_SHADERFORMAT_MSL |
-	                                          SDL_GPU_SHADERFORMAT_METALLIB;
-
-	rendererState.device = SDL_CreateGPUDevice(shaderFormats, rendererState.debug_level == GPU_DEBUG_LEVEL_MAX, "vulkan");
+	rendererState.device = createGPUDevice(rendererState.debug_level == GPU_DEBUG_LEVEL_MAX);
 	if (!rendererState.device)
 		return nullptr;
 

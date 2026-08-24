@@ -351,6 +351,12 @@ Defined in `Resources/Droid/build.gradle` and `Scripts/ndktoolchain.sh`:
 
 `armeabi-v7a` and `x86` are not supported.
 
+The renderer requires baseline Vulkan support, not a particular GPU vendor.
+Android device creation disables SDL's optional clip-distance, depth-clamping,
+indirect-first-instance, and anisotropy requirements because the engine does
+not use those features. Requiring SDL's defaults would reject otherwise capable
+Android GPUs before a window was created.
+
 ## Native architecture
 
 **Everything is statically linked into one `libmain.so` per ABI.** SDL3,

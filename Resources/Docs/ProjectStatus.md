@@ -53,6 +53,9 @@ app-scoped save location for upgrades. Selected roots use the engine's
 `ONScripter-RU/SaveData/<game id>` layout; folder changes restart the native
 engine in a clean process. Android lifecycle recovery suspends presentation
 while the surface is absent and retries swapchain rebinding until it succeeds.
+Vulkan device creation requests only the baseline features the renderer uses,
+avoiding device-specific failures on GPUs without SDL's optional clip-distance,
+depth-clamping, indirect-first-instance, or anisotropy features.
 Host-side Android tests lock down the selected-root and legacy app-scoped path
 mapping.
 
