@@ -250,11 +250,16 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         // SDL_setenv -- so these do reach the engine's std::getenv.
         //
         // getLaunchDir() appends "ONScripter-RU" to EXTERNAL_STORAGE, and
-        // getStorageDir() hangs "SaveData" off that. Pointing it at the game
-        // folder rather than the folder above keeps everything the engine
-        // creates inside the directory the user chose, in the engine's own
-        // layout: <game folder>/ONScripter-RU/SaveData/<game id>/.
-        String basePath = launchDir.getAbsolutePath();
+        // getStorageDir() hangs "SaveData" off that. A selected game folder is
+        // therefore the base itself. The app-scoped fallback already has the
+        // provider suffix, so GameStorage deliberately returns its parent to
+        // preserve the save location used by previous releases.
+        File storageBase = GameStorage.getNativeStorageBase(this, launchDir);
+        if (storageBase == null) {
+            Diag.e(C, "unable to resolve native storage base for " + launchDir);
+            return;
+        }
+        String basePath = storageBase.getAbsolutePath();
         Diag.i(C, "nativeSetenv EXTERNAL_STORAGE=" + basePath);
         nativeSetenv("EXTERNAL_STORAGE", basePath);
         nativeSetenv("SECONDARY_STORAGE", basePath);

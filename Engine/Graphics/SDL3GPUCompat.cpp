@@ -5104,6 +5104,38 @@ bool downloadImageToSurface(GPU_Image *image, SDL_Surface *surface) {
 		noteReadback(downloadSize, "copy_surface_from_image");
 	return copied;
 }
+
+SDL_GPUDevice *createGPUDevice(bool debugDevice) {
+#if defined(DROID)
+	SDL_PropertiesID props = SDL_CreateProperties();
+	if (!props)
+		return nullptr;
+
+	// SDL's simple device constructor enables every optional Vulkan feature.
+	// This renderer does not use any of them, and requiring them rejects some
+	// otherwise capable Android GPUs. Match SDL's own compatibility renderer by
+	// requesting only the SPIR-V shader format and baseline Vulkan features.
+	const bool configured =
+	    SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, "vulkan") &&
+	    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, debugDevice) &&
+	    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true) &&
+	    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_CLIP_DISTANCE_BOOLEAN, false) &&
+	    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_DEPTH_CLAMPING_BOOLEAN, false) &&
+	    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_INDIRECT_DRAW_FIRST_INSTANCE_BOOLEAN, false) &&
+	    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_ANISOTROPY_BOOLEAN, false);
+
+	SDL_GPUDevice *device = configured ? SDL_CreateGPUDeviceWithProperties(props) : nullptr;
+	SDL_DestroyProperties(props);
+	return device;
+#else
+	const SDL_GPUShaderFormat shaderFormats = SDL_GPU_SHADERFORMAT_SPIRV |
+	                                          SDL_GPU_SHADERFORMAT_DXBC |
+	                                          SDL_GPU_SHADERFORMAT_DXIL |
+	                                          SDL_GPU_SHADERFORMAT_MSL |
+	                                          SDL_GPU_SHADERFORMAT_METALLIB;
+	return SDL_CreateGPUDevice(shaderFormats, debugDevice, "vulkan");
+#endif
+}
 } // namespace
 
 void SDLCALL GPU_PushTelemetryScope(const char *source) {
@@ -5165,13 +5197,7 @@ SDL_GPUPresentMode choosePresentMode(SDL_GPUDevice *device, SDL_Window *window) 
 GPU_Target *SDLCALL GPU_InitRendererByID(GPU_RendererID renderer_request, Uint16 w, Uint16 h, GPU_WindowFlagEnum SDL_flags) {
 	GPU_Quit();
 
-	const SDL_GPUShaderFormat shaderFormats = SDL_GPU_SHADERFORMAT_SPIRV |
-	                                          SDL_GPU_SHADERFORMAT_DXBC |
-	                                          SDL_GPU_SHADERFORMAT_DXIL |
-	                                          SDL_GPU_SHADERFORMAT_MSL |
-	                                          SDL_GPU_SHADERFORMAT_METALLIB;
-
-	rendererState.device = SDL_CreateGPUDevice(shaderFormats, rendererState.debug_level == GPU_DEBUG_LEVEL_MAX, "vulkan");
+	rendererState.device = createGPUDevice(rendererState.debug_level == GPU_DEBUG_LEVEL_MAX);
 	if (!rendererState.device)
 		return nullptr;
 
@@ -5854,8 +5880,8 @@ static std::atomic<bool> presentationSuspended{false};
 static std::atomic<bool> swapchainNeedsRebuild{false};
 
 void GPU_SetPresentationSuspended(bool suspended) {
-	presentationSuspended.store(suspended, std::memory_order_release);
-	if (!suspended)
+	const bool wasSuspended = presentationSuspended.exchange(suspended, std::memory_order_acq_rel);
+	if (wasSuspended && !suspended)
 		swapchainNeedsRebuild.store(true, std::memory_order_release);
 }
 
@@ -5869,26 +5895,34 @@ void GPU_SetPresentationSuspended(bool suspended) {
  * Runs from GPU_Flip because the render thread owns the device; the lifecycle
  * watch that sets the flag runs on whichever thread pumped the event.
  */
-static void rebuildSwapchainIfNeeded() {
+static bool rebuildSwapchainIfNeeded() {
 	if (!swapchainNeedsRebuild.exchange(false, std::memory_order_acq_rel))
-		return;
-	if (!rendererState.device || !rendererState.window)
-		return;
+		return true;
+	if (!rendererState.device || !rendererState.window) {
+		swapchainNeedsRebuild.store(true, std::memory_order_release);
+		return false;
+	}
 
 	SDL_ReleaseWindowFromGPUDevice(rendererState.device, rendererState.window);
 	if (!SDL_ClaimWindowForGPUDevice(rendererState.device, rendererState.window)) {
 		sendToLog(LogLevel::Error, "Failed to reclaim window after resume: %s\n", SDL_GetError());
-		return;
+		swapchainNeedsRebuild.store(true, std::memory_order_release);
+		return false;
 	}
 
 	SDL_GPUPresentMode presentMode = choosePresentMode(rendererState.device, rendererState.window);
 	if (!SDL_SetGPUSwapchainParameters(rendererState.device, rendererState.window,
 	                                   SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode)) {
 		presentMode = SDL_GPU_PRESENTMODE_VSYNC;
-		SDL_SetGPUSwapchainParameters(rendererState.device, rendererState.window,
-		                              SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
+		if (!SDL_SetGPUSwapchainParameters(rendererState.device, rendererState.window,
+		                                   SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode)) {
+			sendToLog(LogLevel::Error, "Failed to restore swapchain parameters after resume: %s\n", SDL_GetError());
+			swapchainNeedsRebuild.store(true, std::memory_order_release);
+			return false;
+		}
 	}
 	sendToLog(LogLevel::Info, "Swapchain rebuilt after resume (%s)\n", presentModeName(presentMode));
+	return true;
 }
 #endif
 
@@ -5897,7 +5931,8 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 	// The surface may already be gone; presenting into it crashes in libvulkan.
 	if (presentationSuspended.load(std::memory_order_acquire))
 		return;
-	rebuildSwapchainIfNeeded();
+	if (!rebuildSwapchainIfNeeded() || presentationSuspended.load(std::memory_order_acquire))
+		return;
 #endif
 	if (!rendererState.device || !rendererState.window)
 		return;

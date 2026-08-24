@@ -19,6 +19,23 @@ set(ONS_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 add_library(ons_test_options INTERFACE)
 target_include_directories(ons_test_options INTERFACE "${ONS_SOURCE_ROOT}")
 
+# The production configure script defines one of the platform macros consumed
+# by External/Compatibility.hpp. CMake test builds must provide the same
+# contract instead of relying on compiler-specific predefined macros.
+if(ANDROID)
+	target_compile_definitions(ons_test_options INTERFACE DROID)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+	target_compile_definitions(ons_test_options INTERFACE IOS)
+elseif(APPLE)
+	target_compile_definitions(ons_test_options INTERFACE MACOSX)
+elseif(WIN32)
+	target_compile_definitions(ons_test_options INTERFACE WIN32)
+elseif(UNIX)
+	target_compile_definitions(ons_test_options INTERFACE LINUX)
+else()
+	message(FATAL_ERROR "Unsupported test host: ${CMAKE_SYSTEM_NAME}")
+endif()
+
 # The tests intentionally use assert() for both checks and expressions with
 # side effects. Keep those checks active when validating a Release build.
 if(MSVC)

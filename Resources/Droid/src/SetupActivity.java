@@ -150,7 +150,10 @@ public class SetupActivity extends AppCompatActivity {
             return;
         }
 
-        GameStorage.setConfiguredRoot(this, dir);
+        if (!GameStorage.setConfiguredRoot(this, dir)) {
+            mStatus.setText(R.string.status_folder_store_failed);
+            return;
+        }
         Diag.i(C, "game root set to " + dir.getAbsolutePath());
         refresh();
     }
@@ -179,8 +182,32 @@ public class SetupActivity extends AppCompatActivity {
     }
 
     private void launchEngine() {
+        if (ACTION_RECONFIGURE.equals(getIntent().getAction())) {
+            restartEngine();
+            return;
+        }
         Diag.i(C, "starting ONSActivity");
         startActivity(new Intent(this, ONSActivity.class));
         finish();
+    }
+
+    /**
+     * A running ONSActivity is singleTask and cannot be initialized twice in one
+     * process. Hand the relaunch to a small activity in a separate process, then
+     * terminate this process so the next ONSActivity reads the newly stored root.
+     */
+    private void restartEngine() {
+        int oldPid = android.os.Process.myPid();
+        Diag.i(C, "restarting engine process " + oldPid + " after folder change");
+        try {
+            startActivity(RestartActivity.intentFor(this, oldPid));
+        } catch (RuntimeException e) {
+            Diag.e(C, "could not start engine restart coordinator", e);
+            mStatus.setText(R.string.status_restart_failed);
+            return;
+        }
+        finish();
+        android.os.Process.killProcess(oldPid);
+        System.exit(0);
     }
 }

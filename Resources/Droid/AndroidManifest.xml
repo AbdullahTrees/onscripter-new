@@ -56,6 +56,13 @@
             android:process=":crash"
             android:exported="false" />
 
+        <!-- Coordinates a clean native-engine restart after changing folders. -->
+        <activity
+            android:name=".RestartActivity"
+            android:excludeFromRecents="true"
+            android:process=":restart"
+            android:exported="false" />
+
         <!--
           launchMode=singleTask reuses the running instance. SetupActivity
           starts this activity on every launch, and SDLActivity calls

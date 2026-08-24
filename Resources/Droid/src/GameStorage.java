@@ -62,12 +62,19 @@ final class GameStorage {
         return null;
     }
 
-    static void setConfiguredRoot(Context context, File dir) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    static boolean setConfiguredRoot(Context context, File dir) {
+        // Folder changes restart the default process before launching the engine.
+        // Persist synchronously so that restart cannot outrun an apply() write.
+        boolean stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putString(KEY_ROOT, dir.getAbsolutePath())
-                .apply();
-        Diag.i(C, "stored game root " + dir.getAbsolutePath());
+                .commit();
+        if (stored) {
+            Diag.i(C, "stored game root " + dir.getAbsolutePath());
+        } else {
+            Diag.e(C, "could not store game root " + dir.getAbsolutePath());
+        }
+        return stored;
     }
 
     /**
@@ -100,6 +107,30 @@ final class GameStorage {
         File scoped = getScopedRoot(context);
         Diag.i(C, "resolveRoot -> app-scoped fallback " + scoped);
         return scoped;
+    }
+
+    /**
+     * Base passed to the native EXTERNAL_STORAGE lookup.
+     *
+     * FileIO::getLaunchDir() appends PROVIDER_DIR to this value. The app-scoped
+     * fallback already ends in PROVIDER_DIR, so it must retain the parent base
+     * used by previous releases or existing saves move one directory deeper.
+     * A user-selected game root does not have that wrapper and intentionally
+     * uses the root itself, keeping the engine-created save tree inside it.
+     */
+    static File getNativeStorageBase(Context context, File root) {
+        return selectNativeStorageBase(root, getScopedRoot(context));
+    }
+
+    /** Pure path form retained for host-side regression coverage. */
+    static File selectNativeStorageBase(File root, File scoped) {
+        if (root == null) {
+            return null;
+        }
+        if (root.equals(scoped)) {
+            return root.getParentFile();
+        }
+        return root;
     }
 
     /**
