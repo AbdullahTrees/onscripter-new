@@ -207,7 +207,25 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         // layout, and left two SaveData directories in the game folder. Setting
         // EXTERNAL_STORAGE below is enough to keep the engine's structure inside
         // the chosen folder.
-        String[] arguments = new String[] { "--root", dir.getAbsolutePath() };
+        // Software video decoding, deliberately.
+        //
+        // Android hands out hardware MediaCodec instances from a small global
+        // pool and takes them back from apps that are in the background. The
+        // engine has no way to survive that: it never releases the codec on
+        // pause and cannot rebuild a decoder mid-playback -- looping only seeks
+        // the demuxer and keeps the codec alive. So every call into the dead
+        // codec returned AVERROR_EXTERNAL, which the decode loop treats as
+        // recoverable, leaving the app on a black screen at ~140% CPU emitting
+        // roughly fifteen thousand log lines a second until it was killed.
+        //
+        // With no MediaCodec there is nothing to reclaim, and the decoder is
+        // ordinary CPU state that survives backgrounding untouched.
+        //
+        // The cost is smaller than it sounds. The videos in constant use are
+        // graphics/../video/masked/*.m2v -- MPEG-2, which is close to free to
+        // decode in software. Only the 35 H.264 movies in video/1080p are
+        // expensive, they play rarely, and a 720p set ships alongside them.
+        String[] arguments = new String[] { "--root", dir.getAbsolutePath(), "--hwdecoder", "off" };
         Diag.i(C, "handing off to engine, argv " + Arrays.toString(arguments));
         return arguments;
     }
