@@ -549,39 +549,45 @@ That location needs no permission at all, but on Android 13+ it is unreachable
 from most on-device file managers, so filling it means `adb push` or MTP.
 
 Only an explicitly chosen folder counts as configured. The app-scoped directory
-always exists and is always readable, so treating it as "ready" would skip the
-setup screen forever and drop straight into an engine with no data to open.
+becomes ready after the engine or `adb push` creates it; merely resolving its
+path must not skip the setup screen and launch without game data.
 
 Once a folder is set the launcher goes straight to the engine, so a wrong choice
 would otherwise be unrecoverable without clearing app data. A **Change folder**
 launcher shortcut (long-press the icon) re-opens `SetupActivity`. Static
 shortcut intents cannot carry extras, so it is dispatched by a dedicated action
-rather than a boolean.
+rather than a boolean. If an engine is already running, `RestartActivity` takes
+over in a separate process, waits for the old process to exit, and launches a
+fresh `ONSActivity`. Reusing the `singleTask` instance would leave the native
+engine attached to the previous folder because `getArguments()` only runs at
+engine startup.
 
 ### Where saves go
 
-Saves live in `<game folder>/SaveData/`, pinned by passing `--save` alongside
-`--root`.
+The launcher deliberately does not pass `--save`. Leaving `save_path` unset lets
+`lookupSavePath()` retain the engine's per-game identifier, which prevents two
+games using the same root from sharing save files.
 
-That argument is not optional decoration. Without it the engine calls
-`lookupSavePath()`, which builds the path from `getStorageDir()` →
-`getLaunchDir()` → `$EXTERNAL_STORAGE` + `"ONScripter-RU"` — a chain that has
-nothing to do with `--root`. Choosing `/sdcard/Games/Umineko` would then write
-saves to `/sdcard/Games/ONScripter-RU/SaveData/`: a sibling of the game folder,
-created on launch, easy to lose track of and easy to delete by accident.
-`lookupSavePath()` only runs when `save_path` is unset, so passing `--save` wins
-outright.
+For a user-selected root, `EXTERNAL_STORAGE` is the game folder itself.
+`getLaunchDir()` appends `ONScripter-RU`, `getStorageDir()` appends `SaveData`,
+and `lookupSavePath()` appends the game identifier:
 
-`EXTERNAL_STORAGE` is set to the game folder itself rather than its parent. The
-engine unconditionally creates `getStorageDir()` during startup and terminates
-with "Failed to access storage directory!" if that fails, so *something* is
-always created; pointing it inside the chosen folder keeps it there instead of
-littering the folder above. The result is one incidental empty directory,
-`<game folder>/ONScripter-RU/SaveData/`, which is only written to when
-`--use-logfile` is in effect.
+```
+<selected game folder>/ONScripter-RU/SaveData/<game id>/
+```
 
-Verified on Android 15 with a folder at `/sdcard/Games/Umineko`: `SaveData` was
-created inside it, and nothing appeared at `/sdcard/ONScripter-RU`.
+The app-scoped fallback is the compatibility exception. Its root already ends
+in `ONScripter-RU`, so `GameStorage.getNativeStorageBase()` passes the parent to
+the native environment. This preserves the location used by existing releases:
+
+```
+/sdcard/Android/data/org.umineko_project.onscripter_ru/files/
+  ONScripter-RU/SaveData/<game id>/
+```
+
+Do not point the fallback environment at the fallback root itself: native
+`getLaunchDir()` would append a second `ONScripter-RU`, making all existing saves
+appear to vanish after an upgrade.
 
 ### Diagnosing access from the shell
 
@@ -606,9 +612,9 @@ Work on this target should stay inside tiers 1 and 2.
 ### Tier 1 — wholly Android-only
 
 ```
-Resources/Droid/**        manifest, build.gradle, gradle wrapper, res/, 17 Java sources
-                          (project-owned: ONSActivity, SetupActivity, GameStorage,
-                           Diag, ONSApplication; the other 12 are vendored SDL3)
+Resources/Droid/**        manifest, build.gradle, gradle wrapper, res/, 21 Java sources
+                          (9 project-owned launcher/input/diagnostic classes;
+                           the other 12 are vendored SDL3)
 Support/Droid/**          DroidProfile.cpp / .hpp
 Scripts/ndktoolchain.sh   NDK discovery and wrapper toolchain generation
 Scripts/apkbuild.tool     Gradle/AGP packaging
@@ -684,14 +690,14 @@ Two things to know:
 **`--use-logfile` turns logcat output off.** The Android branch in `FileIO::log`
 is guarded by `logMode != LogMode::File`, so file mode falls through to
 `stdout`/`stderr` instead. Those are reopened onto `out.txt` and `err.txt` in
-`getStorageDir()` — see *Where saves go* for what that resolves to and why it is
-not the same directory as `--save`. Development builds
+`getStorageDir()` — see *Where saves go* for what that resolves to. Development builds
 (`#ifndef PUBLIC_RELEASE`) set `LogMode::Console`, which still reaches logcat.
 
 **Java-side crashes are logged separately.** `Diag.installCrashHandler`, wired up
-from `ONSApplication`, logs uncaught exceptions on `ONSJava` before delegating to
-the default handler, so the usual `AndroidRuntime` trace is unaffected. It cannot
-see native crashes; a SIGSEGV inside the engine appears under `libc`/`DEBUG`.
+from `ONSApplication`, logs uncaught exceptions on `ONSJava`, writes a report,
+and opens `CrashActivity` in a separate process before terminating the failed
+process. It cannot see native crashes; those are recovered on the next launch
+through `ApplicationExitInfo`.
 
 A Java `UnsatisfiedLinkError` on a `native` method usually means the whole
 library failed to load, not that the method is missing. The named method is

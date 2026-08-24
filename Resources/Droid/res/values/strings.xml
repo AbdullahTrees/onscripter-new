@@ -31,7 +31,11 @@
         folder on internal storage or an SD card rather than a cloud provider.</string>
     <string name="status_folder_unreadable">Cannot read %1$s.\nGrant all-files access, then pick
         the folder again.</string>
+    <string name="status_folder_store_failed">Could not save the selected game folder.</string>
+    <string name="status_restart_failed">Could not restart the engine. Close and reopen the app.</string>
     <string name="status_no_settings_screen">This device has no all-files access screen. Grant
         the permission with:\nadb shell appops set org.umineko_project.onscripter_ru MANAGE_EXTERNAL_STORAGE allow</string>
+
+    <string name="restarting_engine">Restarting the engine…</string>
 
 </resources>

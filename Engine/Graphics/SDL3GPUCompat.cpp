@@ -5854,8 +5854,8 @@ static std::atomic<bool> presentationSuspended{false};
 static std::atomic<bool> swapchainNeedsRebuild{false};
 
 void GPU_SetPresentationSuspended(bool suspended) {
-	presentationSuspended.store(suspended, std::memory_order_release);
-	if (!suspended)
+	const bool wasSuspended = presentationSuspended.exchange(suspended, std::memory_order_acq_rel);
+	if (wasSuspended && !suspended)
 		swapchainNeedsRebuild.store(true, std::memory_order_release);
 }
 
@@ -5869,26 +5869,34 @@ void GPU_SetPresentationSuspended(bool suspended) {
  * Runs from GPU_Flip because the render thread owns the device; the lifecycle
  * watch that sets the flag runs on whichever thread pumped the event.
  */
-static void rebuildSwapchainIfNeeded() {
+static bool rebuildSwapchainIfNeeded() {
 	if (!swapchainNeedsRebuild.exchange(false, std::memory_order_acq_rel))
-		return;
-	if (!rendererState.device || !rendererState.window)
-		return;
+		return true;
+	if (!rendererState.device || !rendererState.window) {
+		swapchainNeedsRebuild.store(true, std::memory_order_release);
+		return false;
+	}
 
 	SDL_ReleaseWindowFromGPUDevice(rendererState.device, rendererState.window);
 	if (!SDL_ClaimWindowForGPUDevice(rendererState.device, rendererState.window)) {
 		sendToLog(LogLevel::Error, "Failed to reclaim window after resume: %s\n", SDL_GetError());
-		return;
+		swapchainNeedsRebuild.store(true, std::memory_order_release);
+		return false;
 	}
 
 	SDL_GPUPresentMode presentMode = choosePresentMode(rendererState.device, rendererState.window);
 	if (!SDL_SetGPUSwapchainParameters(rendererState.device, rendererState.window,
 	                                   SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode)) {
 		presentMode = SDL_GPU_PRESENTMODE_VSYNC;
-		SDL_SetGPUSwapchainParameters(rendererState.device, rendererState.window,
-		                              SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
+		if (!SDL_SetGPUSwapchainParameters(rendererState.device, rendererState.window,
+		                                   SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode)) {
+			sendToLog(LogLevel::Error, "Failed to restore swapchain parameters after resume: %s\n", SDL_GetError());
+			swapchainNeedsRebuild.store(true, std::memory_order_release);
+			return false;
+		}
 	}
 	sendToLog(LogLevel::Info, "Swapchain rebuilt after resume (%s)\n", presentModeName(presentMode));
+	return true;
 }
 #endif
 
@@ -5897,7 +5905,8 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 	// The surface may already be gone; presenting into it crashes in libvulkan.
 	if (presentationSuspended.load(std::memory_order_acquire))
 		return;
-	rebuildSwapchainIfNeeded();
+	if (!rebuildSwapchainIfNeeded() || presentationSuspended.load(std::memory_order_acquire))
+		return;
 #endif
 	if (!rendererState.device || !rendererState.window)
 		return;

@@ -48,6 +48,14 @@ Info-ZIP can corrupt executable line endings on that host. The Java/native
 startup contract, scoped-storage layout, and Android Studio workflow are
 documented in `Resources/Docs/Android.md`.
 
+The launcher supports user-selected game folders and preserves the release-1.2
+app-scoped save location for upgrades. Selected roots use the engine's
+`ONScripter-RU/SaveData/<game id>` layout; folder changes restart the native
+engine in a clean process. Android lifecycle recovery suspends presentation
+while the surface is absent and retries swapchain rebinding until it succeeds.
+Host-side Android tests lock down the selected-root and legacy app-scoped path
+mapping.
+
 ## Other host builds
 
 A C++23 compiler, GNU Make, CMake, Meson, Ninja, NASM, `pkg-config`, and normal
@@ -83,7 +91,10 @@ zero-index transient array references. Their assertions remain enabled in
 Release configurations so checks and setup expressions cannot be compiled out.
 Linux CI runs those tests under
 ASan/UBSan and runs four libFuzzer targets on pushes and a larger weekly budget.
-Static analysis remains part of the release audit.
+The CMake harness supplies the same host-platform macros as the production
+configure path, and source hygiene checks the complete changed range rather
+than a shallow checkout snapshot. Static analysis remains part of the release
+audit.
 
 The synthetic compressed-script fixture verifies public-release startup and
 orderly shutdown without copyrighted assets. It is not a representative game
