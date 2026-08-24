@@ -648,7 +648,9 @@ static bool initWithPath(const char *path, bool &hasArchivePath) {
 
 	std::snprintf(tmp_path, PATH_MAX, "%s%s", path, ons.script_is_set ? ons.game_script : DEFAULT_SCRIPT_NAME);
 
+	sendToLog(LogLevel::Info, "Checking for script file at: %s\n", tmp_path);
 	if (FileIO::accessFile(tmp_path)) {
+		sendToLog(LogLevel::Info, "Found script file!\n");
 		if (path[0] != '\0')
 			copystr(ons.script_path, path, PATH_MAX);
 		else

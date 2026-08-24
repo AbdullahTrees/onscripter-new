@@ -20,7 +20,13 @@
 
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- The engine reads game data with stat(2)/fopen(3), which the Storage Access
+         Framework cannot serve. Full filesystem access is the only way to launch
+         against a folder the user picks outside the app-scoped directory. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
     <application
+        android:name=".ONSApplication"
         android:label="onscripter-new"
         android:icon="@drawable/ic_launcher"
         android:allowBackup="false"
@@ -30,17 +36,48 @@
         android:resizeableActivity="true">
 
         <activity
-            android:name=".ONSActivity"
+            android:name=".SetupActivity"
             android:label="onscripter-new"
-            android:alwaysRetainTaskState="true"
-            android:configChanges="layoutDirection|locale|fontScale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
-            android:screenOrientation="sensorLandscape"
-            android:preferMinimalPostProcessing="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+        <!-- Shown after a crash; excluded from recents so it is not resumed later. -->
+        <activity
+            android:name=".CrashActivity"
+            android:label="onscripter-new"
+            android:excludeFromRecents="true"
+            android:process=":crash"
+            android:exported="false" />
+
+        <!-- Coordinates a clean native-engine restart after changing folders. -->
+        <activity
+            android:name=".RestartActivity"
+            android:excludeFromRecents="true"
+            android:process=":restart"
+            android:exported="false" />
+
+        <!--
+          launchMode=singleTask reuses the running instance. SetupActivity
+          starts this activity on every launch, and SDLActivity calls
+          System.exit rather than allow a second onCreate in one process, so
+          without it every return from the background killed the engine.
+        -->
+        <activity
+            android:name=".ONSActivity"
+            android:label="onscripter-new"
+            android:alwaysRetainTaskState="true"
+            android:launchMode="singleTask"
+            android:configChanges="layoutDirection|locale|fontScale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
+            android:screenOrientation="sensorLandscape"
+            android:preferMinimalPostProcessing="true"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
             </intent-filter>

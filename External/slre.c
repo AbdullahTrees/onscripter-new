@@ -40,22 +40,28 @@ static int is_metacharacter(const unsigned char *s) {
   return strchr(metacharacters, *s) != NULL;
 }
 
-static int op_len(const char *re) {
-  return re[0] == '\\' && re[1] == 'x' ? 4 : re[0] == '\\' ? 2 : 1;
+static int op_len(const char *re, int re_len) {
+  if (re_len <= 0 || re[0] != '\\') return re_len <= 0 ? 0 : 1;
+
+  /* Leave a trailing backslash for slre_compile() to reject without reading
+   * the byte beyond the caller-provided expression. */
+  return re_len > 1 && re[1] == 'x' ? 4 : re_len > 1 ? 2 : 1;
 }
 
 static int set_len(const char *re, int re_len) {
   int len = 0;
 
   while (len < re_len && re[len] != ']') {
-    len += op_len(re + len);
+    len += op_len(re + len, re_len - len);
   }
 
   return len < re_len && re[len] == ']' ? len + 1 : -1;
 }
 
 static int get_op_len(const char *re, int re_len) {
-  return re[0] == '[' ? set_len(re + 1, re_len - 1) + 1 : op_len(re);
+  if (re_len <= 0) return 0;
+  return re[0] == '[' ? set_len(re + 1, re_len - 1) + 1 :
+                        op_len(re, re_len);
 }
 
 static int is_quantifier(const char *re) {
@@ -136,7 +142,7 @@ static int match_set(const char *re, int re_len, const char *s,
       len += 3;
     } else {
       result = match_op((const unsigned char *) re + len, (const unsigned char *) s, info);
-      len += op_len(re + len);
+      len += op_len(re + len, re_len - len);
     }
   }
   return (!invert && result > 0) || (invert && result <= 0) ? 1 : -1;
@@ -225,6 +231,7 @@ static int bar(const char *re, int re_len, const char *s, int s_len,
     }
 
     if (re[i] == '[') {
+      FAIL_IF(j >= s_len, SLRE_NO_MATCH);
       n = match_set(re + i + 1, re_len - (i + 2), s + j, info);
       DBG(("SET %.*s [%.*s] -> %d\n", step, re + i, s_len - j, s + j, n));
       FAIL_IF(n <= 0, SLRE_NO_MATCH);

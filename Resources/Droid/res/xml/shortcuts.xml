@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Long-press the launcher icon to get back here. Once a folder is configured
+      the launcher goes straight to the engine, so without this a wrong choice
+      could only be undone by clearing app data.
+
+      Static shortcut intents cannot carry extras, hence the dedicated action.
+    -->
+    <shortcut
+        android:shortcutId="reconfigure"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_change_folder_short"
+        android:shortcutLongLabel="@string/shortcut_change_folder">
+        <intent
+            android:action="org.umineko_project.onscripter_ru.action.RECONFIGURE"
+            android:targetPackage="org.umineko_project.onscripter_ru"
+            android:targetClass="org.umineko_project.onscripter_ru.SetupActivity" />
+    </shortcut>
+
+</shortcuts>

@@ -547,6 +547,47 @@ void ONScripter::initSDL() {
 
 	mainThreadId = SDL_GetThreadID(nullptr);
 
+#ifdef DROID
+	// Stop presenting the moment Android takes the surface away, and start
+	// again once it is back.
+	//
+	// SDL queues the background event and then blocks the pumping thread, so an
+	// app that waits to dequeue it never reacts in time -- SDL's own comment
+	// says lifecycle handling belongs in an event filter. Rendering runs on a
+	// different thread here, and would otherwise keep flipping into a window
+	// whose ANativeWindow has already been released, faulting inside libvulkan.
+	//
+	// This has to be registered after SDL_Init: the event subsystem does not
+	// exist before it, and a watch added earlier is dropped.
+	bool watchAdded = SDL_AddEventWatch(
+	    [](void *, SDL_Event *event) -> bool {
+		    switch (event->type) {
+			    case SDL_APP_WILLENTERBACKGROUND:
+				    sendToLog(LogLevel::Info, "lifecycle watch: will enter background\n");
+				    GPU_SetPresentationSuspended(true);
+				    break;
+			    case SDL_APP_DIDENTERBACKGROUND:
+				    sendToLog(LogLevel::Info, "lifecycle watch: did enter background\n");
+				    GPU_SetPresentationSuspended(true);
+				    break;
+			    case SDL_APP_WILLENTERFOREGROUND:
+				    sendToLog(LogLevel::Info, "lifecycle watch: will enter foreground\n");
+				    GPU_SetPresentationSuspended(false);
+				    break;
+			    case SDL_APP_DIDENTERFOREGROUND:
+				    sendToLog(LogLevel::Info, "lifecycle watch: did enter foreground\n");
+				    GPU_SetPresentationSuspended(false);
+				    ons.droidResumeRedraw.store(true, std::memory_order_release);
+				    break;
+			    default:
+				    break;
+		    }
+		    return true;
+	    },
+	    nullptr);
+	sendToLog(LogLevel::Info, "lifecycle watch registered: %d\n", watchAdded ? 1 : 0);
+#endif
+
 #if defined(IOS) && defined(USE_OBJC)
 	setupKeyboardHandling([](SDL_Event *k) {
 		ons.localEventQueue.emplace_front(k);

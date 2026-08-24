@@ -260,8 +260,8 @@ void ONScripter::fetchEventsToQueue() {
 				//sendToLog(LogLevel::Error, "Pushing finger event %s force %d at %d by %d, current %d\n",
 				//			fingerEvent.type == SDL_FINGERUP ? "up" : "down", force,
 				//			fingerEvent.common.timestamp, lastTimeStamp, SDL_GetTicks());
-				if (force || fingerEvent.common.timestamp + MAX_TOUCH_TAP_TIMESPAN <
-				                 (lastTimeStamp == 0 ? (lastTimeStamp = SDL_GetTicks()) : lastTimeStamp)) {
+				if (force || onsEventTimestampMs(fingerEvent) + MAX_TOUCH_TAP_TIMESPAN <
+				                 (lastTimeStamp == 0 ? (lastTimeStamp = static_cast<uint32_t>(SDL_GetTicks())) : lastTimeStamp)) {
 					pushEvent(fingerEvent);
 					fingerEventActive[i] = false;
 				}
@@ -294,7 +294,7 @@ void ONScripter::fetchEventsToQueue() {
 			//			event->common.timestamp, event->tfinger.touchId, event->tfinger.x, event->tfinger.y,
 			//			event->tfinger.dx, event->tfinger.dy, event->tfinger.pressure,
 			//			fingerActive ? finger.common.timestamp : -1, fingerActive ? (uint32_t)onsTouchFingerId(finger.tfinger) : 0);
-			if (fingerActive && finger.common.timestamp + MAX_TOUCH_TAP_TIMESPAN >= event.common.timestamp) {
+			if (fingerActive && onsEventTimestampMs(finger) + MAX_TOUCH_TAP_TIMESPAN >= onsEventTimestampMs(event)) {
 				onsTouchFingerId(finger.tfinger)++;
 			} else {
 				if (fingerActive)
@@ -313,7 +313,7 @@ void ONScripter::fetchEventsToQueue() {
 		if (!queueEmpty) {
 			//sendToLog(LogLevel::Error, "Updating from %d last timestamp with %d current %d\n",
 			//			event->type, event->common.timestamp, SDL_GetTicks());
-			lastTimeStamp = event.common.timestamp;
+			lastTimeStamp = onsEventTimestampMs(event);
 			pushEvent(event);
 		}
 	}
@@ -648,6 +648,18 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		}
 
 		const uint64_t frameTailStartNanos = highResolutionTicksNanos();
+
+#if defined(DROID)
+		if (droidResumeRedraw.exchange(false, std::memory_order_acq_rel)) {
+			// Android handed back a fresh surface. The scene itself did not
+			// change, so without forcing one frame nothing would ever be
+			// presented: the screen stays black while audio keeps playing.
+			allow_rendering = true;
+			markRetainedRainSceneStaticDirty();
+			before_dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
+			screenChanged = true;
+		}
+#endif
 
 		if (allow_rendering && !save_load_overlay_active && !(skip_mode & SKIP_SUPERSKIP) && !deferredLoadingEnabled) {
 			if (cursor)

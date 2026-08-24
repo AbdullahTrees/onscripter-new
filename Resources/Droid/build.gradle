@@ -29,6 +29,9 @@ android {
             res.srcDirs = ['res']
             jniLibs.srcDirs = ['lib']
         }
+        test {
+            java.srcDirs = ['test']
+        }
     }
 
     compileOptions {
@@ -69,6 +72,7 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.8.0'
     implementation 'com.google.android.material:material:1.14.0'
     implementation 'androidx.core:core:1.15.0'
+    testImplementation 'junit:junit:4.13.2'
 }
 
 androidComponents {

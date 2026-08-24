@@ -308,6 +308,24 @@ void SDLCALL GPU_TriangleBatch(GPU_Image *image, GPU_Target *target, unsigned sh
 void SDLCALL GPU_TriangleBatchRGBA(GPU_Image *image, GPU_Target *target, unsigned short num_vertices, const GPU_TriangleBatchVertex *vertices, unsigned int num_indices, const unsigned short *indices);
 void SDLCALL GPU_FlushBlitBuffer(void);
 void SDLCALL GPU_Flip(GPU_Target *target);
+
+#if defined(DROID)
+/**
+ * Suspends presentation while the Android surface is gone.
+ *
+ * Android destroys the native window when the app is backgrounded. SDL only
+ * waits for the render thread to finish on OpenGL windows, so with SDL_GPU on
+ * Vulkan the surface can vanish mid-frame and SDL_AcquireGPUSwapchainTexture
+ * then tries to rebuild it from a released ANativeWindow, which segfaults
+ * inside libvulkan.
+ *
+ * Set from an SDL event watch, which SDL documents as the place to do lifecycle
+ * handling: the background event is delivered to watches as it is queued, and
+ * the app blocks immediately afterwards, so an app that only reads its own
+ * event queue never sees it in time.
+ */
+void GPU_SetPresentationSuspended(bool suspended);
+#endif
 void SDLCALL GPU_RectangleFilled2(GPU_Target *target, GPU_Rect rect, SDL_Color color);
 Uint32 SDLCALL GPU_CompileShader_RW(GPU_ShaderEnum shader_type, SDL_RWops *shader_source, GPU_bool free_rwops);
 Uint32 SDLCALL GPU_LinkShaders(Uint32 shader_object1, Uint32 shader_object2);
