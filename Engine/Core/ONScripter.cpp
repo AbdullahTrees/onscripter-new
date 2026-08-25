@@ -565,18 +565,22 @@ void ONScripter::initSDL() {
 			    case SDL_APP_WILLENTERBACKGROUND:
 				    sendToLog(LogLevel::Info, "lifecycle watch: will enter background\n");
 				    GPU_SetPresentationSuspended(true);
+				    ons.droidInBackground.store(true, std::memory_order_release);
 				    break;
 			    case SDL_APP_DIDENTERBACKGROUND:
 				    sendToLog(LogLevel::Info, "lifecycle watch: did enter background\n");
 				    GPU_SetPresentationSuspended(true);
+				    ons.droidInBackground.store(true, std::memory_order_release);
 				    break;
 			    case SDL_APP_WILLENTERFOREGROUND:
 				    sendToLog(LogLevel::Info, "lifecycle watch: will enter foreground\n");
 				    GPU_SetPresentationSuspended(false);
+				    ons.droidInBackground.store(false, std::memory_order_release);
 				    break;
 			    case SDL_APP_DIDENTERFOREGROUND:
 				    sendToLog(LogLevel::Info, "lifecycle watch: did enter foreground\n");
 				    GPU_SetPresentationSuspended(false);
+				    ons.droidInBackground.store(false, std::memory_order_release);
 				    ons.droidResumeRedraw.store(true, std::memory_order_release);
 				    break;
 			    default:

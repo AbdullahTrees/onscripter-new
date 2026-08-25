@@ -879,6 +879,10 @@ private:
 #if defined(DROID)
 	// Set from the lifecycle event watch, consumed by the render thread.
 	std::atomic<bool> droidResumeRedraw{false};
+	// True while Android holds the surface. The queued SDL_APP_* events cannot
+	// be used for this: SDL blocks the thread that pumps them, so they arrive
+	// long after the fact, if at all. The watch is the only timely signal.
+	std::atomic<bool> droidInBackground{false};
 #endif
 
 	GPUImageChunkLoader imageLoader;

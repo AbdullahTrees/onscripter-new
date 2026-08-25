@@ -28,6 +28,17 @@ const uint32_t MAX_TOUCH_SWIPE_TIMESPAN{300};
 const int EVENT_QUEUE_IDLE_WAIT_MS{8};
 const float MIN_AUTO_FPS{30.0f};
 const float MAX_AUTO_FPS{360.0f};
+#if defined(DROID)
+// A visual novel gains nothing visible from a 120 or 144 Hz panel, and on a
+// device running from a battery the difference is not free. Drive the scene at
+// 60 at most; ONSActivity asks the panel to settle at the same rate, so the two
+// agree and no frame is shown for an uneven number of refreshes.
+const float DROID_MAX_AUTO_FPS{60.0f};
+// How long to idle per iteration while Android holds the surface. Short enough
+// that the resume is picked up without a visible delay, long enough that the
+// loop costs nothing meanwhile.
+const uint32_t DROID_BACKGROUND_IDLE_MS{50};
+#endif
 const uint64_t NANOS_PER_MILLISECOND{1000000ULL};
 const uint64_t STALE_FRAME_BASELINE_NS{250ULL * NANOS_PER_MILLISECOND};
 const uint64_t FPS_DISPLAY_UPDATE_INTERVAL_NS{250ULL * NANOS_PER_MILLISECOND};
@@ -272,7 +283,26 @@ void ONScripter::fetchEventsToQueue() {
 	SDL_Event event{};
 	SDL_Event tmp_event{};
 
-	while (SDL_WaitEventTimeout(&event, EVENT_QUEUE_IDLE_WAIT_MS)) {
+	// Take the next event, parking this thread when there is nothing to take.
+	//
+	// SDL_WaitEventTimeout is the natural way to write that and is what every
+	// other platform gets, but on Android it does not block -- it polls. The
+	// thread reported sixteen voluntary context switches in five seconds, none
+	// of them a wait, while burning a full core with the game sitting still on
+	// the title screen. Polling and sleeping by hand costs the same 8ms of
+	// latency and actually yields the CPU.
+	auto nextEvent = [](SDL_Event *e) -> bool {
+#if defined(DROID)
+		if (SDL_PollEvent(e))
+			return true;
+		SDL_Delay(EVENT_QUEUE_IDLE_WAIT_MS);
+		return false;
+#else
+		return SDL_WaitEventTimeout(e, EVENT_QUEUE_IDLE_WAIT_MS) != 0;
+#endif
+	};
+
+	while (nextEvent(&event)) {
 		// ignore continuous SDL_MOUSEMOTION
 		while (event.type == SDL_MOUSEMOTION) {
 			if (SDL_PeepEvents(&tmp_event, 1, SDL_PEEKEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT) == 0)
@@ -327,7 +357,11 @@ float ONScripter::effectiveRefreshRate() const {
 
 	float detected_fps = window.currentDisplayRefreshRate();
 	if (detected_fps >= MIN_AUTO_FPS && detected_fps <= MAX_AUTO_FPS)
+#if defined(DROID)
+		return std::min(detected_fps, DROID_MAX_AUTO_FPS);
+#else
 		return detected_fps;
+#endif
 
 	if (game_fps > 0)
 		return static_cast<float>(game_fps);
@@ -533,6 +567,25 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 	bool resetFramePacing      = lastFlipTimeNanos == 0 || thisCallTimeNanos - lastFlipTimeNanos > STALE_FRAME_BASELINE_NS;
 
 	do {
+#if defined(DROID)
+		// Android has the surface, so nothing drawn from here can be seen.
+		//
+		// This has to be tested inside the loop, not once on the way in: the
+		// idle wait for a click is the count < 0 case, which never returns, and
+		// that is exactly when the player switches away. The flag comes from the
+		// lifecycle watch because the queued SDL_APP_WILLENTERBACKGROUND that
+		// used to clear allow_rendering never arrives -- SDL blocks the thread
+		// that would pump it, so the engine kept rendering the scene at the
+		// panel's refresh rate for an invisible window until Android killed it
+		// for burning CPU while cached.
+		//
+		// allow_rendering is restored by the resume block further down, which
+		// already forces the repaint the returning surface needs.
+		if (droidInBackground.load(std::memory_order_acquire)) {
+			allow_rendering = false;
+			SDL_Delay(DROID_BACKGROUND_IDLE_MS);
+		}
+#endif
 		uint64_t framesOvershoot = 0;
 		uint64_t nanosPerFrame   = fps->nanosPerFrame();
 		uint64_t timeThisFrame{nanosPerFrame};
