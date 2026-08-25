@@ -327,6 +327,11 @@ void SDLCALL GPU_Flip(GPU_Target *target);
 void GPU_SetPresentationSuspended(bool suspended);
 // True once per detected mismatch between canvas and swapchain aspect.
 bool GPU_TakeSurfaceGeometryStale();
+
+// Live GPU image accounting. textureBytes is what the driver holds, pixelBytes
+// the CPU-side copies the engine keeps alongside them.
+void GPU_GetLiveImageMemory(size_t &images, size_t &textureBytes, size_t &pixelBytes);
+void GPU_LogLargestLiveImages(size_t count);
 #endif
 void SDLCALL GPU_RectangleFilled2(GPU_Target *target, GPU_Rect rect, SDL_Color color);
 Uint32 SDLCALL GPU_CompileShader_RW(GPU_ShaderEnum shader_type, SDL_RWops *shader_source, GPU_bool free_rwops);

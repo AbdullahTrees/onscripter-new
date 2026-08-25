@@ -1540,11 +1540,33 @@ void TempGPUImagePool::addImages(int n) {
 	}
 }
 
-void TempGPUImagePool::clearUnused(bool require_empty) {
-	auto entry = pool.begin();
+void GPUController::logPooledImageCensus() {
+	auto report = [](const char *name, const TempGPUImagePool::Census &c) {
+		sendToLog(LogLevel::Info, "  %-8s %3zu images (%zu in use) %6zu KB\n",
+		          name, c.images, c.checkedOut, c.bytes / 1024);
+	};
+	report("canvas", canvasImagePool.census());
+	report("script", scriptImagePool.census());
+
+	TempGPUImagePool::Census typed;
+	for (const auto &entry : typedImagePools) {
+		auto c = entry.second.census();
+		typed.images += c.images;
+		typed.checkedOut += c.checkedOut;
+		typed.bytes += c.bytes;
+	}
+	sendToLog(LogLevel::Info, "  %-8s %3zu images (%zu in use) %6zu KB across %zu sizes\n",
+	          "typed", typed.images, typed.checkedOut, typed.bytes / 1024, typedImagePools.size());
+}
+
+size_t TempGPUImagePool::clearUnused(bool require_empty) {
+	size_t freedBytes = 0;
+	auto entry        = pool.begin();
 	while (entry != pool.end()) {
 		if (!entry->second) {
-			gpu.freeImage(entry->first);
+			RenderImage *image = entry->first;
+			freedBytes += static_cast<size_t>(image->w) * image->h * 4;
+			gpu.freeImage(image);
 			entry = pool.erase(entry);
 		} else {
 			++entry;
@@ -1554,6 +1576,8 @@ void TempGPUImagePool::clearUnused(bool require_empty) {
 	if (require_empty && !pool.empty()) {
 		throw std::runtime_error("Failed to cleanup TempGPUImagePool on request");
 	}
+
+	return freedBytes;
 }
 
 RenderImage *CombinedImagePool::get(int w, int h, int channels, bool store) {

@@ -585,6 +585,12 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 			allow_rendering = false;
 			SDL_Delay(DROID_BACKGROUND_IDLE_MS);
 		}
+
+		// Android asks for memory back on its own schedule, including as the
+		// app leaves the screen. This is the only thread that may free GPU
+		// objects, so the watch only raises the request and it is served here.
+		if (droidTrimRequested.exchange(false, std::memory_order_acq_rel))
+			droidTrimMemory();
 #endif
 		uint64_t framesOvershoot = 0;
 		uint64_t nanosPerFrame   = fps->nanosPerFrame();

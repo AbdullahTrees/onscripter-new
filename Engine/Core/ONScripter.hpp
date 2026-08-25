@@ -883,6 +883,10 @@ private:
 	// be used for this: SDL blocks the thread that pumps them, so they arrive
 	// long after the fact, if at all. The watch is the only timely signal.
 	std::atomic<bool> droidInBackground{false};
+	// Android asked for memory back. Set from the watch, acted on by the render
+	// thread, which is the only thread allowed to free GPU objects.
+	std::atomic<bool> droidTrimRequested{false};
+	void droidTrimMemory();
 #endif
 
 	GPUImageChunkLoader imageLoader;
