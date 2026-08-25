@@ -19,6 +19,8 @@ when, read the git log.
   - [Why the first build is slow](#why-the-first-build-is-slow)
 - [Build environment](#build-environment)
   - [Line endings](#line-endings)
+  - [Windows pitfalls](#windows-pitfalls)
+  - [Gradle wrapper provenance](#gradle-wrapper-provenance)
   - [NDK discovery](#ndk-discovery)
 - [Supported target](#supported-target)
 - [Native architecture](#native-architecture)
@@ -41,6 +43,7 @@ when, read the git log.
 - [Debugging](#debugging)
   - [Log tags](#log-tags)
   - [Engine logging on Android](#engine-logging-on-android)
+  - [Profiling and CPU accounting](#profiling-and-cpu-accounting)
   - [Always force-stop between launches](#always-force-stop-between-launches)
   - [Test a Java-only change without a native rebuild](#test-a-java-only-change-without-a-native-rebuild)
   - [Test a link-flag change without relinking](#test-a-link-flag-change-without-relinking)
@@ -229,6 +232,8 @@ release packaging; it stages a copy of this same Gradle project under
 | Build fails in `:syncEngineLibs` with `No engine binary found` | No engine binary yet. Do step 1. |
 | Build fails in `:checkEngineFreshness` with `Engine sources are newer` | A C++ change has not been compiled. Run `make`, or `-PallowStaleEngine` to ignore. |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | An existing install was signed with a different key. `adb uninstall org.umineko_project.onscripter_ru` first. |
+| `INSTALL_FAILED_VERSION_DOWNGRADE` | The device has a higher `versionCode`, usually from a branch that merged a release bump. `adb install -r -d` downgrades and keeps app data. |
+| `adb install` hangs with no output | The device is locked. Some OEMs (Xiaomi seen) block USB installs while locked and leave `pm` waiting rather than failing. Wake and unlock, then retry. Check with `dumpsys power \| grep mWakefulness`. |
 | `Unable to strip the following libraries` | Benign. AGP has no NDK; the APK is packaged unstripped. |
 | `Invalid launch directory!` then exit | No game data at the scoped path. Do step 3. |
 | `UnsatisfiedLinkError` on a `native` method | The library failed to load entirely. Read the `dlopen failed:` line from `nativeloader`, not the stack trace. |
@@ -404,7 +409,13 @@ overrides are load-bearing; removing any of them breaks startup.
 | --- | --- | --- |
 | `getLibraries()` | `{"main"}` | No `libSDL3.so` exists |
 | `getMainFunction()` | `"main"` | Engine exports `main`, not `SDL_main` |
-| `getArguments()` | `{"--root", <scoped path>, "--hwdecoder", "off"}` | Selects storage and avoids unrecoverable MediaCodec loss after backgrounding |
+| `getArguments()` | `{"--root", <game folder>, "--hwdecoder", "off"}` | Names the folder, and forces software video decode |
+| `onCreate()` | — | Claims Back, relaxes orientation on large screens, asks the panel for 60Hz |
+
+`--root` is the user-selected folder when one is configured and the app-scoped
+directory otherwise, not always the scoped path. `--hwdecoder off` is not a
+preference: see the MediaCodec entry in the backlog for why hardware decode
+cannot currently survive being backgrounded.
 
 ### The Java layer is not a launcher
 
@@ -413,32 +424,44 @@ application. It is not. Android exposes no way for native code to obtain a
 window, input events or an audio device on its own, so the Java side owns all of
 it and bridges back over JNI. Current size:
 
-| File | Lines | Native methods |
+| Vendored SDL3 | Lines | `native` methods |
 | --- | --- | --- |
-| `SDLActivity.java` | 2260 | 56 |
+| `SDLActivity.java` | 2260 | 44 |
 | `SDLControllerManager.java` | 1010 | 10 |
-| `HIDDeviceBLESteamController.java` | 829 | 1 |
+| `HIDDeviceBLESteamController.java` | 829 | 0 |
 | `HIDDeviceManager.java` | 698 | 8 |
 | `SDLSurface.java` | 464 | 0 |
 | `HIDDeviceUSB.java` | 354 | 0 |
 | `SDLInputConnection.java` | 135 | 2 |
 | `SDLAudioManager.java` | 126 | 3 |
-| `SDL.java` | 90 | 2 |
-| `ONSActivity.java` | 326 | 1 |
+| `SDL.java` | 90 | 0 |
 | `SDLDummyEdit.java` | 65 | 0 |
 | `SDLSensorManager.java` | 31 | 0 |
 | `HIDDevice.java` | 21 | 0 |
 
-That is ~6400 lines and 82 native entry points covering the rendering surface,
-touch/key/mouse/gamepad input, sensors, IME and soft keyboard, audio device
-lifecycle, USB and Bluetooth HID, clipboard, permissions, and translation of the
-activity lifecycle into SDL events. Treat it as a port layer, not glue.
+That vendored half is ~6080 lines and 67 native entry points covering the
+rendering surface, touch/key/mouse/gamepad input, sensors, IME and soft
+keyboard, audio device lifecycle, USB and Bluetooth HID, clipboard, permissions,
+and translation of the activity lifecycle into SDL events. Treat it as a port
+layer, not glue. Replace it wholesale on an SDL upgrade rather than editing
+it -- carrying forward the one intentional local patch, the message-box
+completion guard in `SDLActivity`, which releases a native thread blocked on
+a dialog when the activity is torn down.
 
-The nine launcher, storage, input, and diagnostic classes named in Tier 1 below
-are project code. The SDL-prefixed activity, surface, audio, controller, HID,
-and input classes are vendored SDL3 sources and should normally be replaced
-wholesale on an SDL upgrade; the local message-box completion guard is the one
-intentional patch and must be carried forward when that happens.
+| Project-owned | Lines | Role |
+| --- | --- | --- |
+| `TouchInput.java` | 426 | Fingers re-emitted as mouse events, including right-click |
+| `ONSActivity.java` | 391 | The SDL contract, Back, orientation, refresh rate |
+| `CrashReport.java` | 243 | Report capture, and `ApplicationExitInfo` recovery |
+| `GameStorage.java` | 214 | Tree URI to path, permission state, save layout |
+| `SetupActivity.java` | 217 | Launcher: permission, folder picker, handoff |
+| `Diag.java` | 124 | Logging on `ONSJava`, plus the uncaught handler |
+| `RestartActivity.java` | 90 | Clean engine restart after a folder change |
+| `CrashActivity.java` | 93 | Shows the last report |
+| `ONSApplication.java` | 19 | Installs the crash handler before any activity |
+
+Nine project-owned files, ~1820 lines, all of `Resources/Droid/src` that is
+safe to edit. Twenty-one Java sources in total.
 
 ### SDL version lock
 
@@ -641,17 +664,35 @@ Scripts/quickdroid.tool   multi-ABI build driver
 ### Tier 2 — shared files with Android-only regions
 
 Edit shared files only inside `#if defined(DROID)` guards unless a platform-
-neutral refactor is independently verified:
+neutral refactor is independently verified (62 sites across 19 files):
 
 ```
 Engine/Media/HardwareDecoder.cpp     MediaCodec hwaccel, JNI vm registration
 Engine/Media/VideoDecoder.cpp, Controller.hpp
-Engine/Graphics/GPU.cpp, GPU.hpp, SDL3GPUCompat.cpp, SDL3GPUCompat.hpp
-Engine/Core/ONScripter.cpp, Command.cpp, CommandExt.cpp
-Engine/Core/Event.cpp, Loader.cpp, Animation.cpp
+Engine/Graphics/GPU.cpp, GPU.hpp
+Engine/Graphics/SDL3GPUCompat.cpp, SDL3GPUCompat.hpp
+                                     surface geometry staleness, presentation
+                                     suspend while the surface is gone
+Engine/Core/ONScripter.cpp, ONScripter.hpp
+                                     lifecycle event watch and the flags it sets
+Engine/Core/Command.cpp, CommandExt.cpp
+Engine/Core/Event.cpp                frame loop: background idle, 60fps cap,
+                                     event thread wait, memory trim
+Engine/Core/Loader.cpp, Animation.cpp
 Engine/Components/Window.cpp, Window.hpp
+                                     applySurfaceGeometry and the changeMode
+                                     path that calls it
+Engine/Components/Fonts.cpp          the monospace face the performance
+                                     counter draws with
 Support/FileIO.cpp                   storage paths, __android_log logging
 External/Compatibility.hpp
+```
+
+Regenerate that inventory rather than trusting it, since it drifts:
+
+```sh
+grep -rln 'defined(DROID)\|#ifdef DROID' Engine/ Support/ External/ \
+  --include=*.cpp --include=*.hpp
 ```
 
 Build files with Android-only regions: the `*clang*:"Droid")` branch of
@@ -662,6 +703,11 @@ Build files with Android-only regions: the `*clang*:"Droid")` branch of
 
 Everything else, including unguarded shared renderer code, `Tests/`,
 `Resources/Windows/` and `Support/Apple/`.
+
+`Engine/Graphics/SDL3GPUCompat.*` used to be listed here as off-limits. It is
+not, and cannot be: the surface really does disappear out from under the
+renderer on Android, and that has to be handled where the swapchain lives. The
+rest of `Engine/Graphics/SDL3GPUShaders/` remains tier 3.
 
 ## Debugging
 
@@ -686,7 +732,7 @@ The handoff is explicit. `ONSActivity` logs the exact `argv` immediately before
 `nativeRunMain`, and the engine's first line follows it:
 
 ```
-ONSJava      : ONSActivity: handing off to engine, argv [--root, /storage/.../ONScripter-RU]
+ONSJava      : ONSActivity: handing off to engine, argv [--root, /storage/..., --hwdecoder, off]
 ONScripter-RU: Launched with pid 10854, previous pid 0
 ONScripter-RU: set:archive_path: "/storage/.../ONScripter-RU/"
 ONScripter-RU: Invalid launch directory!
@@ -722,6 +768,46 @@ library failed to load, not that the method is missing. The named method is
 simply the first JNI call attempted. Always read the `dlopen failed:` line above
 it rather than trusting the stack trace.
 
+### Profiling and CPU accounting
+
+`simpleperf` needs no root, but it does need the app's own context. Profiling
+from the shell domain is refused even where `perf_event_paranoid` is `-1`:
+
+```sh
+adb shell simpleperf record --app org.umineko_project.onscripter_ru \
+  -e cpu-clock -f 200 -g --duration 10 -o /data/local/tmp/p.data
+adb shell simpleperf report -i /data/local/tmp/p.data --sort dso,symbol -n
+```
+
+Hardware events are frequently unavailable on consumer devices; `cpu-clock` is
+the fallback that works. On one of the two test devices even that is refused
+(`Event type 'cpu-clock' is not supported`), so profiling is a per-device
+capability, not a given. A `userdebug` build (`getprop ro.build.type`) can also
+grant full `adb root` once *Rooted debugging* is enabled in developer options,
+which is what makes `debuggerd -b` and kernel symbols available.
+
+Without any of that, `/proc` answers most questions and needs no permissions:
+
+```sh
+PID=$(adb shell pidof org.umineko_project.onscripter_ru)
+adb shell "cat /proc/$PID/task/*/comm"          # thread names
+adb shell "awk '{print \$14+\$15}' /proc/$PID/task/<tid>/stat"   # jiffies
+adb shell "grep ctxt /proc/$PID/task/<tid>/status"
+```
+
+`voluntary_ctxt_switches` is the one to reach for when a thread is suspected of
+spinning. A thread that genuinely waits increments it on every sleep; a busy
+loop leaves it flat while `nonvoluntary_ctxt_switches` climbs. That, plus a run
+state of `R` in field 3 of `stat` across repeated samples, is proof of a spin
+without a profiler. It is how `SDL_WaitEventTimeout` was found not to block on
+Android.
+
+For memory, `dumpsys meminfo <pid>` splits the app into `Native Heap` and
+`GL mtrack`, the latter being graphics allocations the kernel can neither swap
+nor compress. Compare it against the engine's own count of live GPU images
+before assuming the engine is what holds it — see the backlog entry, where those
+two numbers differ by a factor of three.
+
 ### Always force-stop between launches
 
 `Engine/Core/Loader.cpp` compares the current pid against a static `previousPid`
@@ -743,7 +829,8 @@ destination is rewritten as a Windows path.
 The native build takes hours; changes confined to `Resources/Droid/src` do not
 need it. Reuse the existing `libmain.so` and swap only the dex: compile the Java
 sources with `javac --release 17` against the platform `android.jar`, dex them
-with `d8 --min-api 30`, replace `classes.dex` inside a copy of the APK, then
+with `d8 --min-api 30` (match `minSdk` in `build.gradle`, or the dex is rejected
+on older devices), replace `classes.dex` inside a copy of the APK, then
 `zipalign -f -p 4` and re-sign with `apksigner`. On Windows those build-tools
 binaries need Windows-style paths — convert with `cygpath -w`. The re-signed APK
 will not match the release signature, so uninstall the old one first.
@@ -814,6 +901,25 @@ swiping the app from recents.
 platform then SIGKILLs is recorded as `reason=2 (SIGNALED) status=9` and never
 reported. Note a Back-triggered exit records as `reason=1 (EXIT_SELF)`, so
 crashes during a voluntary exit are invisible by design.
+
+**Half the foreground CPU goes on shaders the GPU never runs.** A `simpleperf`
+profile of the engine idling on the title screen, after the frame rate was
+capped at 60, attributes roughly a quarter of samples to `cpuShaderTriangles`,
+`sampleSlot`, `evaluateShaderPixel` and `blendPixel`, and another quarter to
+`unordered_map<std::string, SDL3GPUUniformValue>::find` with its `memcmp`,
+`strlen` and murmur hashing.
+
+Both come from one place. When a program has no `nativeFragmentShader`,
+`renderNativeIndexedTriangles` falls back to `cpuShaderTriangles` and evaluates
+the shader per pixel on the CPU. Inside that loop `evaluateShaderPixel` calls
+`uniformInt(program, "constant_mask")`, `"mask_value"`, `"crossfade"` and the
+rest, each one hashing a string and walking a map, per pixel.
+
+Two fixes, of very different sizes. The uniform lookups are loop-invariant per
+draw call and hoisting them into a plain struct is contained, cross-platform,
+and worth about a quarter of foreground CPU on its own. Removing the software
+path altogether means supplying native fragment shaders for the programs that
+lack them, which is real work but is what stops the CPU rendering at all.
 
 **Graphics memory is ~370 MB and only a quarter of it is accounted for.** With
 the game idle on the title screen `dumpsys meminfo` reports 368 MB under
@@ -899,9 +1005,11 @@ Worth building a device matrix and working through it deliberately:
 
 - **GPU vendor** — Adreno and Mali are covered. PowerVR and Samsung Xclipse are
   not, and each has its own view of which optional Vulkan features exist.
-- **Android version** — 11–13 still need coverage, while 14, 15 and 16 already
-  behave differently in ways that matter: `enableOnBackInvokedCallback` changes
-  how Back is delivered on 33+, and 16 ignores manifest-declared fixed
+- **Android version** — the floor is 11 (API 30) but only 15 and 16 have ever
+  been run, so the whole 11 to 14 range is untested. The differences already
+  biting us are at the edges of that range: `enableOnBackInvokedCallback`
+  changes how Back is delivered on 33+, so 30 to 32 take the `onBackPressed`
+  path no test device can reach, and 16 ignores manifest-declared fixed
   orientation on large screens.
 - **Form factor** — phone, tablet, foldable, TV. Touch-target sizing and
   orientation handling differ; a TV has no touch at all.
@@ -927,15 +1035,29 @@ shipped binary rather than the source tree.
   regression corpus does, which limits confidence in renderer and media changes.
   `Tests/Fixtures/SmokeGame/0.txt` is a minimal script, not a runnable game — the
   engine still reports `Invalid launch directory!` with only that present.
-- `android:screenOrientation="sensorLandscape"` is ignored on targetSdk 36;
-  Android 16 drops manifest-declared fixed orientation on large screens.
+- `android:screenOrientation="sensorLandscape"` in the manifest is ignored on
+  targetSdk 36, because Android 16 drops manifest-declared fixed orientation on
+  large screens. `ONSActivity.onCreate` therefore sets orientation in code. The
+  manifest attribute is still worth keeping: it stops a phone flashing portrait
+  for a frame before that code runs.
 - `Resources/Droid/gradle/gradle-daemon-jvm.properties` is untracked and
   undecided. Gradle generates it, and it pins JDK 25 with foojay download URLs,
   which would impose that toolchain on every contributor. Commit or gitignore.
 
 ### Unverified
 
-Behaviours never exercised, as opposed to the hardware axes above: long
-backgrounding where Android kills the process outright; incoming phone calls;
-split screen; and whether the three-finger swipes reach the intended engine state
-in every mode — they fire and are logged, which is all that has been confirmed.
+Behaviours never exercised, as opposed to the hardware axes above: incoming
+phone calls; recovery after Android kills the backgrounded process outright,
+which is now much rarer but still ends the session with no autosave to return
+to; and whether the three-finger swipes reach the intended engine state in every
+mode — they fire and are logged, which is all that has been confirmed.
+
+Split screen and floating windows *have* been exercised on the tablet, along
+with rotation and cold start against a sleeping display, and the canvas geometry
+holds in all of them.
+
+Backgrounding has been measured rather than guessed at, and the numbers belong
+with the kill discussion above: the process now idles at 5% of one core while
+backgrounded, against 110% before, which is what took it under Android's 25%
+cached-process CPU limit. What has *not* been re-tested is a full memory-pressure
+kill and the return from it.
