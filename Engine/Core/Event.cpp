@@ -651,10 +651,8 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 
 #if defined(DROID)
 		// A resize event is not the only way the canvas and the surface can end
-		// up disagreeing. changeMode() derives the fullscreen geometry from
-		// display metrics when it runs, and at startup -- launching while the
-		// display is still settling, for instance -- those can describe an
-		// orientation the window never had, with no resize to react to. The
+		// up disagreeing. At startup the window can still be settling after the
+		// first geometry sample, with no later resize event to react to. The
 		// renderer notices the mismatch directly and it is corrected here.
 		if (GPU_TakeSurfaceGeometryStale()) {
 			window.applySurfaceGeometry();

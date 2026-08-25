@@ -5967,14 +5967,16 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 	// scaled from these numbers, so log them whenever they move rather than
 	// guessing later.
 	{
-		// Steady state is four integer comparisons: the aspect maths and the
-		// logging only run when one of the two actually moves. Both are tracked
-		// because either can change alone -- the surface on a rotation or a
-		// window drag, the canvas when the engine recomputes it.
+		// Both sizes are tracked because either can change alone -- the surface
+		// on a rotation or window drag, the canvas when the engine recomputes it.
+		// A mismatch is rechecked until repaired so a transient zero-size window
+		// cannot consume the one repair request and leave stale geometry forever.
 		static Uint32 lastSwapW = 0, lastSwapH = 0;
 		static int lastTargetW = 0, lastTargetH = 0;
-		if (width != lastSwapW || height != lastSwapH ||
-		    target->w != lastTargetW || target->h != lastTargetH) {
+		static bool geometryMismatch = false;
+		const bool dimensionsChanged = width != lastSwapW || height != lastSwapH ||
+		                               target->w != lastTargetW || target->h != lastTargetH;
+		if (dimensionsChanged) {
 			lastSwapW   = width;
 			lastSwapH   = height;
 			lastTargetW = target->w;
@@ -5987,20 +5989,28 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 			          target->image ? target->image->w : -1,
 			          target->image ? target->image->h : -1);
 
-			// The canvas is blitted to fill the swapchain, so disagreeing
-			// aspects are exactly what stretching looks like. applySurfaceGeometry()
-			// is meant to make that unreachable; this stays as the check that
-			// says so, and repairs it if the invariant is ever broken.
+		}
+
+		// The canvas is blitted to fill the swapchain, so disagreeing aspects
+		// are exactly what stretching looks like. applySurfaceGeometry() is meant
+		// to make that unreachable; this check repairs it if the invariant is
+		// ever broken.
+		if (dimensionsChanged || geometryMismatch) {
+			bool mismatch = false;
 			if (width > 0 && height > 0 && target->w > 0 && target->h > 0) {
 				const float swapAspect   = static_cast<float>(width) / static_cast<float>(height);
 				const float targetAspect = static_cast<float>(target->w) / static_cast<float>(target->h);
-				if (std::fabs(swapAspect - targetAspect) > 0.01f * swapAspect) {
+				mismatch = std::fabs(swapAspect - targetAspect) > 0.01f * swapAspect;
+			}
+			if (mismatch) {
+				if (!geometryMismatch) {
 					sendToLog(LogLevel::Warn,
 					          "Canvas %dx%d does not match surface %ux%u; recomputing\n",
 					          target->w, target->h, width, height);
-					surfaceGeometryStale.store(true, std::memory_order_release);
 				}
+				surfaceGeometryStale.store(true, std::memory_order_release);
 			}
+			geometryMismatch = mismatch;
 		}
 	}
 #endif

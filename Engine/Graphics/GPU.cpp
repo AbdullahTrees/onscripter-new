@@ -135,7 +135,7 @@ RenderTarget *GPUController::rendererInit(RenderWindowFlags SDL_flags) {
 	size_t rendererPasses = 1 + !preferred.empty();
 
 	int w = 0, h = 0;
-	window.getWindowSize(w, h);
+	window.getInitialRenderSize(w, h);
 
 	// Named in the failure below. Which renderers exist varies by build, and
 	// which of them are reachable varies with the blacklist and preference, so

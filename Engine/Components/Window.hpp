@@ -105,7 +105,7 @@ public:
 #if defined(DROID)
 	void applySurfaceGeometry();
 #endif
-	void getWindowSize(int &w, int &h);
+	void getInitialRenderSize(int &w, int &h);
 	float currentDisplayRefreshRate() const;
 	bool updateDisplayData(bool getpos = false);
 	// Returns true when correction requires dirty rect refresh (and repaint).

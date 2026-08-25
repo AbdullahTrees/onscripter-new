@@ -5,9 +5,9 @@ history belongs in Git, issues, and release notes rather than this document.
 
 ## Supported release targets
 
-- Current release: 1.2 (`20260820-new`).
+- Current release: 1.3 (`20260824-new`).
 - Windows 10 or newer, x86-64, built in MSYS2 UCRT64.
-- Android 14 or newer, arm64.
+- Android 11 or newer (API 30), arm64.
 - The SDL3/SDL3_GPU renderer is the only supported renderer.
 
 The obsolete SDL2-based Xcode project has been removed so it can no longer
@@ -53,6 +53,8 @@ app-scoped save location for upgrades. Selected roots use the engine's
 `ONScripter-RU/SaveData/<game id>` layout; folder changes restart the native
 engine in a clean process. Android lifecycle recovery suspends presentation
 while the surface is absent and retries swapchain rebinding until it succeeds.
+The Android canvas is derived only from the live window surface, so rotation and
+multi-window changes cannot be overwritten by whole-display geometry.
 Vulkan device creation requests only the baseline features the renderer uses,
 avoiding device-specific failures on GPUs without SDL's optional clip-distance,
 depth-clamping, indirect-first-instance, or anisotropy features.
@@ -79,7 +81,9 @@ The aggregate package stamp depends on every active recipe and patch, so a
 recipe change forces version evaluation instead of silently retaining an old
 static library. Configure copies only recipes and tooling into build trees;
 downloaded sources and installed libraries stay target-local so native and
-cross-compiled archives cannot contaminate one another. Patch releases should
+cross-compiled archives cannot contaminate one another. Android package stamps
+also include the ABI, API floor, and NDK wrapper version, so changing the
+toolchain cannot silently reuse incompatible static archives. Patch releases should
 be reviewed monthly and security fixes expedited. Major upgrades of FFmpeg,
 Lua, or SDL still require game-data and media regression testing. The current
 audited lines are FFmpeg 8.1, Lua 5.5, and SDL3; retired SDL2 recipes were

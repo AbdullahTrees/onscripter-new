@@ -202,7 +202,7 @@ float WindowController::currentDisplayRefreshRate() const {
 #endif
 }
 
-void WindowController::getWindowSize(int &w, int &h) {
+void WindowController::getInitialRenderSize(int &w, int &h) {
 	w = screen_width;
 	h = screen_height;
 }
@@ -257,16 +257,27 @@ bool WindowController::updateDisplayData(bool getpos) {
 			} else if (screen_width <= display->native_width && screen_height <= display->native_height) {
 				// Only set this as a fullscreen display if it fits.
 				displayData.fullscreenDisplay = display;
+#if !defined(DROID)
 				fullscreen_width              = screen_width;
 				fullscreen_height             = screen_height;
+#endif
 			}
 			// The fullscreen display is the first to satisfy these conditions.
 		}
 		//sendToLog(LogLevel::Info, "Display %u: %u x %u (visible area %u)\n", display->id, display->native_width, display->native_height, display->visibleArea);
 	}
 
+	if (!displayData.fullscreenDisplay)
+		return false;
+
+#if defined(DROID)
+	// Android's surface can be smaller than its display in split-screen and
+	// floating-window modes. applySurfaceGeometry() is the only owner of the
+	// canvas there; writing display-derived geometry here was the divergence
+	// that caused the resize bugs in the first place.
+	return true;
+#else
 	if (scaled_flag) {
-		assert(displayData.fullscreenDisplay);
 		float scr_stretch_x = displayData.fullscreenDisplay->native_width / static_cast<float>(screen_width);
 		float scr_stretch_y = displayData.fullscreenDisplay->native_height / static_cast<float>(screen_height);
 
@@ -286,43 +297,38 @@ bool WindowController::updateDisplayData(bool getpos) {
 		fullscreen_height = std::round(static_cast<float>(script_height * screen_ratio1) / screen_ratio2);
 	}
 
-	if (displayData.fullscreenDisplay) {
-		fullscript_width    = script_width * displayData.fullscreenDisplay->native_width / static_cast<float>(fullscreen_width);
-		fullscript_height   = script_height * displayData.fullscreenDisplay->native_height / static_cast<float>(fullscreen_height);
-		fullscript_offset_x = (fullscript_width - script_width) / 2 - system_offset_x;
-		fullscript_offset_y = (fullscript_height - script_height) / 2 - system_offset_y;
-		// A hack for some resolutions to solve scaling issues like random stripes
-		// e. g. 1366x768
-		// bg white,1
-		// lsp s0_1,"white1080p.png",0,0
-		// print 1
-		fullscreen_reduced_clip = {fullscript_offset_x + 0.5f, fullscript_offset_y + 0.5f, script_width - 1.0f, script_height - 1.0f};
+	fullscript_width    = script_width * displayData.fullscreenDisplay->native_width / static_cast<float>(fullscreen_width);
+	fullscript_height   = script_height * displayData.fullscreenDisplay->native_height / static_cast<float>(fullscreen_height);
+	fullscript_offset_x = (fullscript_width - script_width) / 2 - system_offset_x;
+	fullscript_offset_y = (fullscript_height - script_height) / 2 - system_offset_y;
+	// A hack for some resolutions to solve scaling issues like random stripes
+	// e. g. 1366x768
+	// bg white,1
+	// lsp s0_1,"white1080p.png",0,0
+	// print 1
+	fullscreen_reduced_clip = {fullscript_offset_x + 0.5f, fullscript_offset_y + 0.5f, script_width - 1.0f, script_height - 1.0f};
 
-		return true;
-	}
-	//Don't bother extra scaling when window is bigger than screen (default ONS behaviour)
-	return false;
+	return true;
+#endif
 }
 
 #if defined(DROID)
 void WindowController::applySurfaceGeometry() {
 	// Android resizes the surface in place -- the manifest's configChanges
 	// covers orientation and screenSize, so the activity is never recreated --
-	// and nothing else recomputes the fullscreen geometry. changeMode() is the
-	// only other caller of updateDisplayData(), and it runs at startup and on
-	// explicit fullscreen toggles, neither of which a rotation triggers.
+	// and the normal desktop display-data path is not run for that event.
 	//
 	// Left stale, fullscript_* keeps the aspect of the previous orientation:
 	// a 1920x2688 portrait canvas presented into a 2800x2000 landscape
 	// swapchain, which is the squashed full-width band.
 	//
-	// Derived from the window, not the display. updateDisplayData() sizes the
+	// Derived from the window, not the display. The old shared path sized the
 	// canvas from displayData.fullscreenDisplay->native_*, which is the whole
-	// screen. Under split screen or a floating window the display does not
-	// change while the window does, so that path keeps returning the fullscreen
-	// answer: a 1918x1079 floating window -- almost exactly the game's own 16:9
-	// -- was handed a 1920x1371 canvas and squashed by 27%. The window size is
-	// correct for every cause, rotation included.
+	// screen. Under split screen or a floating window the display does not change
+	// while the window does, so it kept returning the fullscreen answer: a
+	// 1918x1079 floating window -- almost exactly the game's own 16:9 -- was
+	// handed a 1920x1371 canvas and squashed by 27%. The window size is correct
+	// for every cause, rotation included.
 	int winW = 0, winH = 0;
 	SDL_GetWindowSizeInPixels(window, &winW, &winH);
 	if (winW <= 0 || winH <= 0)

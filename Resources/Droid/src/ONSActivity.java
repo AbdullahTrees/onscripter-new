@@ -1,5 +1,6 @@
 package org.umineko_project.onscripter_ru;
 
+import android.annotation.SuppressLint;
 import android.content.pm.ActivityInfo;
 import android.os.Build;
 import android.os.Bundle;
@@ -28,13 +29,11 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
     private SurfaceView surfaceView;
 
     /**
-     * Created only on API 33+, never as a field initialiser.
-     *
-     * OnBackInvokedCallback does not exist below 33, and a field initialiser
-     * runs on every device, so building the lambda eagerly would fail to
-     * resolve the interface on the very versions this compatibility exists for.
+     * Created only on API 33+. Keep the field descriptor itself API-neutral:
+     * OnBackInvokedCallback does not exist below 33, and ONSActivity must still
+     * be loadable by those runtimes before the guarded methods are called.
      */
-    private OnBackInvokedCallback backCallback;
+    private Object backCallback;
 
     @Override
     protected String[] getLibraries() {
@@ -86,15 +85,17 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
 
     @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
     private void registerBackCallback() {
-        backCallback = this::onSystemBack;
+        OnBackInvokedCallback callback = this::onSystemBack;
+        backCallback = callback;
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback);
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
     private void unregisterBackCallback() {
         if (backCallback != null) {
-            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
+            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(
+                    (OnBackInvokedCallback) backCallback);
             backCallback = null;
         }
     }
@@ -108,6 +109,7 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
      * has no handler for, so nothing acts on it twice.
      */
     @Override
+    @SuppressLint("GestureBackNavigation")
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
         onSystemBack();

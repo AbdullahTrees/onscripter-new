@@ -255,9 +255,12 @@ MSYS emulates `fork()`, making process creation 10–50x more expensive than on
 Linux, so the serial probe phase dominates wall clock. The project's own CI
 budgets 90 minutes for a single Windows target.
 
-Completed packages are stamped in `DerivedData/onscrlib/.pkgs/<name>` with
-`pkgver-pkgrel` and skipped on later runs, so the cost is paid once. Building
-only `arm64` roughly halves it; `x86_64` is emulator-only.
+Completed packages are stamped below each target's
+`Dependencies/onscrlib/.pkgs/<name>` and skipped on later runs, so the cost is
+paid once. Android stamps include the package version, ABI, API floor, and NDK
+wrapper version; changing any of those inputs forces a rebuild instead of
+reusing an incompatible static archive. Building only `arm64` roughly halves
+the initial cost; `x86_64` is emulator-only.
 
 No prebuilt dependency bundles are published — `onscrlib` is only a meta-package
 listing dependencies, and releases ship just the APK and a Windows zip. The
@@ -401,7 +404,7 @@ overrides are load-bearing; removing any of them breaks startup.
 | --- | --- | --- |
 | `getLibraries()` | `{"main"}` | No `libSDL3.so` exists |
 | `getMainFunction()` | `"main"` | Engine exports `main`, not `SDL_main` |
-| `getArguments()` | `{"--root", <scoped path>}` | Points the engine at app-scoped storage |
+| `getArguments()` | `{"--root", <scoped path>, "--hwdecoder", "off"}` | Selects storage and avoids unrecoverable MediaCodec loss after backgrounding |
 
 ### The Java layer is not a launcher
 
@@ -412,7 +415,7 @@ it and bridges back over JNI. Current size:
 
 | File | Lines | Native methods |
 | --- | --- | --- |
-| `SDLActivity.java` | 2240 | 56 |
+| `SDLActivity.java` | 2260 | 56 |
 | `SDLControllerManager.java` | 1010 | 10 |
 | `HIDDeviceBLESteamController.java` | 829 | 1 |
 | `HIDDeviceManager.java` | 698 | 8 |
@@ -421,18 +424,21 @@ it and bridges back over JNI. Current size:
 | `SDLInputConnection.java` | 135 | 2 |
 | `SDLAudioManager.java` | 126 | 3 |
 | `SDL.java` | 90 | 2 |
-| `ONSActivity.java` | 81 | 1 |
+| `ONSActivity.java` | 326 | 1 |
 | `SDLDummyEdit.java` | 65 | 0 |
 | `SDLSensorManager.java` | 31 | 0 |
 | `HIDDevice.java` | 21 | 0 |
 
-That is ~6100 lines and 82 native entry points covering the rendering surface,
+That is ~6400 lines and 82 native entry points covering the rendering surface,
 touch/key/mouse/gamepad input, sensors, IME and soft keyboard, audio device
 lifecycle, USB and Bluetooth HID, clipboard, permissions, and translation of the
 activity lifecycle into SDL events. Treat it as a port layer, not glue.
 
-Only `ONSActivity.java` is project code. The rest are vendored SDL3 sources and
-should be replaced wholesale on an SDL upgrade rather than edited.
+The nine launcher, storage, input, and diagnostic classes named in Tier 1 below
+are project code. The SDL-prefixed activity, surface, audio, controller, HID,
+and input classes are vendored SDL3 sources and should normally be replaced
+wholesale on an SDL upgrade; the local message-box completion guard is the one
+intentional patch and must be carried forward when that happens.
 
 ### SDL version lock
 
@@ -634,15 +640,16 @@ Scripts/quickdroid.tool   multi-ABI build driver
 
 ### Tier 2 — shared files with Android-only regions
 
-Edit only inside `#if defined(DROID)` guards (~42 sites across 14 files):
+Edit shared files only inside `#if defined(DROID)` guards unless a platform-
+neutral refactor is independently verified:
 
 ```
 Engine/Media/HardwareDecoder.cpp     MediaCodec hwaccel, JNI vm registration
 Engine/Media/VideoDecoder.cpp, Controller.hpp
-Engine/Graphics/GPU.cpp, GPU.hpp
+Engine/Graphics/GPU.cpp, GPU.hpp, SDL3GPUCompat.cpp, SDL3GPUCompat.hpp
 Engine/Core/ONScripter.cpp, Command.cpp, CommandExt.cpp
 Engine/Core/Event.cpp, Loader.cpp, Animation.cpp
-Engine/Components/Window.hpp
+Engine/Components/Window.cpp, Window.hpp
 Support/FileIO.cpp                   storage paths, __android_log logging
 External/Compatibility.hpp
 ```
@@ -653,8 +660,8 @@ Build files with Android-only regions: the `*clang*:"Droid")` branch of
 
 ### Tier 3 — do not touch for Android work
 
-Everything else, including the rest of `Engine/`, `Engine/Graphics/SDL3GPU*`,
-`Tests/`, `Resources/Windows/` and `Support/Apple/`.
+Everything else, including unguarded shared renderer code, `Tests/`,
+`Resources/Windows/` and `Support/Apple/`.
 
 ## Debugging
 
@@ -736,7 +743,7 @@ destination is rewritten as a Windows path.
 The native build takes hours; changes confined to `Resources/Droid/src` do not
 need it. Reuse the existing `libmain.so` and swap only the dex: compile the Java
 sources with `javac --release 17` against the platform `android.jar`, dex them
-with `d8 --min-api 34`, replace `classes.dex` inside a copy of the APK, then
+with `d8 --min-api 30`, replace `classes.dex` inside a copy of the APK, then
 `zipalign -f -p 4` and re-sign with `apksigner`. On Windows those build-tools
 binaries need Windows-style paths — convert with `cygpath -w`. The re-signed APK
 will not match the release signature, so uninstall the old one first.
@@ -849,7 +856,7 @@ while backgrounded is routine rather than exceptional.
 
 ### Device compatibility
 
-The target is every Android 14 (minSdk 34) device, not just whatever is on the
+The target is every Android 11 (minSdk 30) device, not just whatever is on the
 desk. Real coverage today is two devices: a Snapdragon/Adreno phone and a
 MediaTek/Mali tablet.
 
@@ -877,9 +884,10 @@ Worth building a device matrix and working through it deliberately:
 
 - **GPU vendor** — Adreno and Mali are covered. PowerVR and Samsung Xclipse are
   not, and each has its own view of which optional Vulkan features exist.
-- **Android version** — 14, 15 and 16 behave differently in ways already biting
-  us: `enableOnBackInvokedCallback` changes how Back is delivered on 33+, and 16
-  ignores manifest-declared fixed orientation on large screens.
+- **Android version** — 11–13 still need coverage, while 14, 15 and 16 already
+  behave differently in ways that matter: `enableOnBackInvokedCallback` changes
+  how Back is delivered on 33+, and 16 ignores manifest-declared fixed
+  orientation on large screens.
 - **Form factor** — phone, tablet, foldable, TV. Touch-target sizing and
   orientation handling differ; a TV has no touch at all.
 - **ABI** — only arm64-v8a has ever been run. x86_64 builds but is untested.
@@ -904,11 +912,6 @@ shipped binary rather than the source tree.
   regression corpus does, which limits confidence in renderer and media changes.
   `Tests/Fixtures/SmokeGame/0.txt` is a minimal script, not a runnable game — the
   engine still reports `Invalid launch directory!` with only that present.
-- Dependency stamps in `Dependencies/onscrlib/.pkgs` record `$pkgver-$pkgrel`
-  only, not the Android API level. Changing `droid_min_api` regenerates the
-  toolchain but leaves those stamps valid, so a plain `make` would relink
-  libraries built for the old API into a binary claiming the new one. Delete
-  `onscrlib` to force the rebuild.
 - `android:screenOrientation="sensorLandscape"` is ignored on targetSdk 36;
   Android 16 drops manifest-declared fixed orientation on large screens.
 - `Resources/Droid/gradle/gradle-daemon-jvm.properties` is untracked and
