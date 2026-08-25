@@ -2,7 +2,7 @@ pkgname=zlib
 pkgver=1.3.2
 pkgrel=1
 sources=(
-    "https://zlib.net/zlib-$pkgver.tar.xz"
+    "https://github.com/madler/zlib/releases/download/v$pkgver/zlib-$pkgver.tar.xz"
 )
 
 hashes=(

@@ -83,10 +83,12 @@ static library. Configure copies only recipes and tooling into build trees;
 downloaded sources and installed libraries stay target-local so native and
 cross-compiled archives cannot contaminate one another. Android package stamps
 also include the ABI, API floor, and NDK wrapper version, so changing the
-toolchain cannot silently reuse incompatible static archives. Patch releases should
-be reviewed monthly and security fixes expedited. Major upgrades of FFmpeg,
-Lua, or SDL still require game-data and media regression testing. The current
-audited lines are FFmpeg 8.1, Lua 5.5, and SDL3; retired SDL2 recipes were
+toolchain cannot silently reuse incompatible static archives. Dependency
+archives use immutable upstream release assets and remain hash-verified so an
+HTML error response cannot enter a build. Patch releases should be reviewed
+monthly and security fixes expedited. Major upgrades of FFmpeg, Lua, or SDL
+still require game-data and media regression testing. The current audited lines
+are FFmpeg 8.1, Lua 5.5, and SDL3; retired SDL2 recipes were
 removed.
 
 ## Verification
