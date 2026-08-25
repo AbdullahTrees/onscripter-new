@@ -103,7 +103,7 @@ public:
 
 	void applyDimensions(int rw, int rh, int cw, int ch, int dw);
 #if defined(DROID)
-	void refreshAfterSurfaceResize();
+	void applySurfaceGeometry();
 #endif
 	void getWindowSize(int &w, int &h);
 	float currentDisplayRefreshRate() const;

@@ -305,7 +305,7 @@ bool WindowController::updateDisplayData(bool getpos) {
 }
 
 #if defined(DROID)
-void WindowController::refreshAfterSurfaceResize() {
+void WindowController::applySurfaceGeometry() {
 	// Android resizes the surface in place -- the manifest's configChanges
 	// covers orientation and screenSize, so the activity is never recreated --
 	// and nothing else recomputes the fullscreen geometry. changeMode() is the
@@ -316,9 +316,6 @@ void WindowController::refreshAfterSurfaceResize() {
 	// a 1920x2688 portrait canvas presented into a 2800x2000 landscape
 	// swapchain, which is the squashed full-width band.
 	//
-	// Start from the windowed baseline every time so repeated resizes cannot
-	// compound: updateDisplayData() derives its stretch factors from
-	// screen_width/height, and the fullscreen branch below overwrites them.
 	// Derived from the window, not the display. updateDisplayData() sizes the
 	// canvas from displayData.fullscreenDisplay->native_*, which is the whole
 	// screen. Under split screen or a floating window the display does not
@@ -385,6 +382,19 @@ bool WindowController::changeMode(bool perform, bool correct, int mode) {
 		GPU_FlushBlitBuffer();
 
 		if (mode == 1) {
+#if defined(DROID)
+			// applySurfaceGeometry() is the single owner of the canvas.
+			// Deriving it here from display metrics as well is what let the two
+			// disagree: on a desktop fullscreen means the window is the display,
+			// but on Android it does not, so whichever path ran last won. The
+			// rest of the desktop branch does not apply either -- the system
+			// owns the surface position and size, and there is no pointer to
+			// warp.
+			applySurfaceGeometry();
+			onsSetWindowFullscreen(window, true);
+			ons.screen_target = GPU_GetContextTarget();
+			fullscreen_mode   = true;
+#else
 			updateDisplayData(true); // window_x and window_y have changed, so our display data must be recalculated.
 			screen_width  = fullscreen_width;
 			screen_height = fullscreen_height;
@@ -405,6 +415,7 @@ bool WindowController::changeMode(bool perform, bool correct, int mode) {
 			SDL_WarpMouseInWindow(window, mouse_x, mouse_y);
 			ons.screen_target = GPU_GetContextTarget();
 			fullscreen_mode   = true;
+#endif
 		} else {
 			onsSetWindowFullscreen(window, false);
 			ons.screen_target = GPU_GetContextTarget();

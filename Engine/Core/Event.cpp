@@ -657,7 +657,7 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		// orientation the window never had, with no resize to react to. The
 		// renderer notices the mismatch directly and it is corrected here.
 		if (GPU_TakeSurfaceGeometryStale()) {
-			window.refreshAfterSurfaceResize();
+			window.applySurfaceGeometry();
 			droidResumeRedraw.store(true, std::memory_order_release);
 		}
 
@@ -2162,7 +2162,7 @@ void ONScripter::runEventLoop() {
 						// this is the only notice the engine gets that its
 						// fullscreen geometry is now for the wrong orientation.
 						if (onsWindowEventType(event->window) == SDL_WINDOWEVENT_RESIZED) {
-							window.refreshAfterSurfaceResize();
+							window.applySurfaceGeometry();
 							markRetainedRainSceneStaticDirty();
 							before_dirty_rect_scene.fill(window.canvas_width, window.canvas_height);
 							// Nothing in the scene changed, so without asking

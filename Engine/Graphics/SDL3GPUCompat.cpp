@@ -5967,29 +5967,40 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 	// scaled from these numbers, so log them whenever they move rather than
 	// guessing later.
 	{
+		// Steady state is four integer comparisons: the aspect maths and the
+		// logging only run when one of the two actually moves. Both are tracked
+		// because either can change alone -- the surface on a rotation or a
+		// window drag, the canvas when the engine recomputes it.
 		static Uint32 lastSwapW = 0, lastSwapH = 0;
-		if (width != lastSwapW || height != lastSwapH) {
-			lastSwapW = width;
-			lastSwapH = height;
+		static int lastTargetW = 0, lastTargetH = 0;
+		if (width != lastSwapW || height != lastSwapH ||
+		    target->w != lastTargetW || target->h != lastTargetH) {
+			lastSwapW   = width;
+			lastSwapH   = height;
+			lastTargetW = target->w;
+			lastTargetH = target->h;
+
 			sendToLog(LogLevel::Info,
 			          "Swapchain %ux%u, target %dx%d (base %dx%d, virtual %d), image %dx%d\n",
 			          width, height, target->w, target->h, target->base_w, target->base_h,
 			          target->using_virtual_resolution ? 1 : 0,
 			          target->image ? target->image->w : -1,
 			          target->image ? target->image->h : -1);
-		}
 
-		// The canvas is blitted to fill the swapchain, so if their aspects
-		// disagree the scene is stretched. Checking the two numbers we already
-		// have catches every cause, including the ones that arrive without a
-		// resize event: the engine computes its fullscreen geometry from display
-		// metrics, and at startup those can describe an orientation the window
-		// never had.
-		if (width > 0 && height > 0 && target->w > 0 && target->h > 0) {
-			const float swapAspect   = static_cast<float>(width) / static_cast<float>(height);
-			const float targetAspect = static_cast<float>(target->w) / static_cast<float>(target->h);
-			if (std::fabs(swapAspect - targetAspect) > 0.01f * swapAspect)
-				surfaceGeometryStale.store(true, std::memory_order_release);
+			// The canvas is blitted to fill the swapchain, so disagreeing
+			// aspects are exactly what stretching looks like. applySurfaceGeometry()
+			// is meant to make that unreachable; this stays as the check that
+			// says so, and repairs it if the invariant is ever broken.
+			if (width > 0 && height > 0 && target->w > 0 && target->h > 0) {
+				const float swapAspect   = static_cast<float>(width) / static_cast<float>(height);
+				const float targetAspect = static_cast<float>(target->w) / static_cast<float>(target->h);
+				if (std::fabs(swapAspect - targetAspect) > 0.01f * swapAspect) {
+					sendToLog(LogLevel::Warn,
+					          "Canvas %dx%d does not match surface %ux%u; recomputing\n",
+					          target->w, target->h, width, height);
+					surfaceGeometryStale.store(true, std::memory_order_release);
+				}
+			}
 		}
 	}
 #endif
