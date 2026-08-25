@@ -1009,6 +1009,21 @@ void ONScripter::setShowFPS() {
 	show_fps_counter = true;
 }
 
+/**
+ * Turns the performance counter on for this run.
+ *
+ * Reachable from the command line and, because ons.cfg goes through the same
+ * option parser, from a bare "perf-overlay" line in the game folder's ons.cfg.
+ * That second route is the only one on Android, which has no argv the user can
+ * edit and no keyboard to reach the toggle with.
+ */
+void ONScripter::setPerfOverlay() {
+	perf_overlay_enabled         = true;
+	fps_overlay_visible          = true;
+	fps_overlay_dirty            = true;
+	fps_overlay_refresh_required = true;
+}
+
 void ONScripter::setGameIdentifier(const char *gameid) {
 	script_h.setStr(&cmdline_game_id, gameid);
 }

@@ -565,6 +565,22 @@ public:
 	// attributed rather than guessed at.
 	void logPooledImageCensus();
 
+	// The same totals as logPooledImageCensus, returned rather than logged, for
+	// the performance counter. Walks every pooled image, so it is sampled on the
+	// panel's redraw cadence and not per frame.
+	TempGPUImagePool::Census pooledImageCensus() const {
+		TempGPUImagePool::Census total = canvasImagePool.census();
+		auto add = [&total](const TempGPUImagePool::Census &c) {
+			total.images += c.images;
+			total.checkedOut += c.checkedOut;
+			total.bytes += c.bytes;
+		};
+		add(scriptImagePool.census());
+		for (const auto &entry : typedImagePools)
+			add(entry.second.census());
+		return total;
+	}
+
 	// Hand back every pooled image nobody is holding, and report the bytes.
 	//
 	// Unlike clearImagePools this keeps the pool objects themselves, because

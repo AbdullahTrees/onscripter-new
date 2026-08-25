@@ -161,6 +161,7 @@ public:
 	int argc;
 
 	void setShowFPS();
+	void setPerfOverlay();
 	void setStrict() {
 		script_h.strict_warnings = true;
 	}
@@ -676,7 +677,7 @@ protected:
 	void trapHandler();
 	void initSDL();
 	void toggleFpsOverlay();
-	void updateFpsCounter(double frameMilliseconds);
+	void updateFpsCounter(double averageFrameMs, double lastFrameMs);
 	void drawFpsOverlay();
 	void reopenAudioOnMismatch(const SDL_AudioSpec &match);
 	void openAudio(const SDL_AudioSpec &spec);
@@ -735,6 +736,10 @@ private:
 	bool enable_wheeldown_advance_flag{false};
 	bool enable_custom_cursors{false};
 	bool show_fps_counter{false};
+	// The performance overlay is opt-in. It samples the process every frame
+	// and redraws a panel four times a second, so it stays off unless
+	// --perf-overlay (or a perf-overlay line in ons.cfg) asked for it.
+	bool perf_overlay_enabled{false};
 	bool fps_overlay_visible{false};
 	bool fps_overlay_dirty{true};
 	bool fps_overlay_refresh_required{false};
