@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.text.method.LinkMovementMethod;
 import android.view.View;
 import android.widget.TextView;
 
@@ -75,6 +76,9 @@ public class SetupActivity extends AppCompatActivity {
         mGrantButton = findViewById(R.id.grant_access);
         mChooseButton = findViewById(R.id.choose_folder);
         mPlayButton = findViewById(R.id.play);
+
+        TextView explanation = findViewById(R.id.setup_explanation);
+        explanation.setMovementMethod(LinkMovementMethod.getInstance());
 
         mGrantButton.setOnClickListener(v -> requestAllFilesAccess());
         mChooseButton.setOnClickListener(v -> mFolderLauncher.launch(null));
