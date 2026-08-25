@@ -35,7 +35,7 @@ ndkver="r29"
 ndkrel="1"
 ndkfullver="29.0.14206865"
 ndkgood=true
-droid_min_api="34"
+droid_min_api="30"
 
 # Keep these in sync with the supported Android package ABIs.
 ndkarch=(

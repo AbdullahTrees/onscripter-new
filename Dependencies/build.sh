@@ -175,6 +175,8 @@ MIOS_VER_MIN=$APPLE_IOS_FLOOR
 IOS_MIN_VER=$(apple_version_macro "$MIOS_VER_MIN")
 IOS_SDK=
 DROID_DEFAULT_TRIPLE="aarch64-linux-android"
+ANDROID_API=""
+ANDROID_NDK_VERSION=""
 CROSS_BUILD=false
 CROSS_SHIM=true
 CROSS_TRIPLE=""
@@ -263,6 +265,7 @@ while getopts O:defphilm:a:o:r:b:c:g: o; do
                 TOOL_SUFFIX=".cmd"
             fi
             ANDROID_API="$(cat "$OPTARG/api" 2>/dev/null)"
+            ANDROID_NDK_VERSION="$(cat "$OPTARG/version" 2>/dev/null)"
             ANDROID_NDK_ROOT="$(cat "$OPTARG/ndk-root" 2>/dev/null)"
             ANDROID_NDK_ROOT_CMAKE="$ANDROID_NDK_ROOT"
             if { [[ $(uname) == MINGW* ]] || [[ $(uname) == MSYS* ]]; } && [ "$ANDROID_NDK_ROOT_CMAKE" != "" ] && command -v cygpath >/dev/null 2>&1; then
@@ -919,6 +922,18 @@ addcrossopt=true
 
 source "$pkgbuild"
 
+pkgstamp="$pkgver-$pkgrel"
+if [ "$CROSS_TARGET" == "droid" ]; then
+    if [ "$ANDROID_API" == "" ] || [ "$ANDROID_NDK_VERSION" == "" ]; then
+        error "Android toolchain metadata is incomplete; expected api and version files."
+        exit 1
+    fi
+    # Android's API floor and NDK are part of a static archive's ABI contract.
+    # Version-only stamps can otherwise accept libraries built for a newer API
+    # after ndktoolchain.sh regenerates its wrappers for an older one.
+    pkgstamp+="-android-$CROSS_TRIPLE-api$ANDROID_API-ndk$ANDROID_NDK_VERSION"
+fi
+
 cflags_mac=( ${cflags_mac[@]} ${cflags_mac_extra[@]} )
 cppflags_mac=( ${cppflags_mac[@]} ${cppflags_mac_extra[@]} )
 ldflags_mac=( ${ldflags_mac[@]} ${ldflags_mac_extra[@]} )
@@ -952,7 +967,7 @@ fi
 if [ -f "$outdir/.pkgs/$pkgname" ]; then
     # Compare installed versions as well
     ver=$(trim $(<"$outdir/.pkgs/$pkgname"))
-    if [[ "$pkgver-$pkgrel" != "$ver" || "$pkgname" == "onscrlib" ]]; then
+    if [[ "$pkgstamp" != "$ver" || "$pkgname" == "onscrlib" ]]; then
         msg "Rebuilding %s" "$pkgname"
     elif $FORCE_BUILD; then
         if [ $(( $PKGBUILD_RECURSION_DEPTH )) -gt $(( $FORCE_RECURSION_LEVEL )) ]; then
@@ -1078,7 +1093,7 @@ if [[ ! "$type" = "meta" ]]; then
 fi
 
 mkdir -p "$outdir/.pkgs"
-echo -n "$pkgver-$pkgrel" >"$outdir/.pkgs/$pkgname"
+printf "%s" "$pkgstamp" >"$outdir/.pkgs/$pkgname"
 
 checkdepends
 finalise
@@ -1101,4 +1116,3 @@ elif [[ $ONSCRLIB_INVALID -eq 1 && $PKGBUILD_RECURSION_DEPTH -eq 1 ]]; then
 fi
 
 msg_stop "Done with %s" "$pkgname"
-

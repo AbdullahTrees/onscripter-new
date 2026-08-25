@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tablets: let the device decide. See values/orientation.xml. -->
+<resources>
+    <bool name="lock_landscape">false</bool>
+</resources>

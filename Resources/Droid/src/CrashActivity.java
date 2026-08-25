@@ -5,6 +5,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.text.method.LinkMovementMethod;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -32,6 +33,12 @@ public class CrashActivity extends AppCompatActivity {
 
         report = CrashReport.read(this);
         ((TextView) findViewById(R.id.crash_log)).setText(report);
+
+        // The <a href> in crash_body already arrives as a URLSpan, so the link
+        // looks like a link with no help from here. Without a MovementMethod
+        // nothing dispatches the touch to it, and tapping does nothing at all.
+        ((TextView) findViewById(R.id.crash_body))
+                .setMovementMethod(LinkMovementMethod.getInstance());
 
         MaterialButton share = findViewById(R.id.share_logs);
         MaterialButton copy = findViewById(R.id.copy_logs);

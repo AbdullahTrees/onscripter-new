@@ -100,6 +100,12 @@ RenderTarget *GPUController::rendererInitWithInfo(GPURendererInfo &info, uint16_
 		return screen;
 	}
 
+	// Say which renderer failed and why, here rather than at the end: with more
+	// than one candidate the caller only sees that they all failed, and by then
+	// SDL_GetError holds whatever the last attempt left behind.
+	sendToLog(LogLevel::Error, "%s renderer failed to initialise: %s\n",
+	          current_renderer->name, SDL_GetError());
+
 	current_renderer = nullptr;
 	return nullptr;
 }
@@ -129,7 +135,12 @@ RenderTarget *GPUController::rendererInit(RenderWindowFlags SDL_flags) {
 	size_t rendererPasses = 1 + !preferred.empty();
 
 	int w = 0, h = 0;
-	window.getWindowSize(w, h);
+	window.getInitialRenderSize(w, h);
+
+	// Named in the failure below. Which renderers exist varies by build, and
+	// which of them are reachable varies with the blacklist and preference, so
+	// the error should say what was actually attempted rather than guess.
+	std::string attempted;
 
 	for (size_t i = 0; i < rendererPasses; i++) {
 		for (auto &renderer : renderers) {
@@ -141,6 +152,12 @@ RenderTarget *GPUController::rendererInit(RenderWindowFlags SDL_flags) {
 
 			if (!preferred.empty() && preferred != renderer.name)
 				continue;
+
+			if (attempted.find(renderer.name) == std::string::npos) {
+				if (!attempted.empty())
+					attempted += ", ";
+				attempted += renderer.name;
+			}
 
 			auto screen = rendererInitWithInfo(renderer, w, h, SDL_flags);
 			if (screen)
@@ -155,7 +172,12 @@ RenderTarget *GPUController::rendererInit(RenderWindowFlags SDL_flags) {
 		}
 	}
 
-	std::snprintf(ons.script_h.errbuf, MAX_ERRBUF_LEN, "Couldn't init OpenGL with %dx%d resolution", w, h);
+	if (attempted.empty())
+		attempted = "none, every renderer was skipped";
+
+	std::snprintf(ons.script_h.errbuf, MAX_ERRBUF_LEN,
+	              "Couldn't initialise a renderer at %dx%d resolution (tried: %s)",
+	              w, h, attempted.c_str());
 	ons.errorAndExit(ons.script_h.errbuf, SDL_GetError(), "Init Error", true);
 
 	return nullptr;

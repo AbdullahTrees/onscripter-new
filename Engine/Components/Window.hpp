@@ -102,7 +102,10 @@ public:
 	void translateScriptToWindowCoords(int &x, int &y);
 
 	void applyDimensions(int rw, int rh, int cw, int ch, int dw);
-	void getWindowSize(int &w, int &h);
+#if defined(DROID)
+	void applySurfaceGeometry();
+#endif
+	void getInitialRenderSize(int &w, int &h);
 	float currentDisplayRefreshRate() const;
 	bool updateDisplayData(bool getpos = false);
 	// Returns true when correction requires dirty rect refresh (and repaint).

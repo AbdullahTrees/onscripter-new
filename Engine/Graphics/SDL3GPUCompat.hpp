@@ -325,6 +325,8 @@ void SDLCALL GPU_Flip(GPU_Target *target);
  * event queue never sees it in time.
  */
 void GPU_SetPresentationSuspended(bool suspended);
+// True once per detected mismatch between canvas and swapchain aspect.
+bool GPU_TakeSurfaceGeometryStale();
 #endif
 void SDLCALL GPU_RectangleFilled2(GPU_Target *target, GPU_Rect rect, SDL_Color color);
 Uint32 SDLCALL GPU_CompileShader_RW(GPU_ShaderEnum shader_type, SDL_RWops *shader_source, GPU_bool free_rwops);

@@ -106,6 +106,8 @@ final class TouchInput {
     private long startTime;
     private float lastScrollY;
     private boolean multiMoved;
+    /** Whether startX/startY have been set by a real touch yet. */
+    private boolean hasPoint;
 
     private final Runnable longPress = () -> {
         if (state != State.ONE_PENDING) {
@@ -171,6 +173,39 @@ final class TouchInput {
         cancel();
     }
 
+    /**
+     * Plays a system Back press into the game as a right-click.
+     *
+     * Right-click is what the script already treats as "back", and it is
+     * context-sensitive without anyone having to ask what screen is showing.
+     * mouseButtonDecision only acts on one when
+     * `(rmode_flag && WAIT_TEXT_MODE) || WAIT_BUTTON_MODE | WAIT_RCLICK_MODE`,
+     * so the same press opens the menu during the novel, steps out of a
+     * submenu, and does nothing at the title screen or mid-effect.
+     *
+     * Escape is not a substitute. It reaches the same buttonState of -1 but by
+     * a different route, bypassing that gate, and from a scene it jumps
+     * straight to the title screen.
+     *
+     * @return true when the press was delivered to the engine. False means the
+     * engine was not listening; the caller decides what Back should mean then.
+     */
+    boolean systemBack() {
+        if (SDLActivity.mBrokenLibraries
+                || SDLActivity.mCurrentNativeState != SDLActivity.NativeState.RESUMED) {
+            return false;
+        }
+
+        // A Back press arriving mid-gesture would otherwise interleave with it.
+        cancel();
+
+        float x = hasPoint ? startX : mapper.surfaceWidth() / 2f;
+        float y = hasPoint ? startY : mapper.surfaceHeight() / 2f;
+        Diag.i(C, "system back -> right click");
+        click(FINGERS_RIGHT, x, y);
+        return true;
+    }
+
     // --- gesture phases -----------------------------------------------------
 
     private void beginSingle(float x, float y, long eventTime) {
@@ -178,6 +213,7 @@ final class TouchInput {
         state = State.ONE_PENDING;
         startX = x;
         startY = y;
+        hasPoint = true;
         startTime = eventTime;
         multiMoved = false;
         // Move the cursor immediately so anything under the finger is hovered
@@ -194,6 +230,7 @@ final class TouchInput {
         float[] centre = centroid(event);
         startX = centre[0];
         startY = centre[1];
+        hasPoint = true;
         startTime = event.getEventTime();
         lastScrollY = centre[1];
         multiMoved = false;

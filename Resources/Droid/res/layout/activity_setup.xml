@@ -19,12 +19,13 @@
             android:text="@string/setup_title" />
 
         <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/setup_explanation"
+            style="@style/TextAppearance.Material3.BodyMedium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            style="@style/TextAppearance.Material3.BodyMedium"
-            android:textColor="?attr/colorOnSurface"
             android:layout_marginTop="12dp"
-            android:text="@string/setup_explanation" />
+            android:text="@string/setup_explanation"
+            android:textColor="?attr/colorOnSurface" />
 
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/status"

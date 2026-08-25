@@ -1,11 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <string name="setup_title">Game data</string>
-    <string name="setup_explanation">The engine reads game files directly from disk, so it needs
-        all-files access before it can open a folder you choose.\n\nCreate a folder for the game
-        data and put the game files in it, then select that folder. Android does not allow
-        selecting Download or the top level of internal storage.</string>
+    <string name="setup_title">First Time Setup</string>
+    <!--
+      Paragraph breaks are \n, never <br/>. Android converts a small set of
+      inline tags in a string resource into spans (<b>, <i>, <u> and <a href>
+      all survive, which is what styles this text with no Html.fromHtml call
+      anywhere). <br/> is structural rather than a span, so it is dropped in
+      silence and the whole notice runs together as one block.
+
+      Each \n\n leads its paragraph rather than trailing the one before it. A
+      newline plus indentation in the source collapses to a single space, which
+      is invisible at the end of a paragraph but an unwanted indent at the
+      start of one.
+    -->
+    <string name="setup_explanation">Welcome to Umineko Project! Before the chessboard is set, we must tend to some technical details.
+    \n\nONScripter is a legacy, cross-platform engine that reads game files directly from storage. Modern Android devices require <b>All Files Access</b> for it to function.
+    \n\n<b>Instructions:</b>
+    \n\n1. Create a dedicated folder and place the Umineko Project game files inside. You\'ll need at least 13GB of free space. You can download the required files from <a href="https://www.umineko-project.org/en/downloads/">https://www.umineko-project.org/en/downloads/</a>
+    \n\n2. Tap <b>Choose game folder</b> and select the folder you created. (Note: Android may not allow selecting certain folders like Downloads or the top level of internal storage.)</string>
 
     <string name="grant_access">Grant all-files access</string>
     <string name="grant_access_done">All-files access granted</string>
@@ -14,10 +27,8 @@
     <string name="shortcut_change_folder">Change game folder</string>
     <string name="shortcut_change_folder_short">Change folder</string>
 
-    <string name="crash_icon">🐞</string>
     <string name="crash_title">Whoops!</string>
-    <string name="crash_body">onscripter-new ran into an unexpected error. The log below includes the
-        crash details and what the engine was doing beforehand.</string>
+    <string name="crash_body">ONScripter ran into an unexpected error. If you want to help us, please share these logs with us on <a href="https://github.com/timftw21/onscripter-new/issues">GitHub</a></string>
     <string name="crash_share">Share crash logs</string>
     <string name="crash_share_subject">onscripter-new crash report</string>
     <string name="crash_copy">Copy to clipboard</string>

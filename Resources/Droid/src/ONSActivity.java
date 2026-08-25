@@ -1,11 +1,18 @@
 package org.umineko_project.onscripter_ru;
 
+import android.annotation.SuppressLint;
+import android.content.pm.ActivityInfo;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
+
+import androidx.annotation.RequiresApi;
 
 import org.libsdl.app.SDLActivity;
 
@@ -20,6 +27,13 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
     /** Screen position of the SDL surface, refreshed lazily. */
     private final int[] surfaceOrigin = new int[2];
     private SurfaceView surfaceView;
+
+    /**
+     * Created only on API 33+. Keep the field descriptor itself API-neutral:
+     * OnBackInvokedCallback does not exist below 33, and ONSActivity must still
+     * be loadable by those runtimes before the guarded methods are called.
+     */
+    private Object backCallback;
 
     @Override
     protected String[] getLibraries() {
@@ -47,6 +61,83 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         super.onCreate(savedInstanceState);
         touchInput = new TouchInput(ViewConfiguration.get(this), this);
         configureScopedStorage();
+
+        // The manifest locks landscape so a phone is never briefly portrait
+        // before this runs; large screens relax it here. Doing it in code
+        // rather than trusting the manifest alone is deliberate: Android 16
+        // ignores a manifest-declared fixed orientation on large screens, so
+        // the manifest by itself gives the right answer for the wrong reason
+        // and only on that one OS version.
+        if (!getResources().getBoolean(R.bool.lock_landscape)) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        }
+
+        // Back has to be claimed, not merely observed. The manifest sets
+        // enableOnBackInvokedCallback, so on API 33+ onBackPressed is never
+        // called and SDL's own SDL_ANDROID_TRAP_BACK_BUTTON handling is dead
+        // code; without a callback here the system finishes the activity
+        // itself. Below 33 the attribute is ignored and onBackPressed is the
+        // only route, so exactly one of the two paths is live on any device.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerBackCallback();
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
+    private void registerBackCallback() {
+        OnBackInvokedCallback callback = this::onSystemBack;
+        backCallback = callback;
+        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
+    private void unregisterBackCallback() {
+        if (backCallback != null) {
+            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(
+                    (OnBackInvokedCallback) backCallback);
+            backCallback = null;
+        }
+    }
+
+    /**
+     * The pre-33 half of the same gesture.
+     *
+     * Deliberately does not call super: that is what finishes the activity, and
+     * the whole point is that Back is a game action rather than an exit. The raw
+     * KEYCODE_BACK still reaches SDL as SDL_SCANCODE_AC_BACK, which the engine
+     * has no handler for, so nothing acts on it twice.
+     */
+    @Override
+    @SuppressLint("GestureBackNavigation")
+    @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+        onSystemBack();
+    }
+
+    /**
+     * What the Back gesture means inside the game.
+     *
+     * Today it is always handed to the engine as a right-click, so Back never
+     * leaves the app: the way out is Exit in the game's own menu, or Home.
+     *
+     * Letting Back exit at the "root" (the title screen) would go here, on the
+     * false branch. It needs care rather than just a finish() call. The engine
+     * gives no signal about whether it consumed a click, so knowing we are at
+     * the root would take a native callback; and quitting this way runs into a
+     * separate teardown bug -- SDL parks the engine thread in nativePause
+     * before onDestroy sends the quit, so mSDLThread.join(1000) expires and the
+     * engine's shutdown runs on after the window is gone, which is what aborts
+     * in hwuiTask1.
+     */
+    private void onSystemBack() {
+        if (touchInput != null && touchInput.systemBack()) {
+            return;
+        }
+        // The engine is not listening yet -- during startup, or once it has
+        // begun shutting down. Swallow the press rather than tearing the
+        // activity down underneath it.
+        Diag.i(C, "back pressed while engine not ready; ignoring");
     }
 
     @Override
@@ -64,6 +155,9 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         // The engine calls exit() on a fatal error, so this is often the last
         // Java line before the process goes away.
         Diag.i(C, "onDestroy");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            unregisterBackCallback();
+        }
         super.onDestroy();
     }
 
@@ -169,7 +263,25 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         // layout, and left two SaveData directories in the game folder. Setting
         // EXTERNAL_STORAGE below is enough to keep the engine's structure inside
         // the chosen folder.
-        String[] arguments = new String[] { "--root", dir.getAbsolutePath() };
+        // Software video decoding, deliberately.
+        //
+        // Android hands out hardware MediaCodec instances from a small global
+        // pool and takes them back from apps that are in the background. The
+        // engine has no way to survive that: it never releases the codec on
+        // pause and cannot rebuild a decoder mid-playback -- looping only seeks
+        // the demuxer and keeps the codec alive. So every call into the dead
+        // codec returned AVERROR_EXTERNAL, which the decode loop treats as
+        // recoverable, leaving the app on a black screen at ~140% CPU emitting
+        // roughly fifteen thousand log lines a second until it was killed.
+        //
+        // With no MediaCodec there is nothing to reclaim, and the decoder is
+        // ordinary CPU state that survives backgrounding untouched.
+        //
+        // The cost is smaller than it sounds. The videos in constant use are
+        // graphics/../video/masked/*.m2v -- MPEG-2, which is close to free to
+        // decode in software. Only the 35 H.264 movies in video/1080p are
+        // expensive, they play rarely, and a 720p set ships alongside them.
+        String[] arguments = new String[] { "--root", dir.getAbsolutePath(), "--hwdecoder", "off" };
         Diag.i(C, "handing off to engine, argv " + Arrays.toString(arguments));
         return arguments;
     }

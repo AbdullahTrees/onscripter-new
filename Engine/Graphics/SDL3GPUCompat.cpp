@@ -5878,6 +5878,13 @@ void SDLCALL GPU_FlushBlitBuffer(void) {
 #if defined(DROID)
 static std::atomic<bool> presentationSuspended{false};
 static std::atomic<bool> swapchainNeedsRebuild{false};
+// Set when the presented canvas no longer matches the swapchain's shape; the
+// engine owns the geometry, so it clears this and recomputes.
+static std::atomic<bool> surfaceGeometryStale{false};
+
+bool GPU_TakeSurfaceGeometryStale() {
+	return surfaceGeometryStale.exchange(false, std::memory_order_acq_rel);
+}
 
 void GPU_SetPresentationSuspended(bool suspended) {
 	const bool wasSuspended = presentationSuspended.exchange(suspended, std::memory_order_acq_rel);
@@ -5953,6 +5960,60 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 		SDL_CancelGPUCommandBuffer(commands);
 		return;
 	}
+
+#if defined(DROID)
+	// The surface can change size under us -- rotation, multi-window, or
+	// starting up before the display has settled -- and everything downstream is
+	// scaled from these numbers, so log them whenever they move rather than
+	// guessing later.
+	{
+		// Both sizes are tracked because either can change alone -- the surface
+		// on a rotation or window drag, the canvas when the engine recomputes it.
+		// A mismatch is rechecked until repaired so a transient zero-size window
+		// cannot consume the one repair request and leave stale geometry forever.
+		static Uint32 lastSwapW = 0, lastSwapH = 0;
+		static int lastTargetW = 0, lastTargetH = 0;
+		static bool geometryMismatch = false;
+		const bool dimensionsChanged = width != lastSwapW || height != lastSwapH ||
+		                               target->w != lastTargetW || target->h != lastTargetH;
+		if (dimensionsChanged) {
+			lastSwapW   = width;
+			lastSwapH   = height;
+			lastTargetW = target->w;
+			lastTargetH = target->h;
+
+			sendToLog(LogLevel::Info,
+			          "Swapchain %ux%u, target %dx%d (base %dx%d, virtual %d), image %dx%d\n",
+			          width, height, target->w, target->h, target->base_w, target->base_h,
+			          target->using_virtual_resolution ? 1 : 0,
+			          target->image ? target->image->w : -1,
+			          target->image ? target->image->h : -1);
+
+		}
+
+		// The canvas is blitted to fill the swapchain, so disagreeing aspects
+		// are exactly what stretching looks like. applySurfaceGeometry() is meant
+		// to make that unreachable; this check repairs it if the invariant is
+		// ever broken.
+		if (dimensionsChanged || geometryMismatch) {
+			bool mismatch = false;
+			if (width > 0 && height > 0 && target->w > 0 && target->h > 0) {
+				const float swapAspect   = static_cast<float>(width) / static_cast<float>(height);
+				const float targetAspect = static_cast<float>(target->w) / static_cast<float>(target->h);
+				mismatch = std::fabs(swapAspect - targetAspect) > 0.01f * swapAspect;
+			}
+			if (mismatch) {
+				if (!geometryMismatch) {
+					sendToLog(LogLevel::Warn,
+					          "Canvas %dx%d does not match surface %ux%u; recomputing\n",
+					          target->w, target->h, width, height);
+				}
+				surfaceGeometryStale.store(true, std::memory_order_release);
+			}
+			geometryMismatch = mismatch;
+		}
+	}
+#endif
 
 	presentTarget(target, commands, swapchainTexture, width, height);
 	submitGPUCommandBuffer(commands);

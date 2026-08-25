@@ -17,11 +17,10 @@
         android:orientation="vertical"
         android:padding="24dp">
 
-        <com.google.android.material.textview.MaterialTextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textSize="40sp"
-            android:text="@string/crash_icon"
+        <ImageView
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:src="@drawable/ic_crash"
             android:importantForAccessibility="no" />
 
         <com.google.android.material.textview.MaterialTextView
@@ -32,7 +31,13 @@
             android:layout_marginTop="8dp"
             android:text="@string/crash_title" />
 
+        <!--
+          crash_body carries an <a href> to the issue tracker. The tag survives
+          into a URLSpan on its own, but a span is only ever painted, never
+          tapped, until a MovementMethod is attached in CrashActivity.
+        -->
         <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/crash_body"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             style="@style/TextAppearance.Material3.BodyLarge"

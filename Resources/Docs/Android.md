@@ -44,7 +44,12 @@ when, read the git log.
   - [Always force-stop between launches](#always-force-stop-between-launches)
   - [Test a Java-only change without a native rebuild](#test-a-java-only-change-without-a-native-rebuild)
   - [Test a link-flag change without relinking](#test-a-link-flag-change-without-relinking)
-- [Known gaps](#known-gaps)
+- [Backlog](#backlog)
+  - [Defects](#defects)
+  - [Features](#features)
+  - [Device compatibility](#device-compatibility)
+  - [Infrastructure](#infrastructure)
+  - [Unverified](#unverified)
 
 ## Building and testing with Android Studio
 
@@ -250,9 +255,12 @@ MSYS emulates `fork()`, making process creation 10–50x more expensive than on
 Linux, so the serial probe phase dominates wall clock. The project's own CI
 budgets 90 minutes for a single Windows target.
 
-Completed packages are stamped in `DerivedData/onscrlib/.pkgs/<name>` with
-`pkgver-pkgrel` and skipped on later runs, so the cost is paid once. Building
-only `arm64` roughly halves it; `x86_64` is emulator-only.
+Completed packages are stamped below each target's
+`Dependencies/onscrlib/.pkgs/<name>` and skipped on later runs, so the cost is
+paid once. Android stamps include the package version, ABI, API floor, and NDK
+wrapper version; changing any of those inputs forces a rebuild instead of
+reusing an incompatible static archive. Building only `arm64` roughly halves
+the initial cost; `x86_64` is emulator-only.
 
 No prebuilt dependency bundles are published — `onscrlib` is only a meta-package
 listing dependencies, and releases ship just the APK and a Windows zip. The
@@ -342,7 +350,7 @@ Defined in `Resources/Droid/build.gradle` and `Scripts/ndktoolchain.sh`:
 
 | | |
 | --- | --- |
-| minSdk / targetSdk / compileSdk | 34 / 36 / 36 |
+| minSdk / targetSdk / compileSdk | 30 / 36 / 36 |
 | ABIs | `arm64-v8a`, `x86_64` |
 | NDK | r29 (`29.0.14206865`) |
 | Java | 17 |
@@ -396,7 +404,7 @@ overrides are load-bearing; removing any of them breaks startup.
 | --- | --- | --- |
 | `getLibraries()` | `{"main"}` | No `libSDL3.so` exists |
 | `getMainFunction()` | `"main"` | Engine exports `main`, not `SDL_main` |
-| `getArguments()` | `{"--root", <scoped path>}` | Points the engine at app-scoped storage |
+| `getArguments()` | `{"--root", <scoped path>, "--hwdecoder", "off"}` | Selects storage and avoids unrecoverable MediaCodec loss after backgrounding |
 
 ### The Java layer is not a launcher
 
@@ -407,7 +415,7 @@ it and bridges back over JNI. Current size:
 
 | File | Lines | Native methods |
 | --- | --- | --- |
-| `SDLActivity.java` | 2240 | 56 |
+| `SDLActivity.java` | 2260 | 56 |
 | `SDLControllerManager.java` | 1010 | 10 |
 | `HIDDeviceBLESteamController.java` | 829 | 1 |
 | `HIDDeviceManager.java` | 698 | 8 |
@@ -416,18 +424,21 @@ it and bridges back over JNI. Current size:
 | `SDLInputConnection.java` | 135 | 2 |
 | `SDLAudioManager.java` | 126 | 3 |
 | `SDL.java` | 90 | 2 |
-| `ONSActivity.java` | 81 | 1 |
+| `ONSActivity.java` | 326 | 1 |
 | `SDLDummyEdit.java` | 65 | 0 |
 | `SDLSensorManager.java` | 31 | 0 |
 | `HIDDevice.java` | 21 | 0 |
 
-That is ~6100 lines and 82 native entry points covering the rendering surface,
+That is ~6400 lines and 82 native entry points covering the rendering surface,
 touch/key/mouse/gamepad input, sensors, IME and soft keyboard, audio device
 lifecycle, USB and Bluetooth HID, clipboard, permissions, and translation of the
 activity lifecycle into SDL events. Treat it as a port layer, not glue.
 
-Only `ONSActivity.java` is project code. The rest are vendored SDL3 sources and
-should be replaced wholesale on an SDL upgrade rather than edited.
+The nine launcher, storage, input, and diagnostic classes named in Tier 1 below
+are project code. The SDL-prefixed activity, surface, audio, controller, HID,
+and input classes are vendored SDL3 sources and should normally be replaced
+wholesale on an SDL upgrade; the local message-box completion guard is the one
+intentional patch and must be carried forward when that happens.
 
 ### SDL version lock
 
@@ -629,15 +640,16 @@ Scripts/quickdroid.tool   multi-ABI build driver
 
 ### Tier 2 — shared files with Android-only regions
 
-Edit only inside `#if defined(DROID)` guards (~42 sites across 14 files):
+Edit shared files only inside `#if defined(DROID)` guards unless a platform-
+neutral refactor is independently verified:
 
 ```
 Engine/Media/HardwareDecoder.cpp     MediaCodec hwaccel, JNI vm registration
 Engine/Media/VideoDecoder.cpp, Controller.hpp
-Engine/Graphics/GPU.cpp, GPU.hpp
+Engine/Graphics/GPU.cpp, GPU.hpp, SDL3GPUCompat.cpp, SDL3GPUCompat.hpp
 Engine/Core/ONScripter.cpp, Command.cpp, CommandExt.cpp
 Engine/Core/Event.cpp, Loader.cpp, Animation.cpp
-Engine/Components/Window.hpp
+Engine/Components/Window.cpp, Window.hpp
 Support/FileIO.cpp                   storage paths, __android_log logging
 External/Compatibility.hpp
 ```
@@ -648,8 +660,8 @@ Build files with Android-only regions: the `*clang*:"Droid")` branch of
 
 ### Tier 3 — do not touch for Android work
 
-Everything else, including the rest of `Engine/`, `Engine/Graphics/SDL3GPU*`,
-`Tests/`, `Resources/Windows/` and `Support/Apple/`.
+Everything else, including unguarded shared renderer code, `Tests/`,
+`Resources/Windows/` and `Support/Apple/`.
 
 ## Debugging
 
@@ -731,7 +743,7 @@ destination is rewritten as a Windows path.
 The native build takes hours; changes confined to `Resources/Droid/src` do not
 need it. Reuse the existing `libmain.so` and swap only the dex: compile the Java
 sources with `javac --release 17` against the platform `android.jar`, dex them
-with `d8 --min-api 34`, replace `classes.dex` inside a copy of the APK, then
+with `d8 --min-api 30`, replace `classes.dex` inside a copy of the APK, then
 `zipalign -f -p 4` and re-sign with `apksigner`. On Windows those build-tools
 binaries need Windows-style paths — convert with `cygpath -w`. The re-signed APK
 will not match the release signature, so uninstall the old one first.
@@ -750,13 +762,165 @@ b.write("libmain-patched.so")
 
 Repack the patched `.so` into the APK using the dex procedure above.
 
-## Known gaps
+## Backlog
+
+Outstanding work only. Anything finished is deleted from here rather than marked
+done — the git log is the record of what was done.
+
+### Defects
+
+**Hardware video decode does not survive backgrounding.** Android hands out
+`MediaCodec` instances from a small global pool and reclaims them from apps in
+the background. The engine cannot survive that: it never releases the codec on
+pause, and it cannot rebuild a decoder mid-playback — looping only seeks the
+demuxer and deliberately keeps the codec alive (`Engine/Media/Demux.cpp`, "we
+don't need to flush codec buffers in that case"). Every call into the dead codec
+then returns `AVERROR_EXTERNAL`, which `Decoder::receiveAvailableFrames` treats
+as recoverable and reports as success, so `sendPacket`'s `EAGAIN` branch spins on
+it forever: black screen, ~140% CPU across two threads, ~15k log lines a second,
+no recovery short of a restart.
+
+Worked around by passing `--hwdecoder off`, so no `MediaCodec` is ever created.
+The real fix is to release the codec on background and rebuild it on resume,
+seeking back to the paused position — which needs three things the media layer
+does not have: decoder re-creation, seeking to an arbitrary timestamp (only
+seek-to-zero-for-loop exists), and re-syncing video against audio and subtitles.
+
+Independently, a decoder that fails should not be reported as success. Treating a
+fatal error as recoverable is what turns a dead codec into an unbounded spin, and
+would do the same for any other fatal decode error.
+
+**One stale frame when a window resizes.** The resize is handled on the event,
+but a frame can already be in flight with the previous canvas, so entering a
+floating window shows a single frame at the old geometry before correcting.
+Observed as `Swapchain 1920x1080, target 1920x1371` immediately before the
+matching `Surface resize` line. Cosmetic, and it would read as an intermittent
+glitch if found later without this note.
+
+**`VK_ERROR_SURFACE_LOST_KHR` on cold start with the screen off.** Launching
+against a sleeping display can fail renderer init outright. Racy — observed once,
+then not reproduced across two deliberate attempts at 27 s and 70 s asleep. Same
+family as the resize bug: started before the display was ready.
+
+**Teardown overruns the join and aborts.** SDL parks the engine thread in
+`nativePause()` *before* `onDestroy` sends the quit, so `mSDLThread.join(1000)`
+in `SDLActivity` expires and the engine's shutdown — async queues, GPU release —
+runs on after the window is destroyed, aborting in `hwuiTask1` with `FORTIFY:
+pthread_mutex_lock called on a destroyed mutex`. Intermittent, and likelier the
+more there is to tear down. Not reachable via Back any more, still reachable by
+swiping the app from recents.
+
+**`CrashReport.isAbnormal()` misses `REASON_SIGNALED`.** A Java fatal that the
+platform then SIGKILLs is recorded as `reason=2 (SIGNALED) status=9` and never
+reported. Note a Back-triggered exit records as `reason=1 (EXIT_SELF)`, so
+crashes during a voluntary exit are invisible by design.
+
+**`eventQueueQueue` sits at 90–97% CPU.** Observed consistently across healthy
+runs, not only failing ones, so it is not a symptom of the decode bug. In the
+steady state it costs more than software video decoding does. Looks like a
+busy-wait rather than work; unconfirmed as a defect, worth profiling.
+
+**Resume can stay black for several seconds.** Returning from another app, one
+observation showed ~6 s between `did enter foreground` and `Swapchain rebuilt
+after resume`. The rebuild happens on the first flip after resume, and an idle
+screen has nothing to flip. Single observation, and worth re-measuring now that a
+failed swapchain reclaim is retried rather than abandoned.
+
+### Features
+
+**Touch targets are below Android's minimum.** Everything renders into a fixed
+1920×1080 script space scaled uniformly to the window, and button geometry is
+hardcoded in the game script — `spbtnCommand` just takes the sprite's rect. On a
+420 dpi phone script pixels are device pixels, so `saveload_area_n1_button.png`
+gives an 80×78 px target, 5.0 mm, against the 48 dp / 126 px / 7.6 mm minimum. A
+400 dpi tablet already satisfies it — measured 117 px against a 120 px minimum on
+the OnePlus Pad — so any fix must be driven by **DPI, not resolution**, and the
+engine has no DPI awareness at all, so Java has to pass
+`DisplayMetrics.densityDpi` in.
+
+Two workable levers. Inflating hit targets in `mouseOverCheck` is the cheap one:
+a single chokepoint, run exact-rect first and inflated only on a miss so precise
+taps are unchanged and no button can steal another's click; mind that `transbtn`
+screens alpha-test against `select_rect`. Scaling `preset_define` font sizes is
+the bigger win — UI labels are text sprites and `align_buttons_r` re-flows them
+via `getspsize` — but presets are shared with story text and `wrap_limit` /
+`line_height` must scale in step, so it needs a per-preset allow-list.
+
+Scaling the image-based buttons is not feasible: hardcoded coordinates and baked
+PNG sizes with no spacing to absorb growth. That is the ceiling.
+
+**Autosave.** The engine snapshots state to RAM at every text page but writes to
+disk only on an explicit slot save, so a crash or an OS kill costs everything
+since the player's last manual save. More pressing on Android, where being killed
+while backgrounded is routine rather than exceptional.
+
+### Device compatibility
+
+The target is every Android 11 (minSdk 30) device, not just whatever is on the
+desk. Real coverage today is two devices: a Snapdragon/Adreno phone and a
+MediaTek/Mali tablet.
+
+That second device is the argument for the rest of this section. Until it was
+plugged in, the port failed to start on **every Mali GPU** — all Exynos and most
+MediaTek parts — with a fatal dialog, for the reason described under *Supported
+target*. A whole GPU vendor was excluded, and it was found by chance rather than
+by testing. Assume other such gaps exist.
+
+**Verify API 30 on a device that actually runs it.** The floor is now 30, but
+both test devices are Android 15/16, so what has been shown is that an
+API-30-targeted binary runs on modern Android -- not that it runs on Android 11.
+The `onBackPressed` path added for 30-32 cannot execute on either device either,
+since both take the 33+ dispatcher route. Needs an emulator image in that range.
+
+`sw600dp` selects the phone/tablet split, and it measures the **window**, not the
+device. In split screen the tablet resolves `sw534dp` -- the phone bucket -- and
+a foldable changes bucket when it folds. Today that is harmless because
+`lock_landscape` is read once in `onCreate` while fullscreen, but the qualifier
+is a proxy for the question actually being asked, which is whether the portrait
+band would still be large enough to touch. Deriving it from the rendered band's
+physical size would say what is meant.
+
+Worth building a device matrix and working through it deliberately:
+
+- **GPU vendor** — Adreno and Mali are covered. PowerVR and Samsung Xclipse are
+  not, and each has its own view of which optional Vulkan features exist.
+- **Android version** — 11–13 still need coverage, while 14, 15 and 16 already
+  behave differently in ways that matter: `enableOnBackInvokedCallback` changes
+  how Back is delivered on 33+, and 16 ignores manifest-declared fixed
+  orientation on large screens.
+- **Form factor** — phone, tablet, foldable, TV. Touch-target sizing and
+  orientation handling differ; a TV has no touch at all.
+- **ABI** — only arm64-v8a has ever been run. x86_64 builds but is untested.
+- **Density** — drives the touch-target work above; 400–420 dpi is all that has
+  been measured.
+
+Two practical obstacles found while doing this. Some OEM builds suppress app
+logcat output entirely — ColorOS sets `ro.oplus.log.enable=false`, and without
+root neither `setprop log.tag.*` nor `run-as logcat` recovers it — so
+`--use-logfile` (writing `out.txt` / `err.txt` into the storage directory) is the
+only way to see engine output there. And game data must be present per device,
+with `game.hash` matching the engine's `ONS_VERSION`, which is read from the
+shipped binary rather than the source tree.
+
+### Infrastructure
 
 - CI (`.github/workflows/build.yml`) covers Windows and Linux only. There is no
-  Android build or smoke test, so Android regressions are caught by hand.
-- No deterministic game-data regression corpus exists, which limits confidence in
-  renderer and media changes. `Tests/Fixtures/SmokeGame/0.txt` is a minimal
-  script, not a runnable game — the engine still reports
-  `Invalid launch directory!` with only that present.
+  Android build or smoke test, so Android regressions are caught by hand — which
+  is how a whole-GPU-vendor failure reached a merged PR.
+- Unit tests exist (`Tests/CMakeLists.txt`,
+  `Resources/Droid/test/GameStorageTest.java`), but no deterministic game-data
+  regression corpus does, which limits confidence in renderer and media changes.
+  `Tests/Fixtures/SmokeGame/0.txt` is a minimal script, not a runnable game — the
+  engine still reports `Invalid launch directory!` with only that present.
 - `android:screenOrientation="sensorLandscape"` is ignored on targetSdk 36;
   Android 16 drops manifest-declared fixed orientation on large screens.
+- `Resources/Droid/gradle/gradle-daemon-jvm.properties` is untracked and
+  undecided. Gradle generates it, and it pins JDK 25 with foojay download URLs,
+  which would impose that toolchain on every contributor. Commit or gitignore.
+
+### Unverified
+
+Behaviours never exercised, as opposed to the hardware axes above: long
+backgrounding where Android kills the process outright; incoming phone calls;
+split screen; and whether the three-finger swipes reach the intended engine state
+in every mode — they fire and are logged, which is all that has been confirmed.

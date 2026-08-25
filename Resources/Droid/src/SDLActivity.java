@@ -687,6 +687,10 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     protected void onDestroy() {
         Log.v(TAG, "onDestroy()");
 
+        // A native error path may be blocked waiting for a dialog while the
+        // activity is being torn down. No window can service it now.
+        completeMessagebox();
+
         if (mHIDDeviceManager != null) {
             HIDDeviceManager.release(mHIDDeviceManager);
             mHIDDeviceManager = null;
@@ -1571,6 +1575,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
     /** Result of current messagebox. Also used for blocking the calling thread. */
     protected final int[] messageboxSelection = new int[1];
+    /** Guards against notifications sent before the native caller starts waiting. */
+    protected boolean messageboxCompleted;
 
     /**
      * This method is called by SDL using JNI.
@@ -1591,11 +1597,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             final String[] buttonTexts,
             final int[] colors) {
 
-        messageboxSelection[0] = -1;
-
         // sanity checks
 
-        if ((buttonFlags.length != buttonIds.length) && (buttonIds.length != buttonTexts.length)) {
+        if ((buttonFlags.length != buttonIds.length) || (buttonIds.length != buttonTexts.length)) {
             return -1; // implementation broken
         }
 
@@ -1610,22 +1614,28 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         args.putStringArray("buttonTexts", buttonTexts);
         args.putIntArray("colors", colors);
 
-        // trigger Dialog creation on UI thread
-
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                messageboxCreateAndShow(args);
-            }
-        });
-
-        // block the calling thread
-
         synchronized (messageboxSelection) {
+            messageboxSelection[0] = -1;
+            messageboxCompleted = false;
+
+            // Trigger Dialog creation on the UI thread while holding the same
+            // monitor used by completion. The predicate below also covers the
+            // case where runOnUiThread executes inline.
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    messageboxCreateAndShow(args);
+                }
+            });
+
+            // Block the calling thread. A loop is required because Java waits
+            // may wake spuriously.
             try {
-                messageboxSelection.wait();
+                while (!messageboxCompleted) {
+                    messageboxSelection.wait();
+                }
             } catch (InterruptedException ex) {
-                ex.printStackTrace();
+                Thread.currentThread().interrupt();
                 return -1;
             }
         }
@@ -1636,6 +1646,11 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     }
 
     protected void messageboxCreateAndShow(Bundle args) {
+
+        if (isFinishing() || isDestroyed()) {
+            completeMessagebox();
+            return;
+        }
 
         // TODO set values from "flags" to messagebox dialog
 
@@ -1670,9 +1685,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
             @Override
             public void onDismiss(DialogInterface unused) {
-                synchronized (messageboxSelection) {
-                    messageboxSelection.notify();
-                }
+                completeMessagebox();
             }
         });
 
@@ -1766,6 +1779,13 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         });
 
         dialog.show();
+    }
+
+    private void completeMessagebox() {
+        synchronized (messageboxSelection) {
+            messageboxCompleted = true;
+            messageboxSelection.notifyAll();
+        }
     }
 
     private final Runnable rehideSystemUi = new Runnable() {

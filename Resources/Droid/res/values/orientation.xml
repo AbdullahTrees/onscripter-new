@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Phones stay locked to landscape. The UI is a fixed 1920x1080 layout scaled to
+  fit, so in portrait on a phone it becomes a band a few centimetres tall with
+  touch targets far below the point of being usable.
+
+  Tablets override this in values-sw600dp: there the portrait band is still a
+  large, comfortably readable 16:9 image, and rotating is a reasonable thing to
+  want. Android 16 ignores manifest-declared fixed orientation on large screens
+  anyway, so this makes the split deliberate rather than a side effect of the
+  OS version.
+-->
+<resources>
+    <bool name="lock_landscape">true</bool>
+</resources>
