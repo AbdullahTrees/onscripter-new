@@ -27,10 +27,8 @@
     <string name="shortcut_change_folder">Change game folder</string>
     <string name="shortcut_change_folder_short">Change folder</string>
 
-    <string name="crash_icon">🐞</string>
     <string name="crash_title">Whoops!</string>
-    <string name="crash_body">onscripter-new ran into an unexpected error. The log below includes the
-        crash details and what the engine was doing beforehand.</string>
+    <string name="crash_body">ONScripter ran into an unexpected error. If you want to help us, please share these logs with us on <a href="https://github.com/timftw21/onscripter-new">GitHub</a></string>
     <string name="crash_share">Share crash logs</string>
     <string name="crash_share_subject">onscripter-new crash report</string>
     <string name="crash_copy">Copy to clipboard</string>
