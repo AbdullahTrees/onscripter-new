@@ -44,6 +44,7 @@ when, read the git log.
   - [Log tags](#log-tags)
   - [Engine logging on Android](#engine-logging-on-android)
   - [Profiling and CPU accounting](#profiling-and-cpu-accounting)
+- [The on-screen performance counter](#the-on-screen-performance-counter)
   - [Always force-stop between launches](#always-force-stop-between-launches)
   - [Test a Java-only change without a native rebuild](#test-a-java-only-change-without-a-native-rebuild)
   - [Test a link-flag change without relinking](#test-a-link-flag-change-without-relinking)
@@ -808,6 +809,80 @@ nor compress. Compare it against the engine's own count of live GPU images
 before assuming the engine is what holds it — see the backlog entry, where those
 two numbers differ by a factor of three.
 
+### The on-screen performance counter
+
+The engine can draw a panel over the game with frame timing, CPU, memory and GPU
+image accounting. It is **off by default** and there is no way to reach it by
+accident: it exists only when the configuration asks for it.
+
+Turn it on with a bare line in the game folder's `ons.cfg`:
+
+```
+perf-overlay
+```
+
+`ons.cfg` goes through the same parser as the command line, so `--perf-overlay`
+on a desktop argv does the same thing. On Android that config file is the only
+route -- there is no argv the user can edit, and the Alt+F toggle is compiled
+out on this platform anyway. `adb shell` can write it:
+
+```sh
+adb shell "printf 'perf-overlay\n' >> /storage/emulated/0/<game folder>/ons.cfg"
+```
+
+The panel reports, top to bottom:
+
+| Row | Meaning |
+| --- | --- |
+| `FPS` | Smoothed rate, then the best and worst frame across the whole history |
+| graph | One bar per presented frame, oldest at the left, 150 frames of history. Full scale is twice the frame budget and the midline is the budget itself, so a bar in the upper half is a frame that missed. Green is inside budget, amber up to 1.5x, red beyond |
+| `FRAME` | Smoothed frame time, the worst in the history, and the budget derived from the current refresh rate |
+| `CPU` | Process CPU, then the engine main loop alone, then the core count. Summed across threads, the top(1) convention -- 800 per cent is a fully busy eight-core device, and `loop` near 100 means the main thread is never idle |
+| `RSS` | Resident set size, and the live GPU image bytes the engine knows about |
+| `IMG` | Live GPU images, and what the temporary image pools are holding |
+
+`RSS` and `GPU` are the two numbers worth watching together: `RSS` is what the
+kernel charges the process, the engine's own GPU figure is what it can account
+for, and the difference is the driver allocation the backlog entry is about.
+`CPU` cross-checks against `top -b -n 1 -p $(adb shell pidof <pkg>)`, and the
+engine's `RSS` should match that row's `RES` exactly.
+
+The panel is set in a fixed-advance face, so the columns hold still as the
+digits change. On Android that is `/system/fonts/DroidSansMono.ttf`, loaded
+straight from the path into font slot 10 -- deliberately outside `fonts_number`,
+so nothing that walks the game fonts can reach it and a script asking for font
+10 still gets the missing-font path. DroidSansMono is what the `monospace`
+family resolves to in `/system/etc/fonts.xml`. Roboto Mono is *not* a safe
+choice: an Android 15 device with 208 system fonts carried DroidSansMono and
+CutiveMono and no Roboto Mono at all.
+
+No paths are listed for the desktops. Locations there vary by distribution,
+release and packaging, and this tree is only ever built for Android, so a table
+of them would be a guess that looked verified and failed quietly on the first
+machine that disagreed.
+
+The fallback is font 0, the game's `default.ttf`, which the engine refuses to
+start without and which turns out to serve. In Umineko it is Sazanami Gothic;
+a Japanese face is not fixed pitch taken as a whole, since its CJK glyphs are
+double width and its `isFixedPitch` flag is duly 0, but its halfwidth Latin is.
+Measured over all 44 characters the counter can draw, every advance is 603/1000
+em against DroidSansMono's 600, and the 500 px panel absorbs the difference. A
+title whose `default.ttf` breaks that loses only the steady columns.
+
+Sampling is cheap by construction. The frame history takes one number per frame;
+everything else -- the `/proc` read and the pool walk, which are the parts with a
+real cost -- is sampled twice a second, and the panel texture is rebuilt four
+times a second rather than per frame.
+
+What is *not* cheap is a consequence of showing an overlay at all: while it is
+visible the engine flushes the whole scene every frame, because something on
+screen is changing even when the game is idle. Attempts to measure that cost on
+the title screen were inconclusive -- two runs with the counter off gave 105-113
+per cent and 48-52 per cent CPU for the identical scene, so the run-to-run spread
+of the scene is larger than whatever the counter adds. Treat the absolute numbers
+as valid and comparisons against a counter-off run as unreliable, and prefer
+`top` or `simpleperf` when the question is what the game costs without it.
+
 ### Always force-stop between launches
 
 `Engine/Core/Loader.cpp` compares the current pid against a static `previousPid`
@@ -929,6 +1004,10 @@ side pixel copies. The engine's textures are therefore not the problem — the
 largest single one is a 32 MB 2048×4096 render target and the rest are canvas
 and script sized targets, all plausible.
 
+Both halves of that comparison are now on screen together: the performance
+counter's `RSS` and `GPU` rows are the same two numbers, live, so the gap can
+be watched as the scene changes rather than sampled by hand.
+
 That leaves roughly 250–280 MB allocated below the engine, in SDL_GPU or the
 Mali driver, and unattributed. Known candidates worth measuring before anything
 is changed: the swapchain (2800×2000×4 is 22 MB an image, and there are at least
@@ -941,6 +1020,21 @@ which is why ColorOS logs `osense.compress ... cur ratio = 0` against this
 process every 20 s and reclaims nothing, and why the process is the first thing
 the low memory killer reaches for.
 
+**The same idle scene costs anywhere from 48% to 113% CPU between runs.**
+Measured while trying to establish what the performance counter itself costs.
+Two runs of the identical build, identical configuration and the identical title
+screen, reached the same way, gave 105-113% and 48-52% of a core; a third at
+64-67% differed only in having the counter on. `RES` differed too (345-403 MB),
+and cumulative CPU at the sampling point differed by a third, which points at
+background asset loading still running in some runs and not others rather than
+at DVFS or thermals.
+
+Two consequences. Any A/B on this scene needs many more than one run per arm to
+mean anything -- the counter's own overhead could not be measured at all against
+this spread. And if the variance really is deferred loading, then something is
+either doing avoidable work or finishing at an unpredictable point, which is
+worth understanding on its own.
+
 **Resume can stay black for several seconds.** Returning from another app, one
 observation showed ~6 s between `did enter foreground` and `Swapchain rebuilt
 after resume`. The rebuild happens on the first flip after resume, and an idle
@@ -948,6 +1042,19 @@ screen has nothing to flip. Single observation, and worth re-measuring now that 
 failed swapchain reclaim is retried rather than abandoned.
 
 ### Features
+
+**The performance counter forces a full scene flush every frame it is visible.**
+`waitEvent` recomposites the whole scene whenever `fps_overlay_visible` is set
+and `screenChanged` is false, so an otherwise idle screen is redrawn at the frame
+rate purely to keep the panel on top of it. That is pre-existing behaviour of the
+old fps overlay, inherited by the counter.
+
+The panel texture is only rebuilt when its text changes, four times a second, so
+the flush could be gated on `fps_overlay_dirty` instead and the scene recomposited
+at the same cadence. The care needed is that `drawFpsOverlay` sets `screenChanged`
+unconditionally, and `screen_target` is cleared after each flip -- so simply
+skipping the flush would present a panel on an empty frame. Worth doing: a
+measurement tool that inflates idle cost is measuring itself.
 
 **Touch targets are below Android's minimum.** Everything renders into a fixed
 1920×1080 script space scaled uniformly to the window, and button geometry is
@@ -1045,6 +1152,12 @@ shipped binary rather than the source tree.
   which would impose that toolchain on every contributor. Commit or gitignore.
 
 ### Unverified
+
+The performance counter's font fallback has never been exercised on a device.
+Every handset tested had `/system/fonts/DroidSansMono.ttf`, so the path where no
+system monospace face is found and the panel draws with font 0 has only been
+reasoned about -- though the claim it rests on was measured rather than assumed:
+`default.ttf`'s Latin advances were read out of the font file and are uniform.
 
 Behaviours never exercised, as opposed to the hardware axes above: incoming
 phone calls; recovery after Android kills the backgrounded process outright,
