@@ -815,10 +815,25 @@ platform then SIGKILLs is recorded as `reason=2 (SIGNALED) status=9` and never
 reported. Note a Back-triggered exit records as `reason=1 (EXIT_SELF)`, so
 crashes during a voluntary exit are invisible by design.
 
-**`eventQueueQueue` sits at 90–97% CPU.** Observed consistently across healthy
-runs, not only failing ones, so it is not a symptom of the decode bug. In the
-steady state it costs more than software video decoding does. Looks like a
-busy-wait rather than work; unconfirmed as a defect, worth profiling.
+**Graphics memory is ~370 MB and only a quarter of it is accounted for.** With
+the game idle on the title screen `dumpsys meminfo` reports 368 MB under
+`GL mtrack`, while the engine's own census of every live `GPU_Image` totals
+88–125 MB across 9–13 images, pooled render targets included, and 0 KB of CPU
+side pixel copies. The engine's textures are therefore not the problem — the
+largest single one is a 32 MB 2048×4096 render target and the rest are canvas
+and script sized targets, all plausible.
+
+That leaves roughly 250–280 MB allocated below the engine, in SDL_GPU or the
+Mali driver, and unattributed. Known candidates worth measuring before anything
+is changed: the swapchain (2800×2000×4 is 22 MB an image, and there are at least
+three), the two `SDL3GPUReusableTransferBuffer` staging buffers, which grow to
+the largest upload ever made and are never shrunk — a 32 MB texture leaves a
+32 MB buffer behind — and whether `imagePixelBytes` counts mip levels.
+
+This matters because it is device memory: it cannot be swapped or compressed,
+which is why ColorOS logs `osense.compress ... cur ratio = 0` against this
+process every 20 s and reclaims nothing, and why the process is the first thing
+the low memory killer reaches for.
 
 **Resume can stay black for several seconds.** Returning from another app, one
 observation showed ~6 s between `did enter foreground` and `Swapchain rebuilt

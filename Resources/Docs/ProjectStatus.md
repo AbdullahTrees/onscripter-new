@@ -7,7 +7,9 @@ history belongs in Git, issues, and release notes rather than this document.
 
 - Current release: 1.3 (`20260824-new`).
 - Windows 10 or newer, x86-64, built in MSYS2 UCRT64.
-- Android 11 or newer (API 30), arm64.
+- Android 11 or newer (API 30), arm64. Exercised on 15 and 16; see the
+  device-coverage note in `Resources/Docs/Android.md` for what the floor has and
+  has not been tested against.
 - The SDL3/SDL3_GPU renderer is the only supported renderer.
 
 The obsolete SDL2-based Xcode project has been removed so it can no longer
