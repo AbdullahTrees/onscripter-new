@@ -26,6 +26,7 @@ when, read the git log.
 - [Native architecture](#native-architecture)
 - [Java to native contract](#java-to-native-contract)
   - [The Java layer is not a launcher](#the-java-layer-is-not-a-launcher)
+  - [Touch input](#touch-input)
   - [SDL version lock](#sdl-version-lock)
   - [How complete the SDL3 port is](#how-complete-the-sdl3-port-is)
   - [Why paths are passed as arguments, not environment variables](#why-paths-are-passed-as-arguments-not-environment-variables)
@@ -451,7 +452,7 @@ a dialog when the activity is torn down.
 
 | Project-owned | Lines | Role |
 | --- | --- | --- |
-| `TouchInput.java` | 426 | Fingers re-emitted as mouse events, including right-click |
+| `TouchInput.java` | 742 | Fingers re-emitted as mouse events; gestures |
 | `ONSActivity.java` | 391 | The SDL contract, Back, orientation, refresh rate |
 | `CrashReport.java` | 243 | Report capture, and `ApplicationExitInfo` recovery |
 | `GameStorage.java` | 214 | Tree URI to path, permission state, save layout |
@@ -463,6 +464,41 @@ a dialog when the activity is torn down.
 
 Nine project-owned files, ~1820 lines, all of `Resources/Droid/src` that is
 safe to edit. Twenty-one Java sources in total.
+
+### Touch input
+
+The engine speaks mouse. `TouchInput` sits in front of SDL's own touch handling
+and re-emits fingers as mouse events, because the engine's Android dispatch
+turns SDL finger events into position-only updates -- there is no touch path to
+its buttons.
+
+| Gesture | Sends | Notes |
+| --- | --- | --- |
+| Tap | Left click at the point | Preceded by a move, or it lands on no button |
+| Two-finger tap | Right click | Menu |
+| Long press | Right click | 400 ms, held still |
+| Two-finger drag | Wheel, proportional | 100 px of finger per tick, with momentum |
+| Three-finger tap | Middle click in the backlog, skip elsewhere | Context-dependent |
+| Scrollbar arrow (backlog) | Page up/down, repeating while held | Backlog only |
+
+Two details are worth knowing before changing any of it. The engine groups
+simultaneous fingers within 80 ms to decide a button, so a two-finger tap is two
+finger-ups in quick succession rather than a particular finger id. And a left
+click resolves against `hoveringButton`, which only `mouseMoveEvent` updates, so
+every click has to be preceded by a move or it hits nothing.
+
+The last two rows change meaning by where the game is. They ask the engine
+through `TouchInput.nativeInputContext`, which returns the mask described in
+`ONScripter::InputContext` -- see `currentInputContext` for how the script's own
+`get*_flag` declarations name the screen. Outside the backlog the scrollbar
+boxes are not consulted at all, so they cannot misfire on artwork that happens
+to sit under them.
+
+The scrollbar arrow boxes are canvas fractions, not pixels, mapped back through
+the engine's own geometry (largest whole-script scale that fits, centred,
+letterboxed), so they hold at any surface size. They are far larger than the
+glyphs they cover, which is affordable precisely because they only exist while
+the backlog is up.
 
 ### SDL version lock
 
