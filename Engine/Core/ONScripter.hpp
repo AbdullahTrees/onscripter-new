@@ -162,6 +162,35 @@ public:
 
 	void setShowFPS();
 	void setPerfOverlay();
+	// Which input context the script is waiting in.
+	//
+	// Taken from the get*_flag set, which the script raises before each input
+	// wait and disableGetButtonFlag clears once it returns, so these describe the
+	// wait actually in progress. wh.txt raises the first three in one place each,
+	// which is what makes them name a screen rather than hint at one:
+	//   gettab    -> *text_cwlp        (the novel's own click-wait)
+	//   getmclick -> *log_button_loop  (the backlog)
+	//   getpage   -> the backlog, the music box and the trophy list
+	//
+	// The low three are mirrored in TouchInput.java, which uses them to give a
+	// gesture a different meaning in the backlog than elsewhere. The performance
+	// counter reads the whole mask to name the section on screen.
+	enum InputContext : int {
+		InputContextNone    = 0,
+		InputContextNovel   = 1 << 0,
+		InputContextBacklog = 1 << 1,
+		InputContextPaged   = 1 << 2,
+		InputContextMenu    = 1 << 3,
+		InputContextText    = 1 << 4,
+		InputContextBusy    = 1 << 5,
+	};
+	int currentInputContext() const;
+#if defined(DROID)
+	// Read from the Java input layer through JNI, off the render thread.
+	int publishedInputContext() const {
+		return androidInputContext.load(std::memory_order_acquire);
+	}
+#endif
 	void setStrict() {
 		script_h.strict_warnings = true;
 	}
@@ -892,6 +921,10 @@ private:
 	// thread, which is the only thread allowed to free GPU objects.
 	std::atomic<bool> droidTrimRequested{false};
 	void droidTrimMemory();
+	// currentInputContext(), republished each frame for the Java input layer,
+	// which reads it from its own thread. An atomic rather than letting Java read
+	// the flags directly: they belong to the render thread.
+	std::atomic<int> androidInputContext{0};
 #endif
 
 	GPUImageChunkLoader imageLoader;

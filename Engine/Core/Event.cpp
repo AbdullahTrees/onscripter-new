@@ -23,6 +23,10 @@
 #include <windows.h>
 #endif
 
+#ifdef DROID
+#include <jni.h>
+#endif
+
 // Process and thread CPU accounting for the performance counter.
 #if defined(DROID) || defined(LINUX) || defined(MACOSX) || defined(IOS)
 #include <sys/resource.h>
@@ -116,12 +120,29 @@ const size_t PERF_BODY_LINES{4};
 // /proc costs a syscall and the pool census walks every pooled image; done per
 // frame that would show up in the very numbers the panel exists to report.
 const uint64_t PERF_SLOW_SAMPLE_INTERVAL_NS{500ULL * NANOS_PER_MILLISECOND};
+// How long a named section keeps being shown after the script stops declaring
+// it. The engine passes through gaps between waits constantly; without this
+// the label would blink to SCRIPT and read as noise rather than state.
+const uint64_t PERF_SECTION_HOLD_NS{600ULL * NANOS_PER_MILLISECOND};
+#if defined(DROID)
+// Android republishes the context every frame for its input layer.
+constexpr bool ONS_DROID_PUBLISHES_INPUT_CONTEXT{true};
+#else
+constexpr bool ONS_DROID_PUBLISHES_INPUT_CONTEXT{false};
+#endif
 
 struct PerfOverlayState {
 	std::array<float, PERF_HISTORY_SAMPLES> frameMs{};
 	size_t samplesWritten{0};
 
 	std::array<std::string, PERF_BODY_LINES> bodyLines;
+
+	// What the script is currently waiting for, and a colour for it. Kept apart
+	// from the numbers above because it answers a different question: not how
+	// fast the engine is going, but where in the game it is.
+	std::string sectionLabel;
+	uchar3 sectionColor{0xff, 0xff, 0xff};
+	uint64_t sectionSeenNanos{0};
 
 	uint64_t lastSlowSampleNanos{0};
 	uint64_t lastProcessCpuNanos{0};
@@ -258,6 +279,71 @@ static std::string perfFormatKb(int64_t kilobytes) {
 	char buffer[32];
 	std::snprintf(buffer, sizeof(buffer), "%.0f MB", static_cast<double>(kilobytes) / 1024.0);
 	return buffer;
+}
+
+/**
+ * Names the input context the script is waiting in.
+ *
+ * The get*_flag set is the script declaring which keys a particular wait
+ * accepts, and wh.txt raises each of these in exactly one place, so they name
+ * the screen rather than merely hint at it:
+ *   getmclick -> *log_button_loop   (the backlog)
+ *   getpage   -> the backlog, the music box and the trophy list
+ *   gettab    -> *text_cwlp         (the novel's own click-wait)
+ *
+ * Checked most specific first: the backlog raises getpage as well.
+ *
+ * When no wait is declared the engine is between waits, so the label falls back
+ * to event_mode, which distinguishes running script from waiting on a timer.
+ */
+static const char *perfSectionName(int context, uchar3 &color) {
+	// Most specific first: the backlog raises the paged flag as well.
+	if (context & ONScripter::InputContextBacklog) {
+		color = {0xff, 0xc0, 0x40}; // amber
+		return "BACKLOG";
+	}
+	if (context & ONScripter::InputContextPaged) {
+		color = {0x60, 0xd0, 0xff}; // cyan
+		return "SCROLLABLE";
+	}
+	if (context & ONScripter::InputContextNovel) {
+		color = {0x80, 0xe0, 0x80}; // green
+		return "NOVEL";
+	}
+	if (context & ONScripter::InputContextMenu) {
+		color = {0xc0, 0xa0, 0xff}; // violet
+		return "MENU";
+	}
+	if (context & ONScripter::InputContextText) {
+		color = {0xa0, 0xd0, 0xa0};
+		return "TEXT";
+	}
+	return nullptr; // nothing declared; the caller decides what to show
+}
+
+/**
+ * Records the section for the panel, holding the last named one briefly.
+ *
+ * Called every frame rather than on the panel's own cadence. The script spends
+ * a good part of its time between waits with nothing declared, so sampling this
+ * four times a second lands in those gaps often enough to be misleading -- the
+ * first version of this read SCRIPT while a menu was plainly on screen.
+ */
+static void perfNoteSection(int context, uint64_t nowNanos) {
+	uchar3 color{0xff, 0xff, 0xff};
+	if (const char *name = perfSectionName(context, color)) {
+		perfOverlay.sectionLabel     = name;
+		perfOverlay.sectionColor     = color;
+		perfOverlay.sectionSeenNanos = nowNanos;
+		return;
+	}
+
+	if (perfOverlay.sectionSeenNanos != 0 &&
+	    nowNanos - perfOverlay.sectionSeenNanos < PERF_SECTION_HOLD_NS)
+		return; // still inside the hold; keep showing what it was
+
+	perfOverlay.sectionLabel = (context & ONScripter::InputContextBusy) ? "WAIT" : "SCRIPT";
+	perfOverlay.sectionColor = {0x90, 0x90, 0x90};
 }
 
 static std::string perfFormatPercent(double percent) {
@@ -783,10 +869,15 @@ void ONScripter::drawFpsOverlay() {
 	constexpr uint16_t bodyY        = graphY + graphHeight + 10;
 	constexpr uint16_t bodySize     = 17;
 	constexpr uint16_t bodyStep     = 22;
+	// The section sits below the numbers and is set larger, because it is the one
+	// line worth finding without reading.
+	constexpr uint16_t sectionSize  = 20;
+	constexpr uint16_t sectionGap   = 8;
 
 	const uint16_t overlayWidth  = detailed ? 500 : 170;
+	const uint16_t sectionY = static_cast<uint16_t>(bodyY + PERF_BODY_LINES * bodyStep + sectionGap);
 	const uint16_t overlayHeight =
-	    detailed ? static_cast<uint16_t>(bodyY + PERF_BODY_LINES * bodyStep + 8) : 44;
+	    detailed ? static_cast<uint16_t>(sectionY + sectionSize + 10) : 44;
 	constexpr float overlayX = 16.0f;
 	constexpr float overlayY = 16.0f;
 
@@ -906,6 +997,16 @@ void ONScripter::drawFpsOverlay() {
 
 			for (size_t i = 0; i < PERF_BODY_LINES; ++i)
 				drawLine(perfOverlay.bodyLines[i], bodyY + static_cast<int>(i) * bodyStep, bodySize);
+
+			// Coloured, so the section reads at a glance rather than being one more
+			// row of text. The colour is restored afterwards in case anything else
+			// is ever drawn from this Fontinfo.
+			if (!perfOverlay.sectionLabel.empty()) {
+				const uchar3 previous = style.color;
+				style.color           = perfOverlay.sectionColor;
+				drawLine(perfOverlay.sectionLabel, sectionY, sectionSize);
+				style.color = previous;
+			}
 		}
 
 		fps_overlay_dirty = false;
@@ -990,6 +1091,18 @@ void ONScripter::waitEvent(int count, bool nopPreferred) {
 		if (droidTrimRequested.exchange(false, std::memory_order_acq_rel))
 			droidTrimMemory();
 #endif
+
+		// Both consumers want this per frame: Java reads it whenever a finger
+		// goes down, and the panel needs to see the waits rather than the gaps
+		// between them. It is only a handful of branches.
+		if (perf_overlay_enabled || ONS_DROID_PUBLISHES_INPUT_CONTEXT) {
+			const int context = currentInputContext();
+#if defined(DROID)
+			androidInputContext.store(context, std::memory_order_release);
+#endif
+			if (perf_overlay_enabled)
+				perfNoteSection(context, highResolutionTicksNanos());
+		}
 		uint64_t framesOvershoot = 0;
 		uint64_t nanosPerFrame   = fps->nanosPerFrame();
 		uint64_t timeThisFrame{nanosPerFrame};
@@ -1299,6 +1412,43 @@ bool ONScripter::updateScrollableScrollbarDrag(int x, int y) {
 void ONScripter::endScrollableScrollbarDrag() {
 	scrollbarDragState = ScrollbarDragState();
 }
+
+/**
+ * Which input context the script is waiting in.
+ *
+ * This replaced a scan of both sprite arrays looking for a visible scrollbar.
+ * That worked, but it walked 2000 AnimationInfo of 880 bytes with the two fields
+ * it wanted on different cache lines, and measured 81 us -- half a frame's
+ * budget at 60 fps -- to answer a question that changes when somebody opens the
+ * backlog. Asking the script instead costs a handful of predictable branches.
+ */
+int ONScripter::currentInputContext() const {
+	int context = InputContextNone;
+	if (gettab_flag)
+		context |= InputContextNovel;
+	if (getmclick_flag)
+		context |= InputContextBacklog;
+	if (getpageup_flag)
+		context |= InputContextPaged;
+	if (event_mode & WAIT_BUTTON_MODE)
+		context |= InputContextMenu;
+	if (event_mode & WAIT_TEXT_MODE)
+		context |= InputContextText;
+	if (event_mode != IDLE_EVENT_MODE)
+		context |= InputContextBusy;
+	return context;
+}
+
+#if defined(DROID)
+/**
+ * Reads that from Java. Package org.umineko_project.onscripter_ru, class
+ * TouchInput -- the underscores in the package become _1 under JNI mangling.
+ */
+extern "C" JNIEXPORT jint JNICALL
+Java_org_umineko_1project_onscripter_1ru_TouchInput_nativeInputContext(JNIEnv *, jclass) {
+	return static_cast<jint>(ons.publishedInputContext());
+}
+#endif
 
 bool ONScripter::mouseMoveEvent(SDL_MouseMotionEvent &event, EventProcessingState &state) {
 	controlMode = ControlMode::Mouse;
