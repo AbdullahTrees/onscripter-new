@@ -1764,9 +1764,22 @@ bool ONScripter::touchEvent(SDL_Event &event, EventProcessingState &state) {
 }
 
 bool ONScripter::mouseScrollEvent(SDL_MouseWheelEvent &event, EventProcessingState &state) {
-	last_wheelscroll = event.y;
+	// Under SDL3 a wheel event carries a float, and a touchpad or a two-finger
+	// drag sends fractions of a tick many times a second. Keep that precision
+	// for the distance scrolled: rounding each one to a whole tick first is what
+	// makes touch scrolling move in visible jumps.
+	const float scrollTicks = static_cast<float>(event.y);
 
-	addToPostponedEventChanges("scroll scrollables", [this]() {
+	// The script-visible value stays whole ticks, unchanged: a drag that has not
+	// yet added up to one tick has not scrolled one.
+	last_wheelscroll = static_cast<int>(scrollTicks);
+
+	// Resolved here rather than inside the lambda. The lambda runs later, and it
+	// used to read last_wheelscroll at that point -- so when several wheel events
+	// arrived in one batch, every queued scroll used the last one's value.
+	const int scrollDistance = static_cast<int>(mouse_scroll_mul * scrollTicks);
+
+	addToPostponedEventChanges("scroll scrollables", [this, scrollDistance]() {
 		auto scrollSprites = [&](AnimationInfo *sprites) {
 			for (int i = 0; i < MAX_SPRITE_NUM; ++i) {
 				AnimationInfo *scrollElem = &sprites[i];
@@ -1774,7 +1787,7 @@ bool ONScripter::mouseScrollEvent(SDL_MouseWheelEvent &event, EventProcessingSta
 					continue;
 				if (scrollElem->scrollable.h > 0 && scrollElem->scrollableInfo.respondsToMouseOver) {
 					dynamicProperties.addSpriteProperty(scrollElem, scrollElem->id, scrollElem->type == SPRITE_LSP2, false,
-					                                    SPRITE_PROPERTY_SCROLLABLE_Y, mouse_scroll_mul * last_wheelscroll, 100, 1, true);
+					                                    SPRITE_PROPERTY_SCROLLABLE_Y, scrollDistance, 100, 1, true);
 					scrollElem->scrollableInfo.snapType = AnimationInfo::ScrollSnap::NONE;
 				}
 			}
@@ -1783,11 +1796,11 @@ bool ONScripter::mouseScrollEvent(SDL_MouseWheelEvent &event, EventProcessingSta
 		scrollSprites(sprite2_info);
 	});
 
-	if (event.y > 0 &&
+	if (scrollTicks > 0 &&
 	    ((event_mode & WAIT_TEXT_MODE) ||
 	     (usewheel_flag && (event_mode & WAIT_BUTTON_MODE)))) {
 		state.buttonState.set(-2);
-	} else if (event.y < 0 &&
+	} else if (scrollTicks < 0 &&
 	           ((enable_wheeldown_advance_flag && (event_mode & WAIT_TEXT_MODE)) ||
 	            (usewheel_flag && (event_mode & WAIT_BUTTON_MODE)))) {
 		state.buttonState.set((event_mode & WAIT_TEXT_MODE) ? 0 : -3);
@@ -2603,11 +2616,12 @@ void ONScripter::runEventLoop() {
 						addToPostponedEventChanges([this, state]() { current_button_state = state.buttonState; skip_mode = state.skipMode; });
 						break;
 
+#endif
+
 					case SDL_MOUSEWHEEL:
 						ret = mouseScrollEvent(event->wheel, state);
 						addToPostponedEventChanges([this, state]() { current_button_state = state.buttonState; });
 						break;
-#endif
 
 					case SDL_JOYDEVICEADDED:
 						joyCtrl.handleDeviceAdded(event->jdevice.which);
