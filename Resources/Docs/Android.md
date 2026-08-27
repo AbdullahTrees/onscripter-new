@@ -1102,14 +1102,32 @@ Quoting is the obvious fix, but note that fixing it turns a currently-ignored
 line into an effective one, which changes behaviour for anyone whose `ons.cfg`
 has been silently half-ignored until now.
 
-**The performance counter sits on the artwork rather than in the letterbox.**
-The panel is blitted at a fixed (16, 16) into `screen_target`, which is canvas
+**The performance counter should be a Java view, not an engine blit.** It is
+currently blitted at a fixed (16, 16) into `screen_target`, which is canvas
 space, so it follows the game image. On a display whose aspect matches the
-script that is the corner of the screen and looks intentional; on one that does
-not -- a 7:5 tablet against a 16:9 script -- the canvas is letterboxed and the
-panel lands on top of the scene while a black band sits unused directly above
-it. Placing it in surface space, or offsetting it into the band when one exists,
-would put it where there is nothing to obscure.
+script that is the corner of the screen and looks intentional; on a 7:5 tablet
+against a 16:9 script the canvas is letterboxed and the panel lands on top of
+the scene while a black band sits unused directly above it.
+
+Moving it to the Java side puts it in surface space, which is where a debug
+overlay belongs: the letterbox band is exactly the space that has nothing to
+obscure. The hierarchy already supports it -- `mLayout` is a `RelativeLayout`
+holding the `SurfaceView`, nothing calls `setZOrderOnTop`, and SDL already
+overlays its own `mTextEdit` into that same layout, so a sibling view drawn
+above the surface is a proven path rather than a hoped-for one.
+
+The stronger reason is that it would stop the counter distorting its own
+readings. While the overlay is visible the engine flushes the whole scene every
+frame, because something on top of the scene changes every frame -- so turning
+the counter on changes the frame times it reports. A view composited by Android
+costs the engine nothing per frame.
+
+Split the work so the classification and formatting stay in one place: the
+engine hands over the preformatted body lines, the section label and its colour,
+and the frame history; Java only draws. Two things to weigh. The panel becomes
+Android-only, so the desktop keeps the engine-side blit and the drawing exists
+twice. And the frame graph is the fiddly half -- the history array has to cross
+JNI on every update rather than being read in place.
 
 ### Features
 
