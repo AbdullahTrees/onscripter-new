@@ -1056,6 +1056,20 @@ which is why ColorOS logs `osense.compress ... cur ratio = 0` against this
 process every 20 s and reclaims nothing, and why the process is the first thing
 the low memory killer reaches for.
 
+It scales with surface pixels, and on a tablet it stops being a curiosity. A
+OnePlus Pad (2800x2000, 5.6 MP against the phone's 2.6 MP) idling on the title
+screen reached `VmRSS: 1040576 kB` -- almost exactly 1 GB, confirmed against
+`top` (`RES 0.9G`) and against the counter's own reading of 967 MB a moment
+earlier, so all three agree. `GPU` accounted for 239 MB of it. That leaves
+roughly 780 MB unattributed rather than the phone's 250-280, which is close to
+three times the gap for barely over twice the pixels, so it is not purely
+per-pixel. The swapchain hypothesis fits the shape of it: at 2800x2000x4 an
+image is 22 MB, and a triple-buffered chain plus the engine's own canvas and
+script targets at that size is a large multiple of the phone's.
+
+Worth measuring on the tablet before changing anything, since it is the device
+where the headroom actually runs out.
+
 **The same idle scene costs anywhere from 48% to 113% CPU between runs.**
 Measured while trying to establish what the performance counter itself costs.
 Two runs of the identical build, identical configuration and the identical title
