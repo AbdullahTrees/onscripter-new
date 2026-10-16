@@ -4907,15 +4907,26 @@ bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float 
 		float clippedV0 = v0;
 		float clippedU1 = u1;
 		float clippedV1 = v1;
+		SDL_Rect batchScissor = scissor;
 		if (scaleX > 0.0f && scaleY > 0.0f) {
 			if (!clipAxisAlignedBlitToScissor(clippedX0, clippedY0, clippedX1, clippedY1,
 			                                  clippedU0, clippedV0, clippedU1, clippedV1, scissor))
 				return true;
+			// The quad now lies inside the scissor already, so the GPU scissor
+			// cuts nothing -- but it is part of the batch key, and a clipped
+			// blit sequence (the text window draws 9 or 21 slices, each with
+			// its own clip) would otherwise cost a command buffer and a full
+			// load/store render pass per slice. Only where vertex space is
+			// the target's pixel space, so both clips agree exactly.
+			if (viewport.x == 0.0f && viewport.y == 0.0f &&
+			    viewport.w == static_cast<float>(target->w) && viewport.h == static_cast<float>(target->h) &&
+			    target->w == target->image->w && target->h == target->image->h)
+				batchScissor = SDL_Rect{0, 0, target->w, target->h};
 		} else if (blitBoundsOutsideScissor(clippedX0, clippedY0, clippedX1, clippedY1, scissor)) {
 			noteNativeBlitCull();
 			return true;
 		}
-		return queueNativeBlitRect(image, target, pipeline, sampler, viewport, scissor,
+		return queueNativeBlitRect(image, target, pipeline, sampler, viewport, batchScissor,
 		                           clippedX0, clippedY0, clippedX1, clippedY1,
 		                           clippedU0, clippedV0, clippedU1, clippedV1, r, g, b, a);
 	}
