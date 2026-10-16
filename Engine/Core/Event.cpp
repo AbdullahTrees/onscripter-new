@@ -1360,16 +1360,12 @@ void ONScripter::waitEvent(int count, bool nopPreferred, const std::function<boo
 				break;
 			uint64_t ticksNowNanos = highResolutionTicksNanos();
 			uint64_t frameElapsed  = ticksNowNanos - lastFlipTimeNanos;
-			if (frameElapsed >= waitThisFrame) {
-				if (frameElapsed > targetThisFrame) {
-					accumulatedOvershootNanos += frameElapsed - targetThisFrame;
-					if (collectFramePacingTelemetry) {
-						++framePacingTelemetry.overshootFrames;
-						framePacingTelemetry.overshootNanos += frameElapsed - targetThisFrame;
-					}
-				}
+			// Lateness is charged once the whole frame is out, below. Charging
+			// it here only caught a wake-up later than the tail estimate, so a
+			// wake-up a fraction of a millisecond late -- the usual case -- was
+			// never paid back and every frame ran that much long.
+			if (frameElapsed >= waitThisFrame)
 				break;
-			}
 			// We don't want to be precise in SSKIP mode
 			if (skip_mode & SKIP_SUPERSKIP)
 				break;
@@ -1437,6 +1433,24 @@ void ONScripter::waitEvent(int count, bool nopPreferred, const std::function<boo
 			++framePacingTelemetry.frames;
 			framePacingTelemetry.totalFrameNanos += frameNanos;
 			framePacingTelemetry.maxFrameNanos = std::max(framePacingTelemetry.maxFrameNanos, frameNanos);
+		}
+
+		// Whatever this frame ran over its target -- a late wake-up, or a tail
+		// longer than the estimate -- comes off the next deadline, so the frames
+		// average out at the requested rate. Capped at one frame: this is for
+		// jitter, and a genuine stall such as a scene load should not be paid
+		// back by advancing the game in jumps afterwards. Not in superskip,
+		// which does not wait at all and would only pile up debt.
+		if (!(skip_mode & SKIP_SUPERSKIP) && frameEndNanos >= lastFlipTimeNanos) {
+			const uint64_t elapsed = frameEndNanos - lastFlipTimeNanos;
+			if (elapsed > targetThisFrame) {
+				const uint64_t late = std::min(elapsed - targetThisFrame, timeThisFrame);
+				accumulatedOvershootNanos += late;
+				if (collectFramePacingTelemetry) {
+					++framePacingTelemetry.overshootFrames;
+					framePacingTelemetry.overshootNanos += late;
+				}
+			}
 		}
 
 		if ((show_fps_counter || fps_overlay_visible) && !(skip_mode & SKIP_SUPERSKIP) && frameNanos > 0) {
