@@ -6101,6 +6101,18 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 	Uint32 width = 0;
 	Uint32 height = 0;
 	if (!SDL_AcquireGPUSwapchainTexture(commands, rendererState.window, &swapchainTexture, &width, &height) || !swapchainTexture) {
+		// No image to present into: the frame is dropped, though the caller
+		// carries on as if it had been shown. That is invisible on screen and
+		// in the frame times, so say how often it happens, at most every 10 s.
+		static Uint64 droppedPresents = 0;
+		static Uint64 lastDropReportTicks = 0;
+		++droppedPresents;
+		const Uint64 ticks = SDL_GetTicks();
+		if (ticks - lastDropReportTicks >= 10000) {
+			sendToLog(LogLevel::Warn, "SDL3_GPU: dropped %llu presents so far (no swapchain image: %s)\n",
+			          static_cast<unsigned long long>(droppedPresents), swapchainTexture ? "" : SDL_GetError());
+			lastDropReportTicks = ticks;
+		}
 		SDL_CancelGPUCommandBuffer(commands);
 		return;
 	}
