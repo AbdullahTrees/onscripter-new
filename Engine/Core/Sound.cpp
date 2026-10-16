@@ -459,6 +459,10 @@ int ONScripter::playSound(const char *filename, int format, bool loop_flag, int 
 			setMusicVolume(music_volume, volume_on_flag);
 			Mix_HookMusicFinished(musicFinishCallback);
 			if (Mix_PlayMusic(music_info_local, loop_flag ? -1 : 0) == 0) {
+				// One line per track. Whether it loops is the thing that has gone
+				// wrong before -- restored from saves written while bgm lost its
+				// loop flag -- and nothing else shows it short of waiting it out.
+				sendToLog(LogLevel::Info, "Music: playing %s (%s)\n", filename, loop_flag ? "loop" : "once");
 				Lock lock(&playSoundThreadedLock);
 				assert(!music_buffer);
 				music_info          = music_info_local;

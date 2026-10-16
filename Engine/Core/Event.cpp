@@ -443,6 +443,8 @@ extern "C" void waveCallback(int channel) {
 void ONScripter::flushEventSub(SDL_Event &event) {
 	//event related to streaming media
 	if (event.user.code == ONS_MUSIC_EVENT && event.type == SDL_USEREVENT) {
+		sendToLog(LogLevel::Info, "Music: %s finished, %s\n", music_file_name ? music_file_name : "track",
+		          music_play_loop_flag || (cd_play_loop_flag && !cdaudio_flag) ? "restarting" : "stopping");
 		if (music_play_loop_flag ||
 		    (cd_play_loop_flag && !cdaudio_flag)) {
 			stopBGM(true);
