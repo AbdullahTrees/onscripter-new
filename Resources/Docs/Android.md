@@ -653,6 +653,15 @@ and `lookupSavePath()` appends the game identifier:
 <selected game folder>/ONScripter-RU/SaveData/<game id>/
 ```
 
+`<game id>` is not always the script's own identifier. Witch Hunt
+(`UminekoPS3ficationWh`) and Russian (`UminekoPS3ficationRu`) share the English
+`UminekoPS3ficationEn` folder, but only once it holds a global save
+(`gloval.sav`) or when their own folder has none. A device that played one of
+them under an earlier release keeps its own folder until then. Without that
+check an upgrade lands on an empty profile: the saves look lost, and the game
+runs the file verification it reserves for a first launch. `out.txt` records
+which way it went (`Keeping saves in ...`).
+
 The app-scoped fallback is the compatibility exception. Its root already ends
 in `ONScripter-RU`, so `GameStorage.getNativeStorageBase()` passes the parent to
 the native environment. This preserves the location used by existing releases:

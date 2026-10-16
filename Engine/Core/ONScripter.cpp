@@ -1031,20 +1031,36 @@ void ONScripter::setGameIdentifier(const char *gameid) {
 }
 
 void ONScripter::lookupSavePath() {
+	bool trycloud       = ons_cfg_options.find("enable-icloud") != ons_cfg_options.end();
+	const char *storage = FileIO::getStorageDir(trycloud);
+
 	const char *gameid = script_h.game_identifier.c_str();
-	// These translations share the same save layout and story labels. Reuse
-	// the original English directory so existing progress stays available.
+	// These translations share the same save layout and story labels, so they
+	// share the original English directory. A new player always lands there,
+	// whatever language they start in: their own directory can only hold
+	// progress if an engine older than the shared directory wrote it. That older
+	// progress is not moved or merged, so a translation keeps its own directory
+	// until the shared one holds progress of its own -- otherwise an upgrade
+	// silently starts an empty profile, the saves look lost and the game runs the
+	// file verification it reserves for a first launch.
 	if (script_h.game_identifier == "UminekoPS3ficationWh" ||
-	    script_h.game_identifier == "UminekoPS3ficationRu")
-		gameid = "UminekoPS3ficationEn";
+	    script_h.game_identifier == "UminekoPS3ficationRu") {
+		auto hasProgress = [storage](const char *identifier) {
+			const std::string dir = std::string(storage) + identifier + DELIMITER;
+			return FileIO::accessFile(dir + "gloval.sav", FileType::File) ||
+			       FileIO::accessFile(dir + "global.sav", FileType::File);
+		};
+		if (hasProgress("UminekoPS3ficationEn") || !hasProgress(gameid))
+			gameid = "UminekoPS3ficationEn";
+		else
+			sendToLog(LogLevel::Info, "Keeping saves in %s; UminekoPS3ficationEn holds no progress yet\n", gameid);
+	}
+
 	char gamename[20];
 	if (script_h.game_identifier.empty()) {
 		std::snprintf(gamename, sizeof(gamename), "ONScripter-%x", script_h.game_hash);
 		gameid = gamename;
 	}
-
-	bool trycloud       = ons_cfg_options.find("enable-icloud") != ons_cfg_options.end();
-	const char *storage = FileIO::getStorageDir(trycloud);
 
 	script_h.save_path = new char[PATH_MAX];
 	std::snprintf(script_h.save_path, PATH_MAX, "%s%s%c", storage, gameid, DELIMITER);

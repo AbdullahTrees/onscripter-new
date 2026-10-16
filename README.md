@@ -140,11 +140,12 @@ any engine or script update, keeping a backup of your saves and game directory
 is recommended.
 
 English, Witch Hunt, and Russian now share the `UminekoPS3ficationEn` save
-folder. Existing English saves and progress are used automatically. If your
-progress is in a separate `UminekoPS3ficationWh` or `UminekoPS3ficationRu`
-folder, back up all profiles and copy your preferred profile's contents into
-`UminekoPS3ficationEn` before switching languages. Separate profiles are not
-merged automatically.
+folder. Existing English saves and progress are used automatically. Witch Hunt
+or Russian progress in its own `UminekoPS3ficationWh` or `UminekoPS3ficationRu`
+folder keeps being used for as long as `UminekoPS3ficationEn` holds no progress,
+so updating never starts you on an empty profile. To share one profile between
+languages, back up all profiles and copy your preferred profile's contents into
+`UminekoPS3ficationEn`. Separate profiles are not merged automatically.
 
 Desktop builds use local saves by default. Pass `--enable-icloud` to use
 iCloud storage on macOS or Windows; `--disable-icloud` selects local storage.
