@@ -311,6 +311,10 @@ void SDLCALL GPU_BlitTransform(GPU_Image *image, GPU_Rect *src_rect, GPU_Target 
 void SDLCALL GPU_TriangleBatch(GPU_Image *image, GPU_Target *target, unsigned short num_vertices, float *values, unsigned int num_indices, unsigned short *indices, GPU_BatchFlagEnum flags);
 void SDLCALL GPU_TriangleBatchRGBA(GPU_Image *image, GPU_Target *target, unsigned short num_vertices, const GPU_TriangleBatchVertex *vertices, unsigned int num_indices, const unsigned short *indices);
 void SDLCALL GPU_FlushBlitBuffer(void);
+// Hands the frame's recorded drawing to the GPU. Call once drawing is done and
+// before waiting out the frame, so the GPU works through the wait; holding it
+// for GPU_Flip leaves the swapchain image busy and frames get dropped.
+void SDLCALL GPU_SubmitFrame(void);
 void SDLCALL GPU_Flip(GPU_Target *target);
 
 #if defined(DROID)

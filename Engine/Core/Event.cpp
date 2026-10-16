@@ -1342,7 +1342,9 @@ void ONScripter::waitEvent(int count, bool nopPreferred, const std::function<boo
 			if (PERF_OVERLAY_DRAWN_BY_ENGINE)
 				drawFpsOverlay();
 
-			GPU_FlushBlitBuffer();
+			// Drawing is done: let the GPU work through the wait below rather
+			// than receive the whole frame at the flip.
+			GPU_SubmitFrame();
 		}
 
 		if (cursorAutoHide && cursorVisible && ticksNow - lastCursorMove >= 5000) {
