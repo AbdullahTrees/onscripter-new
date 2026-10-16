@@ -24,6 +24,10 @@
 #include <cstring>
 #include <stdexcept>
 
+#ifdef DROID
+#include <sys/prctl.h>
+#endif
+
 #ifdef USE_OBJC
 #ifdef MACOSX
 #include "Support/Apple/CocoaWrapper.hpp"
@@ -598,6 +602,13 @@ void ONScripter::initSDL() {
 	    },
 	    nullptr);
 	sendToLog(LogLevel::Info, "lifecycle watch registered: %d\n", watchAdded ? 1 : 0);
+
+	// The frame loop sleeps to an absolute deadline every frame, and Android's
+	// default 50 us of timer slack lets every one of those wake-ups land late.
+	// Lateness is paid back on the next deadline, but there is no reason to
+	// incur it. This is the engine thread, which is the one that sleeps.
+	if (prctl(PR_SET_TIMERSLACK, 1UL, 0UL, 0UL, 0UL) != 0)
+		sendToLog(LogLevel::Warn, "could not reduce timer slack\n");
 #endif
 
 #if defined(IOS) && defined(USE_OBJC)
