@@ -69,6 +69,14 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         touchInput = new TouchInput(ViewConfiguration.get(this), this);
         configureScopedStorage();
 
+        // Above the surface, in the layout SDL already overlays its text field
+        // into. It stays gone unless the engine's counter is on. Its native
+        // methods live in libmain, so it must not exist if that failed to load.
+        if (!mBrokenLibraries && mLayout != null) {
+            PerfOverlayView perfOverlay = new PerfOverlayView(this);
+            mLayout.addView(perfOverlay, perfOverlay.layoutParams());
+        }
+
         // The manifest locks landscape so a phone is never briefly portrait
         // before this runs; large screens relax it here. Doing it in code
         // rather than trusting the manifest alone is deliberate: Android 16

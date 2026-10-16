@@ -689,8 +689,8 @@ Work on this target should stay inside tiers 1 and 2.
 ### Tier 1 — wholly Android-only
 
 ```
-Resources/Droid/**        manifest, build.gradle, gradle wrapper, res/, 21 Java sources
-                          (9 project-owned launcher/input/diagnostic classes;
+Resources/Droid/**        manifest, build.gradle, gradle wrapper, res/, 22 Java sources
+                          (10 project-owned launcher/input/diagnostic classes;
                            the other 12 are vendored SDL3)
 Support/Droid/**          DroidProfile.cpp / .hpp
 Scripts/ndktoolchain.sh   NDK discovery and wrapper toolchain generation
@@ -910,14 +910,40 @@ everything else -- the `/proc` read and the pool walk, which are the parts with 
 real cost -- is sampled twice a second, and the panel texture is rebuilt four
 times a second rather than per frame.
 
-What is *not* cheap is a consequence of showing an overlay at all: while it is
+On Android the panel is not drawn by the engine. `PerfOverlayView` is an
+ordinary view added to SDL's `RelativeLayout` above the `SurfaceView`, pinned to
+the top-left of the window, and Android composites it. The engine still does all
+the sampling, classification and formatting; four times a second it copies the
+finished rows, the section colour, the frame budget and the frame history into a
+mutex-guarded struct, and the view reads them through three JNI calls on the UI
+thread:
+
+| Call | Returns |
+| --- | --- |
+| `nativePerfText` | The headline, four body rows and section label, newline separated; `null` while the counter is off |
+| `nativePerfSectionColor` | The section label's colour as `0xRRGGBB` |
+| `nativePerfFrames` | Fills the caller's history array oldest first and `target[0]` with the frame budget; returns the count |
+
+There is no Java-side switch. The view stays `GONE` while `nativePerfText`
+returns `null`, polling once a second to notice the counter coming on and four
+times a second while it is shown, and only while the window is visible. It is
+sized from the monospace advance, not the text, so it does not resize as the
+digits change, and it is neither clickable nor focusable, so touches fall through
+to the game. It is only created when `libmain` loaded, since its native methods
+live there.
+
+Two things follow from drawing it outside the engine. The panel sits in surface
+space, so on a letterboxed display it lands in the black band rather than on the
+artwork. And the engine no longer redraws the scene to keep a panel on top of
+it, so turning the counter on no longer changes the frame times it reports.
+Readings taken before this change include that redraw and are not comparable
+with readings taken after it.
+
+The desktop keeps the engine-drawn panel, and with it the cost: while it is
 visible the engine flushes the whole scene every frame, because something on
-screen is changing even when the game is idle. Attempts to measure that cost on
-the title screen were inconclusive -- two runs with the counter off gave 105-113
-per cent and 48-52 per cent CPU for the identical scene, so the run-to-run spread
-of the scene is larger than whatever the counter adds. Treat the absolute numbers
-as valid and comparisons against a counter-off run as unreliable, and prefer
-`top` or `simpleperf` when the question is what the game costs without it.
+screen is changing even when the game is idle. The drawing therefore exists
+twice, once in `drawFpsOverlay` and once in `PerfOverlayView.onDraw`, and a
+change to the panel's layout has to be made in both.
 
 ### Always force-stop between launches
 
@@ -1116,38 +1142,13 @@ Quoting is the obvious fix, but note that fixing it turns a currently-ignored
 line into an effective one, which changes behaviour for anyone whose `ons.cfg`
 has been silently half-ignored until now.
 
-**The performance counter should be a Java view, not an engine blit.** It is
-currently blitted at a fixed (16, 16) into `screen_target`, which is canvas
-space, so it follows the game image. On a display whose aspect matches the
-script that is the corner of the screen and looks intentional; on a 7:5 tablet
-against a 16:9 script the canvas is letterboxed and the panel lands on top of
-the scene while a black band sits unused directly above it.
-
-Moving it to the Java side puts it in surface space, which is where a debug
-overlay belongs: the letterbox band is exactly the space that has nothing to
-obscure. The hierarchy already supports it -- `mLayout` is a `RelativeLayout`
-holding the `SurfaceView`, nothing calls `setZOrderOnTop`, and SDL already
-overlays its own `mTextEdit` into that same layout, so a sibling view drawn
-above the surface is a proven path rather than a hoped-for one.
-
-The stronger reason is that it would stop the counter distorting its own
-readings. While the overlay is visible the engine flushes the whole scene every
-frame, because something on top of the scene changes every frame -- so turning
-the counter on changes the frame times it reports. A view composited by Android
-costs the engine nothing per frame.
-
-Split the work so the classification and formatting stay in one place: the
-engine hands over the preformatted body lines, the section label and its colour,
-and the frame history; Java only draws. Two things to weigh. The panel becomes
-Android-only, so the desktop keeps the engine-side blit and the drawing exists
-twice. And the frame graph is the fiddly half -- the history array has to cross
-JNI on every update rather than being read in place.
-
 ### Features
 
-**The performance counter forces a full scene flush every frame it is visible.**
-`waitEvent` recomposites the whole scene whenever `fps_overlay_visible` is set
-and `screenChanged` is false, so an otherwise idle screen is redrawn at the frame
+**The desktop performance counter forces a full scene flush every frame it is
+visible.** Android no longer does, because there the panel is a view (see
+[the counter](#the-on-screen-performance-counter)). On the desktop `waitEvent`
+still recomposites the whole scene whenever `fps_overlay_visible` is set and
+`screenChanged` is false, so an otherwise idle screen is redrawn at the frame
 rate purely to keep the panel on top of it. That is pre-existing behaviour of the
 old fps overlay, inherited by the counter.
 
