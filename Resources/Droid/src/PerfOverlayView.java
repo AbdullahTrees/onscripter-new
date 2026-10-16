@@ -232,7 +232,10 @@ final class PerfOverlayView extends View {
 
     private Paint textPaint(float size) {
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setTypeface(Typeface.MONOSPACE);
+        // The system monospace face (DroidSansMono) ships no bold, so this is a
+        // synthetic bold -- the weight FusionHUD draws with, and easier to read
+        // over the scene than the regular cut.
+        paint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
         paint.setTextSize(size);
         paint.setColor(0xFFFFFFFF);
         return paint;
