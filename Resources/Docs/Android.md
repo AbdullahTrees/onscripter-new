@@ -889,7 +889,8 @@ protocol that produced the numbers in *Backlog → Performance*:
   `Native Heap`, `TOTAL PSS`. A change that saves CPU but grows `GL mtrack` is a
   regression, not a win — one such change is recorded under *Rejected*.
 - **Two launches per variant, two windows per launch,** and the counter's FPS and
-  1% low from a screenshot at the end of each window.
+  `low` from a screenshot at the end of each window. `low` is the single slowest
+  frame of the last 150 as a rate, not a 1% low, so it is noisy.
 - **Profile with call graphs**, then resolve the anonymous `libmain.so[+offset]`
   frames, which are the `SDL3GPUCompat.cpp` internals, against the unstripped
   binary's symbol table:
@@ -1236,8 +1237,14 @@ Measurements are from the OnePlus Pad (MediaTek mt6983, Mali, 2800x2000 surface,
 1920x1080 canvas) in the reference scene described under *Measuring a
 performance change*, taken 2026-10-17. Percentages are of one core.
 
-**Where the time goes now.** After the pacing and batching changes the process
-uses about 92–107% of a core at a steady 60.0 fps:
+**Where the time goes now.** Since each frame's drawing shares one command buffer
+(below), the reference scene runs at 72–73% of a core in total. Of that,
+`SDLThread` is 34–35% and the driver thread 6–7%. `GL mtrack` is 490–524 MB and
+total PSS is 816–829 MB, all at a steady 60 fps (two launches).
+
+The breakdown below was taken just before that change, at 92–107% of a core. Its
+proportions still say where the remaining time goes, less the submission cost
+that change removed:
 
 | Thread | Share | What it is |
 |---|---|---|
@@ -1262,27 +1269,37 @@ to the driver:
 `__ioctl` alone is 17% self time. The engine is not short of CPU for its own
 work. It is paying a fixed driver cost per command buffer, many times a frame.
 
-**Every batch break is a whole command buffer.** In `SDL3GPUCompat.cpp` every
-blit batch, triangle batch, clear and upload acquires its own
-`SDL_GPUCommandBuffer`, records a copy pass and a render pass that loads and
-stores the entire target, and submits. A batch ends on any change of target,
-pipeline (blend mode, blending on or off, blit or triangle program), viewport or
-scissor, and on every `GPU_ClearRGBA`, `GPU_FreeImage`, shader activation or
-readback. A typical frame was estimated at 20–32 submissions before the batching
-change. Each costs a `vkQueueSubmit` and a driver-thread wakeup. On a tiled GPU
-it also costs a full load and store of the target: about 8 MB each way for the
-1920x1080 HUD.
+**Drawing shares one command buffer per frame; passes do not yet share render
+passes.** Blit batches, triangle batches, clears, solid rects, texture copies and
+mipmaps record into one shared command buffer (`acquireCommandBuffer` in
+`SDL3GPUCompat.cpp`). The frame loop submits it once drawing is done
+(`GPU_SubmitFrame`, before the frame's wait). The present keeps its own buffer in
+`GPU_Flip`, because acquiring a swapchain image makes a whole buffer wait for it.
+Uploads and readbacks still submit at once, behind whatever was recorded first,
+so ordering and staging memory are unchanged. A frame is about two submissions;
+on Windows it went from 6.64 command buffers a frame to 1.95.
 
-The fix that removes most of what is left is letting consecutive batches share a
-command buffer, and a render pass when the target is unchanged. Pipeline changes
-are legal inside one render pass; only a target change needs a new pass. SDL
-already orders passes correctly within a command buffer, and the upload buffers
-are mapped with `cycle=true`, so reuse inside one buffer is safe. The constraint
-is memory: SDL only reclaims finished command buffers on a submit that presents
-(`performCleanups`), so the change must not let in-flight work pile up — see
-*Rejected* for what that costs. Pixel-identical by construction, since the same
-draws happen in the same order. It is the largest remaining lever, and it helps
-every scene and every platform.
+Three things this design depends on, learned the hard way:
+
+- **Submit before the frame's wait, not at the flip.** Holding the drawing until
+  `GPU_Flip` left the GPU idle through the wait. Two frames later the swapchain
+  image was still busy, and the non-blocking acquire dropped frames.
+- **The periodic drain must count passes, not command buffers.** The full GPU
+  drain every 64 units in `throttleGPUSubmissionBacklog` is what bounds the
+  memory SDL retains. Counted in command buffers, 64 became about thirty frames
+  of work instead of ten, and `GL mtrack` rose from about 600 MB to 865–920 MB.
+  Each submit now counts the passes it carries.
+- **A failed pass must not cancel the shared buffer,** which would discard every
+  pass recorded before it (`abandonCommandBuffer`).
+
+What remains: every batch is still its own render pass. On a tiled GPU, each one
+loads and stores its whole target, about 8 MB each way for the 1920x1080 HUD. A
+batch ends on any change of target, pipeline (blend mode, blending on or off,
+blit or triangle program), viewport or scissor, and on every `GPU_ClearRGBA`,
+`GPU_FreeImage` or shader activation. Pipeline changes are legal inside one
+render pass; only a target change needs a new pass. Keeping consecutive batches
+to the same target in one render pass is the next step on this path, and it is
+pixel-identical by construction, since the same draws happen in the same order.
 
 **The rain is drawn over the whole screen and then mostly covered.** In scenes
 with a retained rain layer, such as the reference hallway where rain falls outside
@@ -1295,10 +1312,10 @@ rain in one full-canvas band and everything in front in another. Each frame:
 3. It blits the front band on top.
 
 The windows cover under 10% of the screen, so over 90% of the drops are drawn and
-then hidden. Each of the three steps also ends its command buffer, because a blit
-and a triangle batch are different pipelines. The drops themselves are cheap
-(`renderDrops` self time 1.4%); the submissions and the three full-canvas passes
-are not.
+then hidden. The three steps share the frame's command buffer, but each is its
+own render pass, because a blit and a triangle batch are different pipelines.
+So each loads and stores the full canvas. The drops themselves are cheap
+(`renderDrops` self time 1.4%); the three full-canvas passes are not.
 
 Two improvements, both pixel-identical:
 
@@ -1309,8 +1326,8 @@ Two improvements, both pixel-identical:
   The rain blends additively under a normal-blended front band, so this holds
   exactly. Prove it with a screenshot diff of the hallway scene, and recompute the
   box whenever the band is rebuilt.
-- **Keep the three steps in one render pass.** This follows from the command
-  buffer change above.
+- **Keep the three steps in one render pass.** This follows from keeping
+  same-target batches in one render pass, above.
 
 Drawing the rain at a lower rate than the scene would also save work, but it
 changes the motion, so it breaks the invariant. Not an option.
