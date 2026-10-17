@@ -509,12 +509,12 @@ void throttleGPUSubmissionBacklog() {
 	reapCompletedSubmissionFences();
 }
 
-bool submitGPUCommandBuffer(SDL_GPUCommandBuffer *commands) {
+bool submitGPUCommandBuffer(SDL_GPUCommandBuffer *commands, Uint64 work = 1) {
 	const Uint64 maxQueuedCommandBuffers = maxQueuedCommandBuffersBeforeWait();
 	const Uint64 fenceInterval = maxQueuedCommandBuffers == 0 ? 0 : submissionFenceInterval(maxQueuedCommandBuffers);
 	const bool acquireFence = fenceInterval != 0 &&
-	                          (commandBuffersSinceSubmissionFence + 1 >= fenceInterval ||
-	                           commandBuffersSinceSubmissionWait + 1 >= maxQueuedCommandBuffers);
+	                          (commandBuffersSinceSubmissionFence + work >= fenceInterval ||
+	                           commandBuffersSinceSubmissionWait + work >= maxQueuedCommandBuffers);
 
 	SDL_GPUFence *fence = nullptr;
 	if (acquireFence) {
@@ -527,9 +527,9 @@ bool submitGPUCommandBuffer(SDL_GPUCommandBuffer *commands) {
 
 	noteCommandBufferSubmitted();
 	if (maxQueuedCommandBuffers != 0) {
-		++unretiredCommandBuffers;
-		++commandBuffersSinceSubmissionFence;
-		++commandBuffersSinceSubmissionWait;
+		unretiredCommandBuffers += work;
+		commandBuffersSinceSubmissionFence += work;
+		commandBuffersSinceSubmissionWait += work;
 		if (fence) {
 			submissionFences.push_back({fence, commandBuffersSinceSubmissionFence});
 			commandBuffersSinceSubmissionFence = 0;
@@ -544,14 +544,14 @@ bool submitGPUCommandBuffer(SDL_GPUCommandBuffer *commands) {
 	return true;
 }
 
-SDL_GPUFence *submitGPUCommandBufferAndAcquireFence(SDL_GPUCommandBuffer *commands) {
+SDL_GPUFence *submitGPUCommandBufferAndAcquireFence(SDL_GPUCommandBuffer *commands, Uint64 work = 1) {
 	SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
 	if (fence) {
 		noteCommandBufferSubmitted();
 		if (maxQueuedCommandBuffersBeforeWait() != 0) {
-			++unretiredCommandBuffers;
-			++commandBuffersSinceSubmissionFence;
-			++commandBuffersSinceSubmissionWait;
+			unretiredCommandBuffers += work;
+			commandBuffersSinceSubmissionFence += work;
+			commandBuffersSinceSubmissionWait += work;
 			noteSubmissionBacklog();
 			throttleGPUSubmissionBacklog();
 		}
@@ -574,9 +574,10 @@ bool submitFrameCommandBuffer() {
 	if (!frameCommands)
 		return true;
 	SDL_GPUCommandBuffer *commands = frameCommands;
+	const Uint64 work  = std::max<Uint32>(1, frameCommandPasses);
 	frameCommands      = nullptr;
 	frameCommandPasses = 0;
-	return submitGPUCommandBuffer(commands);
+	return submitGPUCommandBuffer(commands, work);
 }
 
 // A recorded pass is complete. A private buffer is submitted now; the shared
@@ -600,11 +601,13 @@ void abandonCommandBuffer(SDL_GPUCommandBuffer *commands) {
 // For a readback: everything recorded so far has to run before the copy, so
 // the shared buffer is submitted with it.
 SDL_GPUFence *submitCommandBufferAndAcquireFence(SDL_GPUCommandBuffer *commands) {
+	Uint64 work = 1;
 	if (commands == frameCommands) {
+		work               = std::max<Uint32>(1, frameCommandPasses);
 		frameCommands      = nullptr;
 		frameCommandPasses = 0;
 	}
-	return submitGPUCommandBufferAndAcquireFence(commands);
+	return submitGPUCommandBufferAndAcquireFence(commands, work);
 }
 
 std::string normalizedTelemetrySource(const char *source) {
