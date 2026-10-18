@@ -1307,9 +1307,10 @@ loads and stores its whole target, about 8 MB each way for the 1920x1080 HUD. A
 batch ends on any change of target, pipeline (blend mode, blending on or off,
 blit or triangle program), viewport or scissor, and on every `GPU_ClearRGBA`,
 `GPU_FreeImage` or shader activation. Pipeline changes are legal inside one
-render pass; only a target change needs a new pass. Keeping consecutive batches
-to the same target in one render pass is the next step on this path, and it is
-pixel-identical by construction, since the same draws happen in the same order.
+render pass; only a target change needs a new pass. Merging consecutive batches
+to the same target was tried and rejected: it is pixel-identical by
+construction, but it raised Mali memory in the matched A/B (see *Rejected, with
+numbers*, below).
 
 **Drawing uploads each frame's vertices once.** Blit, triangle and solid-rect
 draws are queued as they are produced and recorded when the frame's drawing is
@@ -1324,8 +1325,8 @@ Ordering-sensitive paths — clears, texture uploads, copies, readbacks, sampler
 and program changes — materialise the queue first. The same draws happen in the
 same order, so this is pixel-identical by construction; the built-in
 benchmark's upload, draw and readback validation is the intended check. It also
-removes the copy pass from between render passes, which is what makes the
-render-pass merge above possible.
+removes the copy pass from between render passes, which is what made the
+render-pass merge experiment possible.
 
 Measured on the Redmi Note 11 (Adreno 610), loaded novel scene (save slot 2),
 with the frame and pool state settled. Two samples per build:
@@ -1371,8 +1372,9 @@ shared command buffer and submits when the batch reaches 8 MB of staging, or
 at the existing 32-pass cap, instead of submitting after every mapped range.
 The byte cap bounds the copies SDL keeps alive for in-flight staging buffers;
 uploads from other threads have no shared buffer and still submit at once. On
-the PC, an identical 1194-upload run (137.7 MB) made 4120 command-buffer
-submissions against 5111 before the change: 991 fewer queue submissions, a 19%
+the PC, an identical 1194-upload run (137,694,976 bytes) made 4120
+command-buffer submissions against 5111 before the change: 991 fewer queue
+submissions, a 19%
 drop for that run. The benchmark's texture upload/render/readback validation
 passes, and both Adreno and Mali devices render the title video and menus
 correctly. Load wall-clock and frame-time traces are still unmeasured; the
@@ -1412,7 +1414,8 @@ Two improvements, both pixel-identical:
   exactly. Prove it with a screenshot diff of the hallway scene, and recompute the
   box whenever the band is rebuilt.
 - **Keep the three steps in one render pass.** This follows from keeping
-  same-target batches in one render pass, above.
+  same-target batches in one render pass, above; that general merge was
+  rejected on memory grounds, so the rain case would need its own experiment.
 
 Drawing the rain at a lower rate than the scene would also save work, but it
 changes the motion, so it breaks the invariant. Not an option.
