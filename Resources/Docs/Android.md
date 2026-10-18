@@ -1503,6 +1503,18 @@ but that changes video timing and is not needed unless an offset becomes
 visible.
 Android-only.
 
+**The engine thread reports its frame work to Android's performance-hint API.**
+Each frame, `waitEvent` (`Event.cpp`) reports the work up to the frame's wait
+plus the flip after it, against a target of half a frame, so the CPU governor
+can run the core only as fast as the frame needs. The API arrived in Android 13
+and minSdk is 30, so it is looked up in `libandroid.so` at runtime. `dumpsys
+performance_hint` lists the session for the engine thread. On the OnePlus Pad's
+title screen it changed nothing measurable (engine thread 21–23% before, 24–25%
+after; cluster frequencies and presented frames unchanged), because the
+governor already ran those cores slowly there. Heavier scenes are unmeasured.
+The display side is separate and already done: `ONSActivity.preferSixtyHertz`
+asks for a 60 Hz mode, and the Pad's panel runs at 60 Hz in game.
+
 **Holding exactly 60 fps costs the tablet extra CPU.** The pacing change (pay
 back each frame's lateness) took the counter from 58–59 to a steady 60.0 fps.
 On its own it raised `SDLThread` from 48–57% to 72–74% and the driver thread
