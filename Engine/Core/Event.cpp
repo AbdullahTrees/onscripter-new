@@ -24,6 +24,7 @@
 #endif
 
 #ifdef DROID
+#include <dlfcn.h>
 #include <jni.h>
 #endif
 
@@ -205,6 +206,58 @@ struct PerfPublished {
 };
 
 static PerfPublished perfPublished;
+
+/**
+ * Tells Android how long each frame's work takes against a target, so the CPU
+ * governor can run the engine thread's core only as fast as the frame needs.
+ *
+ * Without it the governor sees a thread that wakes 60 times a second and
+ * works in short bursts, and tends to boost it as if it were busy. The
+ * performance-hint API (ADPF) arrived in Android 13 and minSdk is 30, so it is
+ * looked up at runtime and simply absent on older systems.
+ *
+ * The target is half a frame, not a whole one: the governor slows the core
+ * until the reported work approaches the target, and the frame still needs
+ * room for the wait, the flip and the odd slow frame.
+ */
+struct PerformanceHint {
+	using GetManager    = void *(*)();
+	using CreateSession = void *(*)(void *, const int32_t *, size_t, int64_t);
+	using UpdateTarget  = int (*)(void *, int64_t);
+	using ReportActual  = int (*)(void *, int64_t);
+
+	void *session{nullptr};
+	UpdateTarget updateTarget{nullptr};
+	ReportActual reportActual{nullptr};
+	int64_t targetNanos{0};
+	bool attempted{false};
+
+	void report(uint64_t frameNanos, uint64_t workNanos) {
+		if (!attempted) {
+			attempted = true;
+			void *android = dlopen("libandroid.so", RTLD_NOW);
+			auto getManager    = android ? reinterpret_cast<GetManager>(dlsym(android, "APerformanceHint_getManager")) : nullptr;
+			auto createSession = android ? reinterpret_cast<CreateSession>(dlsym(android, "APerformanceHint_createSession")) : nullptr;
+			updateTarget       = android ? reinterpret_cast<UpdateTarget>(dlsym(android, "APerformanceHint_updateTargetWorkDuration")) : nullptr;
+			reportActual       = android ? reinterpret_cast<ReportActual>(dlsym(android, "APerformanceHint_reportActualWorkDuration")) : nullptr;
+			void *manager      = getManager ? getManager() : nullptr;
+			const int32_t tid  = gettid();
+			targetNanos        = static_cast<int64_t>(frameNanos / 2);
+			if (manager && createSession && updateTarget && reportActual)
+				session = createSession(manager, &tid, 1, targetNanos);
+			sendToLog(LogLevel::Info, "performance hint session: %s (target %.2f ms)\n",
+			          session ? "on" : "unavailable", static_cast<double>(targetNanos) / NANOS_PER_MILLISECOND);
+		}
+		if (!session || workNanos == 0)
+			return;
+		const auto target = static_cast<int64_t>(frameNanos / 2);
+		if (target != targetNanos && updateTarget(session, target) == 0)
+			targetNanos = target;
+		reportActual(session, static_cast<int64_t>(workNanos));
+	}
+};
+
+static PerformanceHint performanceHint;
 #endif
 
 /**
@@ -1354,7 +1407,8 @@ void ONScripter::waitEvent(int count, bool nopPreferred, const std::function<boo
 		// Optional uploads may use a small slice of spare frame time. Once the
 		// slice is spent, or the queues are empty, park until work or the frame
 		// deadline arrives. There is deliberately no busy-spin precision tail.
-		const uint64_t workBudgetEnd = highResolutionTicksNanos() + 2 * NANOS_PER_MILLISECOND;
+		const uint64_t waitStartNanos = highResolutionTicksNanos();
+		const uint64_t workBudgetEnd  = waitStartNanos + 2 * NANOS_PER_MILLISECOND;
 		while (true) {
 			const auto observed = mainThreadWork.snapshot();
 			ticksNow = SDL_GetTicks();
@@ -1495,6 +1549,13 @@ void ONScripter::waitEvent(int count, bool nopPreferred, const std::function<boo
 			else
 				frameTailEstimateNanos = (frameTailEstimateNanos * 7 + frameTailNanos) / 8;
 		}
+#if defined(DROID)
+		// The frame's own work: everything up to its wait, and the flip after it.
+		// The optional uploads inside the wait are left out, as they only use
+		// time that is spare anyway.
+		if (!(skip_mode & SKIP_SUPERSKIP) && waitStartNanos >= lastFlipTimeNanos && frameEndNanos >= frameTailStartNanos)
+			performanceHint.report(timeThisFrame, (waitStartNanos - lastFlipTimeNanos) + (frameEndNanos - frameTailStartNanos));
+#endif
 		lastFlipTimeNanos = frameEndNanos;
 		if (asyncComplete && asyncComplete())
 			break;
