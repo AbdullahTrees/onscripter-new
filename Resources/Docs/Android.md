@@ -51,6 +51,7 @@ when, read the git log.
   - [Test a link-flag change without relinking](#test-a-link-flag-change-without-relinking)
 - [Backlog](#backlog)
   - [Defects](#defects)
+  - [Performance](#performance)
   - [Features](#features)
   - [Device compatibility](#device-compatibility)
   - [Infrastructure](#infrastructure)
@@ -653,6 +654,15 @@ and `lookupSavePath()` appends the game identifier:
 <selected game folder>/ONScripter-RU/SaveData/<game id>/
 ```
 
+`<game id>` is not always the script's own identifier. Witch Hunt
+(`UminekoPS3ficationWh`) and Russian (`UminekoPS3ficationRu`) share the English
+`UminekoPS3ficationEn` folder, but only once it holds a global save
+(`gloval.sav`) or when their own folder has none. A device that played one of
+them under an earlier release keeps its own folder until then. Without that
+check an upgrade lands on an empty profile: the saves look lost, and the game
+runs the file verification it reserves for a first launch. `out.txt` records
+which way it went (`Keeping saves in ...`).
+
 The app-scoped fallback is the compatibility exception. Its root already ends
 in `ONScripter-RU`, so `GameStorage.getNativeStorageBase()` passes the parent to
 the native environment. This preserves the location used by existing releases:
@@ -689,8 +699,8 @@ Work on this target should stay inside tiers 1 and 2.
 ### Tier 1 — wholly Android-only
 
 ```
-Resources/Droid/**        manifest, build.gradle, gradle wrapper, res/, 21 Java sources
-                          (9 project-owned launcher/input/diagnostic classes;
+Resources/Droid/**        manifest, build.gradle, gradle wrapper, res/, 22 Java sources
+                          (10 project-owned launcher/input/diagnostic classes;
                            the other 12 are vendored SDL3)
 Support/Droid/**          DroidProfile.cpp / .hpp
 Scripts/ndktoolchain.sh   NDK discovery and wrapper toolchain generation
@@ -800,6 +810,17 @@ and opens `CrashActivity` in a separate process before terminating the failed
 process. It cannot see native crashes; those are recovered on the next launch
 through `ApplicationExitInfo`.
 
+**Every music track logs whether it loops.** `Music: playing <file> (loop)`
+or `(once)` when a track starts, and `Music: <file> finished, restarting` or
+`stopping` when it ends. A looping track that says `once` usually comes from a
+save. Saves record the current track's loop flag, and every save written
+between `f7f59eb` (5 June 2026) and `06d60cc` (8 October 2026) recorded `bgm`
+tracks as play-once. In that window `mp3Command` set the flag and then called
+`mp3stopCommand`, which cleared it. Loading such a save plays that one track
+once and then leaves silence. It heals itself the next time the script starts a
+track, so saves are deliberately not repaired. The task switch that seemed to
+trigger it was a coincidence.
+
 A Java `UnsatisfiedLinkError` on a `native` method usually means the whole
 library failed to load, not that the method is missing. The named method is
 simply the first JNI call attempted. Always read the `dlopen failed:` line above
@@ -844,6 +865,61 @@ For memory, `dumpsys meminfo <pid>` splits the app into `Native Heap` and
 nor compress. Compare it against the engine's own count of live GPU images
 before assuming the engine is what holds it — see the backlog entry, where those
 two numbers differ by a factor of three.
+
+#### Measuring a performance change
+
+A single reading proves nothing here. Two launches of one build in the same
+scene differ by up to ten points of CPU, and on the title screen by far more
+(see *The same idle scene costs anywhere from 48% to 113%* in the backlog). The
+protocol that produced the numbers in *Backlog → Performance*:
+
+- **One fixed scene.** Save slot 2 of the reference install is the Episode 5
+  prologue hallway: static background, Beatrice, a named-speaker dialogue box,
+  and rain falling outside the windows. It exercises the text window, the
+  retained rain scene and the click-wait cursor at once. Reach it the same way
+  every time (title → Start → Load → slot 2) and let it settle for 20 s; the
+  opening movie plays on some launches and not others, so drive the menus by
+  screenshot, not fixed delays — a mistimed tap lands on Exit.
+- **CPU from `/proc`, not the counter.** Read `utime+stime` (fields 14 and 15)
+  for the process and per thread before and after a 20 s window. The threads
+  that matter are `SDLThread` (the engine loop) and `mali-event-hand` (the
+  driver, which wakes per GPU submission). The counter's own CPU figure is a
+  0.5 s sample and swings too much to compare builds with.
+- **Memory every time.** `dumpsys meminfo` after each launch: `GL mtrack`,
+  `Native Heap`, `TOTAL PSS`. A change that saves CPU but grows `GL mtrack` is a
+  regression, not a win — one such change is recorded under *Rejected*.
+- **Two launches per variant, two windows per launch,** and the counter's FPS and
+  `low` from a screenshot at the end of each window. `low` is the single slowest
+  frame of the last 150 as a rate, not a 1% low, so it is noisy.
+- **Profile with call graphs**, then resolve the anonymous `libmain.so[+offset]`
+  frames, which are the `SDL3GPUCompat.cpp` internals, against the unstripped
+  binary's symbol table:
+
+  ```sh
+  adb shell simpleperf record --app org.umineko_project.onscripter_ru \
+    -e cpu-clock -f 1000 -g --duration 10 -o /data/local/tmp/p.data
+  adb shell simpleperf report -i /data/local/tmp/p.data --comms SDLThread \
+    --sort symbol -n --children --percent-limit 3
+  llvm-nm -C --defined-only -n DerivedData/Droid-aarch64/onscripter-new
+  ```
+
+  `llvm-symbolizer` returns `??` for most of them: there is no debug info, only
+  symbols. Find the nearest symbol at or below the offset in the `llvm-nm` list.
+- **Engine counters.** `--sdl3-gpu-telemetry` (or `ONS_SDL3_GPU_TELEMETRY=1`)
+  prints submission, fence and fallback counts — on exit only, and the teardown
+  abort can eat them. `ONS_MEMORY_TELEMETRY` logs every budget trim. The
+  frame-pacing counters in `Event.cpp` (`framePacingTelemetry`) are printed with
+  `printf`, which goes nowhere on Android; to read them on a device, emit them
+  periodically through `SDL_Log` — only `SDL_Log` reaches logcat, `sendToLog`
+  lands in `out.txt`.
+
+`usleep`, `nanosleep`, `clock_nanosleep` and the condition-variable wait the
+frame loop uses all wake equally late on the OnePlus Pad: median 0.13–0.20 ms,
+99th percentile 0.6–1.2 ms, worst 1–3 ms, for 2–15 ms waits (300 samples each,
+measured from a native test binary). They share the kernel's hrtimer path;
+lateness is timer slack plus wake-up latency, not the choice of call. The
+engine thread's slack is set to 1 ns at startup, and the pacing code pays back
+whatever lateness is left.
 
 ### The on-screen performance counter
 
@@ -910,14 +986,40 @@ everything else -- the `/proc` read and the pool walk, which are the parts with 
 real cost -- is sampled twice a second, and the panel texture is rebuilt four
 times a second rather than per frame.
 
-What is *not* cheap is a consequence of showing an overlay at all: while it is
+On Android the panel is not drawn by the engine. `PerfOverlayView` is an
+ordinary view added to SDL's `RelativeLayout` above the `SurfaceView`, pinned to
+the top-left of the window, and Android composites it. The engine still does all
+the sampling, classification and formatting; four times a second it copies the
+finished rows, the section colour, the frame budget and the frame history into a
+mutex-guarded struct, and the view reads them through three JNI calls on the UI
+thread:
+
+| Call | Returns |
+| --- | --- |
+| `nativePerfText` | The headline, four body rows and section label, newline separated; `null` while the counter is off |
+| `nativePerfSectionColor` | The section label's colour as `0xRRGGBB` |
+| `nativePerfFrames` | Fills the caller's history array oldest first and `target[0]` with the frame budget; returns the count |
+
+There is no Java-side switch. The view stays `GONE` while `nativePerfText`
+returns `null`, polling once a second to notice the counter coming on and four
+times a second while it is shown, and only while the window is visible. It is
+sized from the monospace advance, not the text, so it does not resize as the
+digits change, and it is neither clickable nor focusable, so touches fall through
+to the game. It is only created when `libmain` loaded, since its native methods
+live there.
+
+Two things follow from drawing it outside the engine. The panel sits in surface
+space, so on a letterboxed display it lands in the black band rather than on the
+artwork. And the engine no longer redraws the scene to keep a panel on top of
+it, so turning the counter on no longer changes the frame times it reports.
+Readings taken before this change include that redraw and are not comparable
+with readings taken after it.
+
+The desktop keeps the engine-drawn panel, and with it the cost: while it is
 visible the engine flushes the whole scene every frame, because something on
-screen is changing even when the game is idle. Attempts to measure that cost on
-the title screen were inconclusive -- two runs with the counter off gave 105-113
-per cent and 48-52 per cent CPU for the identical scene, so the run-to-run spread
-of the scene is larger than whatever the counter adds. Treat the absolute numbers
-as valid and comparisons against a counter-off run as unreliable, and prefer
-`top` or `simpleperf` when the question is what the game costs without it.
+screen is changing even when the game is idle. The drawing therefore exists
+twice, once in `drawFpsOverlay` and once in `PerfOverlayView.onDraw`, and a
+change to the panel's layout has to be made in both.
 
 ### Always force-stop between launches
 
@@ -1032,6 +1134,10 @@ and worth about a quarter of foreground CPU on its own. Removing the software
 path altogether means supplying native fragment shaders for the programs that
 lack them, which is real work but is what stops the CPU rendering at all.
 
+Not seen in novel-section profiles on 2026-10-17: none of these symbols
+appear there. The fallback is still in the code (`renderNativeIndexedTriangles`),
+so re-profile the title screen before treating this as fixed.
+
 **Graphics memory is ~370 MB and only a quarter of it is accounted for.** With
 the game idle on the title screen `dumpsys meminfo` reports 368 MB under
 `GL mtrack`, while the engine's own census of every live `GPU_Image` totals
@@ -1056,6 +1162,20 @@ which is why ColorOS logs `osense.compress ... cur ratio = 0` against this
 process every 20 s and reclaims nothing, and why the process is the first thing
 the low memory killer reaches for.
 
+It scales with surface pixels, and on a tablet it stops being a curiosity. A
+OnePlus Pad (2800x2000, 5.6 MP against the phone's 2.6 MP) idling on the title
+screen reached `VmRSS: 1040576 kB` -- almost exactly 1 GB, confirmed against
+`top` (`RES 0.9G`) and against the counter's own reading of 967 MB a moment
+earlier, so all three agree. `GPU` accounted for 239 MB of it. That leaves
+roughly 780 MB unattributed rather than the phone's 250-280, which is close to
+three times the gap for barely over twice the pixels, so it is not purely
+per-pixel. The swapchain hypothesis fits the shape of it: at 2800x2000x4 an
+image is 22 MB, and a triple-buffered chain plus the engine's own canvas and
+script targets at that size is a large multiple of the phone's.
+
+Worth measuring on the tablet before changing anything, since it is the device
+where the headroom actually runs out.
+
 **The same idle scene costs anywhere from 48% to 113% CPU between runs.**
 Measured while trying to establish what the performance counter itself costs.
 Two runs of the identical build, identical configuration and the identical title
@@ -1071,17 +1191,244 @@ this spread. And if the variance really is deferred loading, then something is
 either doing avoidable work or finishing at an unpredictable point, which is
 worth understanding on its own.
 
+The novel-section reference scene is far steadier. Two launches of one build
+read 95% and 104–105% of a core, so a ten-point spread between launches is the
+floor to beat there. *Measuring a performance change* describes the protocol.
+
 **Resume can stay black for several seconds.** Returning from another app, one
 observation showed ~6 s between `did enter foreground` and `Swapchain rebuilt
 after resume`. The rebuild happens on the first flip after resume, and an idle
 screen has nothing to flip. Single observation, and worth re-measuring now that a
 failed swapchain reclaim is retried rather than abandoned.
 
+**A game folder whose path contains spaces is truncated when it comes from
+`ons.cfg`.** Options in that file go through the same parser as argv, and the
+parser splits on whitespace, so a `root=` line naming a real folder produces a
+truncated path plus one bogus option per remaining word. Found on a tablet whose
+game lives in `.../Umineko When They Cry (Project Umineko)`:
+
+```
+Ignoring next attempt to redefine root path from .../Umineko When They Cry (Project Umineko)/
+                                             to .../Umineko!
+***[Warning] Command-Line Issue: unknown option --When ***
+***[Warning] Command-Line Issue: unknown option --They ***
+***[Warning] Command-Line Issue: unknown option --Cry ***
+```
+
+It is masked on Android rather than absent. `ONSActivity` passes `--root` on
+argv, argv is parsed first, and the engine refuses to redefine a root it already
+has -- so the truncated value loses and the game runs. Nothing arranged that:
+remove the argv route, or reach any other path-valued option this way, and the
+truncation stands. On desktop, where `ons.cfg` is the primary route, it would
+take effect directly.
+
+Quoting is the obvious fix, but note that fixing it turns a currently-ignored
+line into an effective one, which changes behaviour for anyone whose `ons.cfg`
+has been silently half-ignored until now.
+
+### Performance
+
+**Invariant: no optimisation may change what is visible, on any platform.** Each
+item below says whether it can be made pixel-identical and how to prove it. Treat
+"looks the same" as insufficient: compare screenshots of the reference scene, and
+of a moving one, before and after.
+
+Measurements are from the OnePlus Pad (MediaTek mt6983, Mali, 2800x2000 surface,
+1920x1080 canvas) in the reference scene described under *Measuring a
+performance change*, taken 2026-10-17. Percentages are of one core.
+
+**Where the time goes now.** Since each frame's drawing shares one command buffer
+(below), the reference scene runs at 72–73% of a core in total. Of that,
+`SDLThread` is 34–35% and the driver thread 6–7%. `GL mtrack` is 490–524 MB and
+total PSS is 816–829 MB, all at a steady 60 fps (two launches).
+
+The breakdown below was taken just before that change, at 92–107% of a core. Its
+proportions still say where the remaining time goes, less the submission cost
+that change removed:
+
+| Thread | Share | What it is |
+|---|---|---|
+| `SDLThread` | 45–47% | the engine loop |
+| `mali-event-hand` | 16–19% | the GPU driver, waking for every submission |
+| `AudioTrack` | ~10% | Android's audio callback thread |
+| Java main, binder, others | the rest | UI, the counter view, surface queueing |
+
+Inside `SDLThread` (inclusive), almost nothing is the engine's own logic, about 2%
+(`advanceAIclocks`, `nextAnimationUpdateNanos`). The rest is the cost of talking
+to the driver:
+
+| Call | Share of `SDLThread` |
+|---|---|
+| `submitGPUCommandBuffer` → `vkQueueSubmit` | 37% |
+| `GPU_Flip` (`vkQueuePresentKHR` 17%, mostly `Surface::queueBuffer` 14%) | 32% |
+| `tryRetainedRainScene` / `ObjectFallLayer::renderDrops` | 20% |
+| `GPU_ClearRGBA`, mostly the flush it forces | 17% |
+| `refreshHudTo` (the dialogue box) | 13% |
+| `SDL_AcquireGPUCommandBuffer` | 12% |
+
+`__ioctl` alone is 17% self time. The engine is not short of CPU for its own
+work. It is paying a fixed driver cost per command buffer, many times a frame.
+
+**Drawing shares one command buffer per frame; passes do not yet share render
+passes.** Blit batches, triangle batches, clears, solid rects, texture copies and
+mipmaps record into one shared command buffer (`acquireCommandBuffer` in
+`SDL3GPUCompat.cpp`). The frame loop submits it once drawing is done
+(`GPU_SubmitFrame`, before the frame's wait). The present keeps its own buffer in
+`GPU_Flip`, because acquiring a swapchain image makes a whole buffer wait for it.
+Uploads and readbacks still submit at once, behind whatever was recorded first,
+so ordering and staging memory are unchanged. A frame is about two submissions;
+on Windows it went from 6.64 command buffers a frame to 1.95.
+
+Three things this design depends on, learned the hard way:
+
+- **Submit before the frame's wait, not at the flip.** Holding the drawing until
+  `GPU_Flip` left the GPU idle through the wait. Two frames later the swapchain
+  image was still busy, and the non-blocking acquire dropped frames.
+- **The periodic drain must count passes, not command buffers.** The full GPU
+  drain every 64 units in `throttleGPUSubmissionBacklog` is what bounds the
+  memory SDL retains. Counted in command buffers, 64 became about thirty frames
+  of work instead of ten, and `GL mtrack` rose from about 600 MB to 865–920 MB.
+  Each submit now counts the passes it carries.
+- **A failed pass must not cancel the shared buffer,** which would discard every
+  pass recorded before it (`abandonCommandBuffer`).
+
+What remains: every batch is still its own render pass. On a tiled GPU, each one
+loads and stores its whole target, about 8 MB each way for the 1920x1080 HUD. A
+batch ends on any change of target, pipeline (blend mode, blending on or off,
+blit or triangle program), viewport or scissor, and on every `GPU_ClearRGBA`,
+`GPU_FreeImage` or shader activation. Pipeline changes are legal inside one
+render pass; only a target change needs a new pass. Keeping consecutive batches
+to the same target in one render pass is the next step on this path, and it is
+pixel-identical by construction, since the same draws happen in the same order.
+
+**The rain is drawn over the whole screen and then mostly covered.** In scenes
+with a retained rain layer, such as the reference hallway where rain falls outside
+the windows, `tryRetainedRainScene` (`Image.cpp`) caches everything behind the
+rain in one full-canvas band and everything in front in another. Each frame:
+
+1. It blits the back band.
+2. It draws every drop as one triangle batch, clipped only to the screen
+   (`ObjectFallLayer::renderDrops`).
+3. It blits the front band on top.
+
+The windows cover under 10% of the screen, so over 90% of the drops are drawn and
+then hidden. The three steps share the frame's command buffer, but each is its
+own render pass, because a blit and a triangle batch are different pipelines.
+So each loads and stores the full canvas. The drops themselves are cheap
+(`renderDrops` self time 1.4%); the three full-canvas passes are not.
+
+Two improvements, both pixel-identical:
+
+- **Clip drops to where they can be seen.** When the front band is built, compute
+  the bounding box of its pixels with alpha below 255. That is the only region
+  where the rain can show. Use it as the drop clip. Drops outside it sit under
+  fully opaque pixels and contribute nothing, so skipping them changes no pixel.
+  The rain blends additively under a normal-blended front band, so this holds
+  exactly. Prove it with a screenshot diff of the hallway scene, and recompute the
+  box whenever the band is rebuilt.
+- **Keep the three steps in one render pass.** This follows from keeping
+  same-target batches in one render pass, above.
+
+Drawing the rain at a lower rate than the scene would also save work, but it
+changes the motion, so it breaks the invariant. Not an option.
+
+**The HUD is rebuilt every frame because of the click-wait cursor.** With the
+dialogue static, only the cursor animates, but it lives on the HUD target. So
+`refreshHudTo` clears the HUD and redraws the text window and glyphs every frame.
+If the HUD dirty rect stayed limited to the cursor, `refreshHudTo` would return
+early or redraw only that rectangle (`Image.cpp`, the early return on an empty HUD
+dirty rect). The forced per-frame clip in `Event.cpp`, marked as a safety net, is
+what defeats it. Pixel-identical if the dirty rect is right; the risk is the
+effects that touch the HUD (quakes, fades, wipes, text box growth), so it needs a
+regression pass over them.
+
+**Each flip clears the whole screen target, and the HUD is cleared each frame.**
+`clearWholeTarget(screen_target)` after every `GPU_Flip`, and the HUD clear in
+`refreshHudTo`, each cost a submission, and each forces the pending batch out
+first. That is most of `GPU_ClearRGBA`'s 17%. A deferred clear avoids the
+submission while keeping the result: mark the target as pending a clear and use
+`LOADOP_CLEAR` on its next render pass. Any readback, upload or sample of the
+target must apply the pending clear first. Pixel-identical if those paths are all
+covered.
+
+**Presenting costs about a third of the engine thread.** `GPU_Flip` blits the
+1920x1080 canvas up to the 2800x2000 swapchain, then `vkQueuePresentKHR` spends
+most of its time in `Surface::queueBuffer`. A smaller swapchain, scaled by the
+display hardware, would remove the upscale blit. But the hardware scaler's
+filtering is not the engine's, so this changes pixels. It breaks the invariant
+unless the result can be shown identical, and it almost certainly cannot.
+Recorded so nobody tries it without knowing.
+
+**Audio runs in low-latency mode for no benefit, costing about 11% of a core.**
+*Low priority.* The engine fixes above are worth far more, and this one needs an
+audio/video timing check before it can ship.
+
+Nobody chose this mode. It is SDL's default: since SDL 3.2 the AAudio backend
+calls `AAudioStreamBuilder_setPerformanceMode(LOW_LATENCY)` unless the hint
+`SDL_ANDROID_LOW_LATENCY_AUDIO` is `0` (`SDL_aaudio.c`). The engine sets no audio
+hint at all.
+
+On the OnePlus Pad it buys nothing:
+
+- `dumpsys media.audio_flinger` shows the game's track as `F1`, a fast-mixer
+  track (mixer period 5.33 ms).
+- It is not on AAudio's MMAP path: `dumpsys media.aaudio` lists no streams.
+- The track still reports 82.7 ms of latency. SDL's buffer is a fixed 20 ms per
+  callback with 40 ms capacity whatever the mode, and that dominates.
+- Meanwhile the `AudioTrack` thread wakes about 680 times a second (once every
+  1.5 ms, about thirty times per SDL callback) for about 11% of a core. SDL's
+  mixer thread uses under 1% at 62 wake-ups a second.
+
+Turning it off changes no pixel. It can, however, change what is visible in
+video: `AudioBridge::playbackTimeNanos` starts the video clock when the mixer
+first pulls the video's audio, not when it is heard, so pictures already run
+about one output latency (83 ms) ahead of their sound. If the normal path's
+latency is larger, video runs further ahead.
+
+Do it as a measured experiment. Set the hint before audio opens, then compare
+the `AudioTrack` CPU and wake-ups and the reported track latency against the
+numbers above. If the latency holds, ship it. If it grows, either keep low
+latency, or have video sync subtract the measured output latency, which also
+removes today's 83 ms offset but changes video timing and needs sign-off.
+Android-only.
+
+**Holding exactly 60 fps costs the tablet extra CPU.** The pacing change (pay
+back each frame's lateness) took the counter from 58–59 to a steady 60.0 fps.
+On its own it raised `SDLThread` from 48–57% to 72–74% and the driver thread
+from 19–20% to 31–32%; with the batching change the combined cost returns to the
+old level.
+
+The extra cost is in the render and present work, not the wait loop. Frame-pacing
+telemetry shows fewer polls and fewer sleeps per frame with the change (0.72 and
+0.71 against 0.98 and 0.98), with the same wait-loop CPU (79 µs against 81 µs);
+foreground and tail CPU rose by about 28% each. The reading is that locking the
+present to the display cadence lands it on the compositor's deadline, where the
+GPU path costs more, while the old 58.5 fps drifted through all phases. On
+Windows the same change makes every build cheaper (120.0 fps at 120 Hz, less CPU).
+Every item above that cuts GPU work also cuts this cost.
+
+**Rejected, with numbers, so nobody retries them blind:**
+
+- **Waiting on the oldest submission fence instead of draining the GPU.** The
+  periodic wait in `throttleGPUSubmissionBacklog` drains the GPU fully every 64
+  command buffers, because the fence it waits on was taken on the buffer just
+  submitted. Waiting only while the GPU was really 64 buffers behind saved no CPU
+  and grew `GL mtrack` from about 580 MB to about 1130 MB. SDL keeps finished
+  command buffers until it is caught up, and allocates fresh ones meanwhile.
+  `SDL_AcquireGPUCommandBuffer` stayed at 12% either way. If the drain is ever
+  revisited, measure `GL mtrack` first.
+- **FusionHUD as the performance counter** (2026-10-16): vendored, trialled and
+  reverted on taste. It cannot fill its frame-time lows without a tick from the
+  engine per presented frame, which conflicts with the counter belonging to the
+  app.
+
 ### Features
 
-**The performance counter forces a full scene flush every frame it is visible.**
-`waitEvent` recomposites the whole scene whenever `fps_overlay_visible` is set
-and `screenChanged` is false, so an otherwise idle screen is redrawn at the frame
+**The desktop performance counter forces a full scene flush every frame it is
+visible.** Android no longer does, because there the panel is a view (see
+[the counter](#the-on-screen-performance-counter)). On the desktop `waitEvent`
+still recomposites the whole scene whenever `fps_overlay_visible` is set and
+`screenChanged` is false, so an otherwise idle screen is redrawn at the frame
 rate purely to keep the panel on top of it. That is pre-existing behaviour of the
 old fps overlay, inherited by the counter.
 

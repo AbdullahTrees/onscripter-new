@@ -38,6 +38,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <mutex>
 #include <numeric>
 #include <string>
 #include <thread>
@@ -123,8 +124,11 @@ const uint64_t PERF_SECTION_HOLD_NS{600ULL * NANOS_PER_MILLISECOND};
 #if defined(DROID)
 // Android republishes the context every frame for its input layer.
 constexpr bool ONS_DROID_PUBLISHES_INPUT_CONTEXT{true};
+// Android draws the panel as a view above the surface; see PerfOverlayView.java.
+constexpr bool PERF_OVERLAY_DRAWN_BY_ENGINE{false};
 #else
 constexpr bool ONS_DROID_PUBLISHES_INPUT_CONTEXT{false};
+constexpr bool PERF_OVERLAY_DRAWN_BY_ENGINE{true};
 #endif
 
 struct PerfOverlayState {
@@ -175,6 +179,33 @@ struct PerfOverlayState {
 };
 
 static PerfOverlayState perfOverlay;
+
+#if defined(DROID)
+/**
+ * What the Java panel draws, copied out under a lock.
+ *
+ * The panel is a view on the UI thread, so its contents cross a thread boundary.
+ * They are rebuilt four times a second and read at about the same rate, so a
+ * plain mutex around a copy costs nothing measurable and beats reasoning about a
+ * torn std::string.
+ *
+ * Only finished output is published. The classification and the formatting stay
+ * here; Java does not reimplement either.
+ */
+struct PerfPublished {
+	std::mutex lock;
+	// Cleared when the panel is toggled off, which is how the view knows to hide.
+	bool visible{false};
+	// The headline, then one line per body row, then the section label.
+	std::array<std::string, PERF_BODY_LINES + 2> lines;
+	uint32_t sectionColor{0xffffff};
+	float targetMs{0.0f};
+	std::array<float, PERF_HISTORY_SAMPLES> frameMs{};
+	size_t frameCount{0};
+};
+
+static PerfPublished perfPublished;
+#endif
 
 /**
  * Process CPU time consumed so far, in nanoseconds, or 0 where the platform
@@ -412,6 +443,8 @@ extern "C" void waveCallback(int channel) {
 void ONScripter::flushEventSub(SDL_Event &event) {
 	//event related to streaming media
 	if (event.user.code == ONS_MUSIC_EVENT && event.type == SDL_USEREVENT) {
+		sendToLog(LogLevel::Info, "Music: %s finished, %s\n", music_file_name ? music_file_name : "track",
+		          music_play_loop_flag || (cd_play_loop_flag && !cdaudio_flag) ? "restarting" : "stopping");
 		if (music_play_loop_flag ||
 		    (cd_play_loop_flag && !cdaudio_flag)) {
 			stopBGM(true);
@@ -665,6 +698,15 @@ void ONScripter::toggleFpsOverlay() {
 	if (fps_overlay_text.empty())
 		fps_overlay_text = "FPS --.-";
 
+#if defined(DROID)
+	// Turning it on needs nothing here: the next panel update publishes. Turning
+	// it off stops those updates, so the view has to be told directly.
+	if (!fps_overlay_visible) {
+		std::lock_guard<std::mutex> guard(perfPublished.lock);
+		perfPublished.visible = false;
+	}
+#endif
+
 	sendToLog(LogLevel::Info, "turned %s FPS overlay\n", fps_overlay_visible ? "on" : "off");
 }
 
@@ -793,6 +835,26 @@ void ONScripter::updateFpsCounter(double averageFrameMs, double lastFrameMs) {
 	perfOverlay.bodyLines[3] = buffer;
 
 	fps_overlay_dirty = true;
+
+#if defined(DROID)
+	// Hand the Java panel everything it draws, on the cadence the engine-side
+	// texture would have been rebuilt at.
+	{
+		std::lock_guard<std::mutex> guard(perfPublished.lock);
+		perfPublished.visible  = true;
+		perfPublished.lines[0] = fps_overlay_text;
+		for (size_t i = 0; i < PERF_BODY_LINES; ++i)
+			perfPublished.lines[i + 1] = perfOverlay.bodyLines[i];
+		perfPublished.lines[PERF_BODY_LINES + 1] = perfOverlay.sectionLabel;
+		perfPublished.sectionColor = (static_cast<uint32_t>(perfOverlay.sectionColor.x) << 16) |
+		                             (static_cast<uint32_t>(perfOverlay.sectionColor.y) << 8) |
+		                             static_cast<uint32_t>(perfOverlay.sectionColor.z);
+		perfPublished.targetMs   = static_cast<float>(targetMs);
+		perfPublished.frameCount = perfOverlay.filled();
+		for (size_t i = 0; i < perfPublished.frameCount; ++i)
+			perfPublished.frameMs[i] = perfOverlay.sampleAt(i);
+	}
+#endif
 }
 
 void ONScripter::printFramePacingTelemetry() const {
@@ -1261,7 +1323,12 @@ void ONScripter::waitEvent(int count, bool nopPreferred, const std::function<boo
 		}
 
 		if (allow_rendering && !save_load_overlay_active && !(skip_mode & SKIP_SUPERSKIP) && !deferredLoadingEnabled) {
-			if ((fps_overlay_visible || fps_overlay_refresh_required) && !screenChanged) {
+			// A panel drawn into the scene changes it every frame, so the whole scene
+			// is redrawn under it -- and that redraw is in the frame times the panel
+			// reports. Where the panel is an Android view composited above the
+			// surface, a visible counter is no reason to redraw anything.
+			if (((PERF_OVERLAY_DRAWN_BY_ENGINE && fps_overlay_visible) || fps_overlay_refresh_required) &&
+			    !screenChanged) {
 				RenderRect fullRect = full_script_clip;
 				flushDirect(fullRect, fullRect, refreshMode() | CONSTANT_REFRESH_MODE | REFRESH_BEFORESCENE_MODE);
 			}
@@ -1272,9 +1339,12 @@ void ONScripter::waitEvent(int count, bool nopPreferred, const std::function<boo
 				gpu.copyGPUImage(cursor_gpu, nullptr, nullptr, screen_target, x, y);
 			}
 
-			drawFpsOverlay();
+			if (PERF_OVERLAY_DRAWN_BY_ENGINE)
+				drawFpsOverlay();
 
-			GPU_FlushBlitBuffer();
+			// Drawing is done: let the GPU work through the wait below rather
+			// than receive the whole frame at the flip.
+			GPU_SubmitFrame();
 		}
 
 		if (cursorAutoHide && cursorVisible && ticksNow - lastCursorMove >= 5000) {
@@ -1294,16 +1364,12 @@ void ONScripter::waitEvent(int count, bool nopPreferred, const std::function<boo
 				break;
 			uint64_t ticksNowNanos = highResolutionTicksNanos();
 			uint64_t frameElapsed  = ticksNowNanos - lastFlipTimeNanos;
-			if (frameElapsed >= waitThisFrame) {
-				if (frameElapsed > targetThisFrame) {
-					accumulatedOvershootNanos += frameElapsed - targetThisFrame;
-					if (collectFramePacingTelemetry) {
-						++framePacingTelemetry.overshootFrames;
-						framePacingTelemetry.overshootNanos += frameElapsed - targetThisFrame;
-					}
-				}
+			// Lateness is charged once the whole frame is out, below. Charging
+			// it here only caught a wake-up later than the tail estimate, so a
+			// wake-up a fraction of a millisecond late -- the usual case -- was
+			// never paid back and every frame ran that much long.
+			if (frameElapsed >= waitThisFrame)
 				break;
-			}
 			// We don't want to be precise in SSKIP mode
 			if (skip_mode & SKIP_SUPERSKIP)
 				break;
@@ -1371,6 +1437,24 @@ void ONScripter::waitEvent(int count, bool nopPreferred, const std::function<boo
 			++framePacingTelemetry.frames;
 			framePacingTelemetry.totalFrameNanos += frameNanos;
 			framePacingTelemetry.maxFrameNanos = std::max(framePacingTelemetry.maxFrameNanos, frameNanos);
+		}
+
+		// Whatever this frame ran over its target -- a late wake-up, or a tail
+		// longer than the estimate -- comes off the next deadline, so the frames
+		// average out at the requested rate. Capped at one frame: this is for
+		// jitter, and a genuine stall such as a scene load should not be paid
+		// back by advancing the game in jumps afterwards. Not in superskip,
+		// which does not wait at all and would only pile up debt.
+		if (!(skip_mode & SKIP_SUPERSKIP) && frameEndNanos >= lastFlipTimeNanos) {
+			const uint64_t elapsed = frameEndNanos - lastFlipTimeNanos;
+			if (elapsed > targetThisFrame) {
+				const uint64_t late = std::min(elapsed - targetThisFrame, timeThisFrame);
+				accumulatedOvershootNanos += late;
+				if (collectFramePacingTelemetry) {
+					++framePacingTelemetry.overshootFrames;
+					framePacingTelemetry.overshootNanos += late;
+				}
+			}
 		}
 
 		if ((show_fps_counter || fps_overlay_visible) && !(skip_mode & SKIP_SUPERSKIP) && frameNanos > 0) {
@@ -1560,6 +1644,53 @@ int ONScripter::currentInputContext() const {
 extern "C" JNIEXPORT jint JNICALL
 Java_org_umineko_1project_onscripter_1ru_TouchInput_nativeInputContext(JNIEnv *, jclass) {
 	return static_cast<jint>(ons.publishedInputContext());
+}
+
+/**
+ * The performance panel's text, newline separated: the headline, the body rows
+ * and the section label. Read by PerfOverlayView on the UI thread.
+ *
+ * Null while the counter is off, which is how the view decides whether to show
+ * itself at all -- there is no second switch to keep in step.
+ */
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_umineko_1project_onscripter_1ru_PerfOverlayView_nativePerfText(JNIEnv *env, jclass) {
+	std::string text;
+	{
+		std::lock_guard<std::mutex> guard(perfPublished.lock);
+		if (!perfPublished.visible)
+			return nullptr;
+		for (const auto &line : perfPublished.lines) {
+			if (!text.empty())
+				text += '\n';
+			text += line;
+		}
+	}
+	return env->NewStringUTF(text.c_str());
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_org_umineko_1project_onscripter_1ru_PerfOverlayView_nativePerfSectionColor(JNIEnv *, jclass) {
+	std::lock_guard<std::mutex> guard(perfPublished.lock);
+	return static_cast<jint>(perfPublished.sectionColor);
+}
+
+/**
+ * Copies the frame history into the caller's array, oldest first, and the frame
+ * budget into target[0]. Returns how many history entries are real. Both arrays
+ * are allocated once on the Java side.
+ */
+extern "C" JNIEXPORT jint JNICALL
+Java_org_umineko_1project_onscripter_1ru_PerfOverlayView_nativePerfFrames(JNIEnv *env, jclass,
+                                                                          jfloatArray frames,
+                                                                          jfloatArray target) {
+	std::lock_guard<std::mutex> guard(perfPublished.lock);
+	const jsize count = std::min(static_cast<jsize>(perfPublished.frameCount), env->GetArrayLength(frames));
+	if (count > 0)
+		env->SetFloatArrayRegion(frames, 0, count, perfPublished.frameMs.data());
+	if (env->GetArrayLength(target) > 0)
+		env->SetFloatArrayRegion(target, 0, 1, &perfPublished.targetMs);
+	return count;
 }
 #endif
 

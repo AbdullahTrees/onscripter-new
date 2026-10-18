@@ -339,6 +339,16 @@ Uint64 commandBuffersSinceSubmissionFence{0};
 // Completed-fence polling alone does not force every backend to release its
 // deferred command/upload allocations. Track actual waits independently.
 Uint64 commandBuffersSinceSubmissionWait{0};
+// Blits, clears, copies and uploads record into one command buffer per frame,
+// submitted by GPU_Flip, rather than one each. Every submit costs a
+// vkQueueSubmit and a driver wakeup, and that fixed cost dominated the engine
+// thread on Android. Only the thread that created the renderer shares it.
+SDL_GPUCommandBuffer *frameCommands{nullptr};
+Uint32 frameCommandPasses{0};
+SDL_ThreadID rendererThread{0};
+// Submit early past this many passes, so a stretch with no flip -- loading, or
+// building a cache -- cannot pile up work and the memory it holds.
+constexpr Uint32 maxDeferredPasses = 32;
 int nextUniformLocation{1};
 #if defined(ONS_USE_SDL3_SHADERCROSS)
 bool shaderCrossInitialized{false};
@@ -499,12 +509,12 @@ void throttleGPUSubmissionBacklog() {
 	reapCompletedSubmissionFences();
 }
 
-bool submitGPUCommandBuffer(SDL_GPUCommandBuffer *commands) {
+bool submitGPUCommandBuffer(SDL_GPUCommandBuffer *commands, Uint64 work = 1) {
 	const Uint64 maxQueuedCommandBuffers = maxQueuedCommandBuffersBeforeWait();
 	const Uint64 fenceInterval = maxQueuedCommandBuffers == 0 ? 0 : submissionFenceInterval(maxQueuedCommandBuffers);
 	const bool acquireFence = fenceInterval != 0 &&
-	                          (commandBuffersSinceSubmissionFence + 1 >= fenceInterval ||
-	                           commandBuffersSinceSubmissionWait + 1 >= maxQueuedCommandBuffers);
+	                          (commandBuffersSinceSubmissionFence + work >= fenceInterval ||
+	                           commandBuffersSinceSubmissionWait + work >= maxQueuedCommandBuffers);
 
 	SDL_GPUFence *fence = nullptr;
 	if (acquireFence) {
@@ -517,9 +527,9 @@ bool submitGPUCommandBuffer(SDL_GPUCommandBuffer *commands) {
 
 	noteCommandBufferSubmitted();
 	if (maxQueuedCommandBuffers != 0) {
-		++unretiredCommandBuffers;
-		++commandBuffersSinceSubmissionFence;
-		++commandBuffersSinceSubmissionWait;
+		unretiredCommandBuffers += work;
+		commandBuffersSinceSubmissionFence += work;
+		commandBuffersSinceSubmissionWait += work;
 		if (fence) {
 			submissionFences.push_back({fence, commandBuffersSinceSubmissionFence});
 			commandBuffersSinceSubmissionFence = 0;
@@ -534,19 +544,70 @@ bool submitGPUCommandBuffer(SDL_GPUCommandBuffer *commands) {
 	return true;
 }
 
-SDL_GPUFence *submitGPUCommandBufferAndAcquireFence(SDL_GPUCommandBuffer *commands) {
+SDL_GPUFence *submitGPUCommandBufferAndAcquireFence(SDL_GPUCommandBuffer *commands, Uint64 work = 1) {
 	SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
 	if (fence) {
 		noteCommandBufferSubmitted();
 		if (maxQueuedCommandBuffersBeforeWait() != 0) {
-			++unretiredCommandBuffers;
-			++commandBuffersSinceSubmissionFence;
-			++commandBuffersSinceSubmissionWait;
+			unretiredCommandBuffers += work;
+			commandBuffersSinceSubmissionFence += work;
+			commandBuffersSinceSubmissionWait += work;
 			noteSubmissionBacklog();
 			throttleGPUSubmissionBacklog();
 		}
 	}
 	return fence;
+}
+
+// The command buffer for the next pass: the frame's shared one on the renderer
+// thread, a private one anywhere else. Pair it with finishCommandBuffer,
+// abandonCommandBuffer or submitCommandBufferAndAcquireFence.
+SDL_GPUCommandBuffer *acquireCommandBuffer() {
+	if (SDL_GetCurrentThreadID() != rendererThread)
+		return SDL_AcquireGPUCommandBuffer(rendererState.device);
+	if (!frameCommands)
+		frameCommands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	return frameCommands;
+}
+
+bool submitFrameCommandBuffer() {
+	if (!frameCommands)
+		return true;
+	SDL_GPUCommandBuffer *commands = frameCommands;
+	const Uint64 work  = std::max<Uint32>(1, frameCommandPasses);
+	frameCommands      = nullptr;
+	frameCommandPasses = 0;
+	return submitGPUCommandBuffer(commands, work);
+}
+
+// A recorded pass is complete. A private buffer is submitted now; the shared
+// one waits for the flip, unless it has grown past the cap.
+bool finishCommandBuffer(SDL_GPUCommandBuffer *commands) {
+	if (commands != frameCommands)
+		return submitGPUCommandBuffer(commands);
+	if (++frameCommandPasses >= maxDeferredPasses)
+		return submitFrameCommandBuffer();
+	return true;
+}
+
+// A pass failed to start. Cancelling the shared buffer would discard every pass
+// recorded before this one, so only a private buffer is cancelled; the failed
+// pass recorded nothing that draws.
+void abandonCommandBuffer(SDL_GPUCommandBuffer *commands) {
+	if (commands != frameCommands)
+		SDL_CancelGPUCommandBuffer(commands);
+}
+
+// For a readback: everything recorded so far has to run before the copy, so
+// the shared buffer is submitted with it.
+SDL_GPUFence *submitCommandBufferAndAcquireFence(SDL_GPUCommandBuffer *commands) {
+	Uint64 work = 1;
+	if (commands == frameCommands) {
+		work               = std::max<Uint32>(1, frameCommandPasses);
+		frameCommands      = nullptr;
+		frameCommandPasses = 0;
+	}
+	return submitGPUCommandBufferAndAcquireFence(commands, work);
 }
 
 std::string normalizedTelemetrySource(const char *source) {
@@ -2342,7 +2403,7 @@ bool clearImageTexture(GPU_Image *image, SDL_Color color = SDL_Color{0, 0, 0, 0}
 	if (!ensureWritableImageTexture(image, false))
 		return false;
 
-	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
 	if (!commands)
 		return false;
 
@@ -2358,12 +2419,12 @@ bool clearImageTexture(GPU_Image *image, SDL_Color color = SDL_Color{0, 0, 0, 0}
 
 	SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(commands, &colorTarget, 1, nullptr);
 	if (!renderPass) {
-		SDL_CancelGPUCommandBuffer(commands);
+		abandonCommandBuffer(commands);
 		return false;
 	}
 
 	SDL_EndGPURenderPass(renderPass);
-	const bool submitted = submitGPUCommandBuffer(commands);
+	const bool submitted = finishCommandBuffer(commands);
 	if (submitted) {
 		image->texture_initialized = true;
 		image->pixels_dirty        = false;
@@ -2524,7 +2585,7 @@ bool uploadImageRows(GPU_Image *image,
 		}
 		SDL_UnmapGPUTransferBuffer(rendererState.device, textureUploadBuffer.transfer);
 
-		SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+		SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
 		if (!commands)
 			return false;
 
@@ -2544,7 +2605,14 @@ bool uploadImageRows(GPU_Image *image,
 
 		SDL_UploadToGPUTexture(copyPass, &source, &destination, cycleTexture && firstRow == 0);
 		SDL_EndGPUCopyPass(copyPass);
-		if (!submitGPUCommandBuffer(commands))
+		// Uploads are submitted at once, as they always were. Every one reuses a
+		// staging buffer that only grows, and SDL cycles it while a recorded
+		// copy still reads it, so holding uploads for the flip could keep many
+		// multi-megabyte copies alive. The upload still goes through the shared
+		// buffer, which submits it after the passes recorded before it.
+		const bool submitted = commands == frameCommands ? submitFrameCommandBuffer() :
+		                                                   submitGPUCommandBuffer(commands);
+		if (!submitted)
 			return false;
 		noteTextureUpload(uploadPitch * count, telemetrySource);
 		image->pixels_dirty        = firstRow + count < static_cast<Uint32>(bounds.h);
@@ -2648,7 +2716,7 @@ bool downloadImage(GPU_Image *image, const char *telemetrySource = "ensure_pixel
 	if (!ensureReusableTransferBuffer(textureDownloadBuffer, SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, downloadSize))
 		return false;
 
-	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
 	if (!commands)
 		return false;
 
@@ -2666,7 +2734,7 @@ bool downloadImage(GPU_Image *image, const char *telemetrySource = "ensure_pixel
 	SDL_DownloadFromGPUTexture(copyPass, &source, &destination);
 	SDL_EndGPUCopyPass(copyPass);
 
-	SDL_GPUFence *fence = submitGPUCommandBufferAndAcquireFence(commands);
+	SDL_GPUFence *fence = submitCommandBufferAndAcquireFence(commands);
 	if (!fence)
 		return false;
 
@@ -2949,7 +3017,7 @@ bool copyTextureBaseLevel(SDL_GPUTexture *sourceTexture, SDL_GPUTexture *destina
 	if (!sourceTexture || !destinationTexture || !rendererState.device)
 		return false;
 
-	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
 	if (!commands)
 		return false;
 
@@ -2960,7 +3028,7 @@ bool copyTextureBaseLevel(SDL_GPUTexture *sourceTexture, SDL_GPUTexture *destina
 	destination.texture = destinationTexture;
 	SDL_CopyGPUTextureToTexture(copyPass, &source, &destination, width, height, 1, true);
 	SDL_EndGPUCopyPass(copyPass);
-	return submitGPUCommandBuffer(commands);
+	return finishCommandBuffer(commands);
 }
 
 bool ensureWritableImageTexture(GPU_Image *image, bool preserve) {
@@ -4043,7 +4111,7 @@ bool nativeSolidRect(GPU_Target *target, const SDL_Rect &bounds, SDL_Color color
 		return false;
 	}
 
-	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
 	if (!commands)
 		return false;
 
@@ -4059,7 +4127,7 @@ bool nativeSolidRect(GPU_Target *target, const SDL_Rect &bounds, SDL_Color color
 
 	SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(commands, &colorTarget, 1, nullptr);
 	if (!renderPass) {
-		SDL_CancelGPUCommandBuffer(commands);
+		abandonCommandBuffer(commands);
 		return false;
 	}
 
@@ -4102,7 +4170,7 @@ bool nativeSolidRect(GPU_Target *target, const SDL_Rect &bounds, SDL_Color color
 	SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(sizeof(indices) / sizeof(indices[0])), 1, 0, 0, 0);
 	SDL_EndGPURenderPass(renderPass);
 
-	const bool submitted = submitGPUCommandBuffer(commands);
+	const bool submitted = finishCommandBuffer(commands);
 	if (submitted) {
 		noteNativeFixedDraw(vertices.size());
 		target->image->pixels_dirty        = true;
@@ -4394,7 +4462,7 @@ bool flushNativeTriangleBatch() {
 		return false;
 	}
 
-	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
 	if (!commands) {
 		resetNativeTriangleBatch();
 		return false;
@@ -4412,7 +4480,7 @@ bool flushNativeTriangleBatch() {
 
 	SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(commands, &colorTarget, 1, nullptr);
 	if (!renderPass) {
-		SDL_CancelGPUCommandBuffer(commands);
+		abandonCommandBuffer(commands);
 		resetNativeTriangleBatch();
 		return false;
 	}
@@ -4459,7 +4527,7 @@ bool flushNativeTriangleBatch() {
 	SDL_SetGPUScissor(renderPass, &nativeTriangleBatch.scissor);
 	SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(nativeTriangleBatch.indices.size()), 1, 0, 0, 0);
 	SDL_EndGPURenderPass(renderPass);
-	const bool submitted = submitGPUCommandBuffer(commands);
+	const bool submitted = finishCommandBuffer(commands);
 
 	if (submitted) {
 		if (nativeTriangleBatch.nativeShaderProgram) {
@@ -4606,7 +4674,7 @@ bool flushNativeBlitBatchOnly() {
 		return false;
 	}
 
-	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
 	if (!commands) {
 		resetNativeBlitBatch();
 		return false;
@@ -4624,7 +4692,7 @@ bool flushNativeBlitBatchOnly() {
 
 	SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(commands, &colorTarget, 1, nullptr);
 	if (!renderPass) {
-		SDL_CancelGPUCommandBuffer(commands);
+		abandonCommandBuffer(commands);
 		resetNativeBlitBatch();
 		return false;
 	}
@@ -4663,7 +4731,7 @@ bool flushNativeBlitBatchOnly() {
 		SDL_DrawGPUIndexedPrimitives(renderPass, group.indexCount, 1, group.firstIndex, 0, 0);
 	}
 	SDL_EndGPURenderPass(renderPass);
-	const bool submitted = submitGPUCommandBuffer(commands);
+	const bool submitted = finishCommandBuffer(commands);
 
 	if (submitted) {
 		for (const auto &group : nativeBlitBatch.drawGroups)
@@ -4907,15 +4975,26 @@ bool nativeBlit(GPU_Image *image, GPU_Rect *src_rect, GPU_Target *target, float 
 		float clippedV0 = v0;
 		float clippedU1 = u1;
 		float clippedV1 = v1;
+		SDL_Rect batchScissor = scissor;
 		if (scaleX > 0.0f && scaleY > 0.0f) {
 			if (!clipAxisAlignedBlitToScissor(clippedX0, clippedY0, clippedX1, clippedY1,
 			                                  clippedU0, clippedV0, clippedU1, clippedV1, scissor))
 				return true;
+			// The quad now lies inside the scissor already, so the GPU scissor
+			// cuts nothing -- but it is part of the batch key, and a clipped
+			// blit sequence (the text window draws 9 or 21 slices, each with
+			// its own clip) would otherwise cost a command buffer and a full
+			// load/store render pass per slice. Only where vertex space is
+			// the target's pixel space, so both clips agree exactly.
+			if (viewport.x == 0.0f && viewport.y == 0.0f &&
+			    viewport.w == static_cast<float>(target->w) && viewport.h == static_cast<float>(target->h) &&
+			    target->w == target->image->w && target->h == target->image->h)
+				batchScissor = SDL_Rect{0, 0, target->w, target->h};
 		} else if (blitBoundsOutsideScissor(clippedX0, clippedY0, clippedX1, clippedY1, scissor)) {
 			noteNativeBlitCull();
 			return true;
 		}
-		return queueNativeBlitRect(image, target, pipeline, sampler, viewport, scissor,
+		return queueNativeBlitRect(image, target, pipeline, sampler, viewport, batchScissor,
 		                           clippedX0, clippedY0, clippedX1, clippedY1,
 		                           clippedU0, clippedV0, clippedU1, clippedV1, r, g, b, a);
 	}
@@ -5055,9 +5134,16 @@ SDL_Surface *createBenchmarkSurface(int width, int height) {
 }
 
 void finishBenchmarkWork(GPU_Image *image) {
+	GPU_SubmitFrame();
 	SDL_Surface *surface = GPU_CopySurfaceFromImage(image);
 	if (surface)
 		SDL_FreeSurface(surface);
+	// A solid image or a cached upload can be copied on the CPU, so copying
+	// its surface alone does not wait for the GPU work between timed cases.
+	const bool waited = SDL_WaitForGPUIdle(rendererState.device);
+	noteBlockingGPUWait();
+	if (waited)
+		retireSubmissionBacklogAfterCompletedFence();
 }
 
 bool copyImageRowsToSurface(const GPU_Image *image, SDL_Surface *surface, const Uint8 *pixels) {
@@ -5114,7 +5200,7 @@ bool downloadImageToSurface(GPU_Image *image, SDL_Surface *surface) {
 	if (!ensureReusableTransferBuffer(textureDownloadBuffer, SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, downloadSize))
 		return false;
 
-	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
 	if (!commands)
 		return false;
 
@@ -5132,7 +5218,7 @@ bool downloadImageToSurface(GPU_Image *image, SDL_Surface *surface) {
 	SDL_DownloadFromGPUTexture(copyPass, &source, &destination);
 	SDL_EndGPUCopyPass(copyPass);
 
-	SDL_GPUFence *fence = submitGPUCommandBufferAndAcquireFence(commands);
+	SDL_GPUFence *fence = submitCommandBufferAndAcquireFence(commands);
 	if (!fence)
 		return false;
 
@@ -5275,6 +5361,7 @@ GPU_Target *SDLCALL GPU_InitRendererByID(GPU_RendererID renderer_request, Uint16
 	rendererState.device = createGPUDevice(rendererState.debug_level == GPU_DEBUG_LEVEL_MAX);
 	if (!rendererState.device)
 		return nullptr;
+	rendererThread = SDL_GetCurrentThreadID();
 
 	rendererState.window = SDL_CreateWindow("onscripter-new", w, h, SDL_flags);
 	if (!rendererState.window) {
@@ -5330,8 +5417,10 @@ GPU_Target *SDLCALL GPU_InitRendererByID(GPU_RendererID renderer_request, Uint16
 }
 
 void SDLCALL GPU_Quit(void) {
-	if (rendererState.device)
+	if (rendererState.device) {
 		flushNativeBlitBatch();
+		submitFrameCommandBuffer();
+	}
 	printAndResetTelemetry();
 	if (rendererState.device)
 		releaseSubmissionFences();
@@ -5765,11 +5854,11 @@ void SDLCALL GPU_GenerateMipmaps(GPU_Image *image) {
 	if (!ensureImageTextureInitialized(image))
 		return;
 
-	SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(rendererState.device);
+	SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
 	if (!commands)
 		return;
 	SDL_GenerateMipmapsForGPUTexture(commands, image->texture);
-	if (submitGPUCommandBuffer(commands)) {
+	if (finishCommandBuffer(commands)) {
 		image->has_mipmaps = true;
 	}
 }
@@ -6008,6 +6097,13 @@ void SDLCALL GPU_FlushBlitBuffer(void) {
 	flushNativeBlitBatch();
 }
 
+void SDLCALL GPU_SubmitFrame(void) {
+	if (!rendererState.device)
+		return;
+	flushNativeBlitBatch();
+	submitFrameCommandBuffer();
+}
+
 #if defined(DROID)
 static std::atomic<bool> presentationSuspended{false};
 static std::atomic<bool> swapchainNeedsRebuild{false};
@@ -6067,6 +6163,15 @@ static bool rebuildSwapchainIfNeeded() {
 #endif
 
 void SDLCALL GPU_Flip(GPU_Target *target) {
+	// The frame's drawing goes to the GPU first, in its own submit, whether or
+	// not a present follows -- so nothing below ever meets an unsubmitted
+	// buffer. The present takes a separate command buffer because acquiring a
+	// swapchain image makes the whole buffer wait for it; keeping the drawing
+	// out of that buffer lets it run while the image is still on screen.
+	if (rendererState.device) {
+		flushNativeBlitBatch();
+		submitFrameCommandBuffer();
+	}
 #if defined(DROID)
 	// The surface may already be gone; presenting into it crashes in libvulkan.
 	if (presentationSuspended.load(std::memory_order_acquire))
@@ -6076,7 +6181,6 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 #endif
 	if (!rendererState.device || !rendererState.window)
 		return;
-	flushNativeBlitBatch();
 	if (!target)
 		target = rendererState.current_context_target;
 	if (!ensureTargetBacking(target))
@@ -6090,7 +6194,20 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 	Uint32 width = 0;
 	Uint32 height = 0;
 	if (!SDL_AcquireGPUSwapchainTexture(commands, rendererState.window, &swapchainTexture, &width, &height) || !swapchainTexture) {
+		// No image to present into: the frame is dropped, though the caller
+		// carries on as if it had been shown. That is invisible on screen and
+		// in the frame times, so say how often it happens, at most every 10 s.
+		static Uint64 droppedPresents = 0;
+		static Uint64 lastDropReportTicks = 0;
+		++droppedPresents;
+		const Uint64 ticks = SDL_GetTicks();
+		if (ticks - lastDropReportTicks >= 10000) {
+			sendToLog(LogLevel::Warn, "SDL3_GPU: dropped %llu presents so far (no swapchain image: %s)\n",
+			          static_cast<unsigned long long>(droppedPresents), swapchainTexture ? "" : SDL_GetError());
+			lastDropReportTicks = ticks;
+		}
 		SDL_CancelGPUCommandBuffer(commands);
+		submitFrameCommandBuffer();
 		return;
 	}
 
@@ -6149,6 +6266,10 @@ void SDLCALL GPU_Flip(GPU_Target *target) {
 #endif
 
 	presentTarget(target, commands, swapchainTexture, width, height);
+	// Making the target ready to present can record a first-use clear into the
+	// shared buffer. It has to reach the queue ahead of the present that reads
+	// the target; normally there is nothing left and this does nothing.
+	submitFrameCommandBuffer();
 	submitGPUCommandBuffer(commands);
 }
 
@@ -6646,7 +6767,7 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 			GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + cached[j].x, 16.0f + cached[j].y);
 			GPU_Blit(textImage, nullptr, targetSurface, 16.0f + cached[j].x + 55.0f, 16.0f + cached[j].y + 13.0f);
 		}
-		GPU_FlushBlitBuffer();
+		GPU_SubmitFrame();
 	}
 	finishBenchmarkWork(target);
 
@@ -6708,7 +6829,7 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 		for (int i = 0; i < iterations; ++i) {
 			for (int j = visibleFirst; j < visibleLast; ++j)
 				GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + cached[j].x, 16.0f + cached[j].y);
-			GPU_FlushBlitBuffer();
+			GPU_SubmitFrame();
 		}
 	}));
 	finishBenchmarkWork(target);
@@ -6718,7 +6839,7 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 		for (int i = 0; i < iterations; ++i) {
 			for (int j = visibleFirst; j < visibleLast; ++j)
 				GPU_Blit(textImage, nullptr, targetSurface, 16.0f + cached[j].x + 55.0f, 16.0f + cached[j].y + 13.0f);
-			GPU_FlushBlitBuffer();
+			GPU_SubmitFrame();
 		}
 	}));
 	finishBenchmarkWork(target);
@@ -6738,7 +6859,7 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 				GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + x, 16.0f + y);
 				GPU_Blit(textImage, nullptr, targetSurface, 16.0f + x + ml, 16.0f + y + mt);
 			}
-			GPU_FlushBlitBuffer();
+			GPU_SubmitFrame();
 		}
 	});
 	printBenchmarkResult(benchmarkOutput.file, "musicbox_full_frame_uncached", iterations, fullUncachedMs);
@@ -6753,7 +6874,7 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 				GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + c.x, 16.0f + c.y);
 				GPU_Blit(textImage, nullptr, targetSurface, 16.0f + c.x + c.textMarginLeft, 16.0f + c.y + c.textMarginTop);
 			}
-			GPU_FlushBlitBuffer();
+			GPU_SubmitFrame();
 		}
 	});
 	printBenchmarkResult(benchmarkOutput.file, "musicbox_full_frame_cached", iterations, fullCachedMs);
@@ -6775,7 +6896,7 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 				auto &c = cached[j];
 				GPU_Blit(textImage, nullptr, targetSurface, 16.0f + c.x + c.textMarginLeft, 16.0f + c.y + c.textMarginTop);
 			}
-			GPU_FlushBlitBuffer();
+			GPU_SubmitFrame();
 		}
 	});
 	printBenchmarkResult(benchmarkOutput.file, "musicbox_full_frame_reordered", iterations, fullReorderedMs);
@@ -7179,8 +7300,10 @@ int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const ch
 	finishBenchmarkWork(uploadTarget);
 
 	printBenchmarkResult(benchmarkOutput.file, "clear_full_submit", iterations, benchmarkMs([&]() {
-		                     for (int i = 0; i < iterations; ++i)
+		                     for (int i = 0; i < iterations; ++i) {
 			                     GPU_ClearRGBA(targetSurface, static_cast<Uint8>(i), static_cast<Uint8>(i * 3), static_cast<Uint8>(i * 7), 255);
+			                     GPU_SubmitFrame();
+		                     }
 	                     }));
 	finishBenchmarkWork(target);
 
@@ -7194,8 +7317,10 @@ int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const ch
 	const GPU_Rect rect{17.0f, 19.0f, 256.0f, 256.0f};
 	const SDL_Color rectColor{64, 128, 192, 255};
 	printBenchmarkResult(benchmarkOutput.file, "clear_rect_256_submit", iterations, benchmarkMs([&]() {
-		                     for (int i = 0; i < iterations; ++i)
+		                     for (int i = 0; i < iterations; ++i) {
 			                     GPU_RectangleFilled2(targetSurface, rect, rectColor);
+			                     GPU_SubmitFrame();
+		                     }
 	                     }));
 	finishBenchmarkWork(target);
 
@@ -7204,7 +7329,7 @@ int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const ch
 			                     const float x = 128.0f + static_cast<float>((i * 37) % std::max(1, width - 256));
 			                     const float y = 128.0f + static_cast<float>((i * 53) % std::max(1, height - 256));
 			                     GPU_Blit(source, nullptr, targetSurface, x, y);
-			                     GPU_FlushBlitBuffer();
+			                     GPU_SubmitFrame();
 		                     }
 	                     }));
 	finishBenchmarkWork(target);
@@ -7215,15 +7340,17 @@ int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const ch
 			                     const float y = 128.0f + static_cast<float>((i * 53) % std::max(1, height - 256));
 			                     GPU_Blit(source, nullptr, targetSurface, x, y);
 		                     }
-		                     GPU_FlushBlitBuffer();
+		                     GPU_SubmitFrame();
 	                     }));
 	finishBenchmarkWork(target);
 
 	printBenchmarkResult(benchmarkOutput.file, "triangle_batch_1024_quads_submit", iterations, benchmarkMs([&]() {
-		                     for (int i = 0; i < iterations; ++i)
+		                     for (int i = 0; i < iterations; ++i) {
 			                     GPU_TriangleBatch(source, targetSurface, static_cast<unsigned short>(triangleValues.size() / 4),
 			                                       triangleValues.data(), static_cast<unsigned int>(triangleIndices.size()),
 			                                       triangleIndices.data(), GPU_BATCH_XY_ST);
+			                     GPU_SubmitFrame();
+		                     }
 	                     }));
 	finishBenchmarkWork(target);
 
