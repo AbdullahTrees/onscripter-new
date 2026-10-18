@@ -1466,7 +1466,9 @@ left at SDL's enabled default, so PC and Linux keep low latency; the Android
 launcher passes `--audio-low-latency 0` as its default, and an `ons.cfg` entry
 overrides it because command-line options are parsed first. The engine logs
 `Audio low-latency mode: on|off (<source>)` before `SDL_INIT_AUDIO`, so the
-effective mode is visible in `out.txt` and logcat.
+effective mode is visible in `out.txt` and logcat. The option and its log line
+exist only in Android builds; other builds neither list nor accept
+`--audio-low-latency`.
 
 Measured on the Pad's title menu with BGM playing, two 10-second samples per
 build from `/proc/<pid>/task/<tid>/stat` and `voluntary_ctxt_switches`:

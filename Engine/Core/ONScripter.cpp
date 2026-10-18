@@ -544,6 +544,7 @@ void ONScripter::initSDL() {
 	SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeRight,LandscapeLeft");
 #endif
 
+#ifdef DROID
 	// SDL's AAudio backend requests LOW_LATENCY by default. A visual novel does
 	// not need real-time audio, and without AAudio's MMAP path the mode appears
 	// to buy latency at the cost of a much higher AudioTrack wake-up rate. The
@@ -559,6 +560,7 @@ void ONScripter::initSDL() {
 	SDL_SetHint(SDL_HINT_ANDROID_LOW_LATENCY_AUDIO, lowLatencyAudio ? "1" : "0");
 	sendToLog(LogLevel::Info, "Audio low-latency mode: %s (%s)\n",
 	          lowLatencyAudio ? "on" : "off", lowLatencyDetail.c_str());
+#endif
 
 	if (!onsSDLInitSubSystem(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO)) {
 		errorAndExit("Couldn't initialize SDL", SDL_GetError(), "Init Error", true);
