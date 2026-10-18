@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <string name="app_name">ONScripter-NEW</string>
     <string name="setup_title">First Time Setup</string>
     <!--
       Paragraph breaks are \n, never <br/>. Android converts a small set of
@@ -14,7 +15,7 @@
       is invisible at the end of a paragraph but an unwanted indent at the
       start of one.
     -->
-    <string name="setup_explanation">Welcome to Umineko Project! Before the chessboard is set, we must tend to some technical details.
+    <string name="setup_explanation">Welcome to ONScripter-NEW! Before the chessboard is set, we must tend to some technical details.
     \n\nONScripter is a legacy, cross-platform engine that reads game files directly from storage. Modern Android devices require <b>All Files Access</b> for it to function.
     \n\n<b>Instructions:</b>
     \n\n1. Create a dedicated folder and place the Umineko Project game files inside. You\'ll need at least 13GB of free space. You can download the required files from <a href="https://www.umineko-project.org/en/downloads/">https://www.umineko-project.org/en/downloads/</a>
@@ -28,9 +29,9 @@
     <string name="shortcut_change_folder_short">Change folder</string>
 
     <string name="crash_title">Whoops!</string>
-    <string name="crash_body">ONScripter ran into an unexpected error. If you want to help us, please share these logs with us on <a href="https://github.com/timftw21/onscripter-new/issues">GitHub</a></string>
+    <string name="crash_body">ONScripter-NEW ran into an unexpected error. If you want to help us, please share these logs with us on <a href="https://github.com/timftw21/onscripter-new/issues">GitHub</a></string>
     <string name="crash_share">Share crash logs</string>
-    <string name="crash_share_subject">onscripter-new crash report</string>
+    <string name="crash_share_subject">ONScripter-NEW crash report</string>
     <string name="crash_copy">Copy to clipboard</string>
     <string name="crash_copied">Crash log copied</string>
     <string name="crash_restart">Restart the application</string>

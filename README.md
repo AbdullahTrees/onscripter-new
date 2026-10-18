@@ -21,6 +21,7 @@ Umineko Project installation.
 - [How is it different from ONScripter-RU?](#how-is-it-different-from-onscripter-ru)
 - [Installation](#installation)
   - [Windows](#windows)
+  - [macOS](#macos)
   - [Android](#android)
   - [Verifying downloads](#verifying-downloads)
 - [Saves and compatibility](#saves-and-compatibility)
@@ -69,7 +70,7 @@ policy.
 - Modern graphics through SDL3 (Vulkan on Windows/Android, Metal on macOS), with hardware-assisted video
   playback and color conversion where supported.
 - More predictable RAM use during long sessions and video playback.
-- Current Windows and Android builds with fewer legacy runtime dependencies.
+- Current Windows, macOS, and Android builds with fewer legacy runtime dependencies.
 - Umineko Project-specific fixes and polish for Config, the pause menu, Message
   Browser, file verification, controls, and other in-game screens.
 - Optional Discord Rich Presence on desktop.
@@ -85,10 +86,10 @@ different priorities:
 | | ONScripter-RU | ONScripter-NEW |
 | --- | --- | --- |
 | **Purpose** | The original customized engine behind Umineko Project, with its established compatibility and behavior. | A modern continuation focused on current Umineko Project releases. |
-| **Graphics** | Retains older rendering paths for wider compatibility. | Uses SDL3 and Vulkan, with native shaders and GPU-accelerated video conversion. |
+| **Graphics** | Retains older rendering paths for wider compatibility. | Uses SDL3 with Vulkan on Windows/Android and Metal on macOS, with native shaders and GPU-accelerated video conversion. |
 | **Performance** | Favors established behavior across many scripts and platforms. | Tunes rendering, rain, text, menus, saves, media, and memory use around Umineko Project. |
 | **Game experience** | Stays close to the upstream engine and original project UI. | Includes maintained Umineko-specific interface, script, control, and quality-of-life fixes. |
-| **Platforms** | Supports a wider range of older systems and build configurations. | Provides modern 64-bit Windows and Android packages, with other platforms available to build from source. |
+| **Platforms** | Supports a wider range of older systems and build configurations. | Provides modern 64-bit Windows, macOS (Apple Silicon and Intel), and Android packages. |
 | **Best choice when…** | You need the original engine, its broader historical configurations, or an older-system build. | You want the maintained modern engine and release package for Umineko Project. |
 
 Both engines are closely tied to Umineko Project. `ONScripter-NEW` is not a
@@ -112,15 +113,31 @@ The Windows build is self-contained; no separate SDL or Vulkan runtime files
 need to be copied beside the executable. A working graphics driver with Vulkan
 support is required.
 
+### macOS
+
+Requirements: macOS 14 or newer.
+
+1. Download `onscripter-new-macos-arm64.zip` for Apple Silicon or
+   `onscripter-new-macos-x86_64.zip` for Intel from the latest release.
+2. Back up your game folder and saves.
+3. Extract the archive and put `onscripter-new.app` in your Umineko Project folder.
+4. Extract `onscripter-new-android-assets.zip` from the same release into that
+   folder, replacing the included files. It supplies `en.file`, `wh.file`,
+   `ru.file`, and the shared `graphics` folder for macOS as well as Android.
+5. Open `onscripter-new.app`.
+
+The app is ad-hoc signed and is not notarized. If macOS blocks it, allow the
+downloaded app in **System Settings > Privacy & Security**.
+
 ### Android
 
 Requirements: Android 11 or newer.
 
 1. Download `onscripter-new-android.apk` from the latest release.
-2. Download all required Umineko Project files and place them in a folder titled "ONScripter-RU" on the root of your phone.
-3. Extract the required files within the folder.
-4. Install the APK.
-5. Launch **onscripter-new**.
+2. Put your extracted Umineko Project installation in a folder on your phone.
+3. Install the APK.
+4. Launch **ONScripter-NEW**, grant the requested file access, and select your
+   game folder during first-time setup.
 
 The APK contains the engine, not the game. Extract
 `onscripter-new-android-assets.zip` from the same release into your game folder,
@@ -130,7 +147,7 @@ and Russian scripts and all loose assets included in the Windows package.
 ### Verifying downloads
 
 Every release includes `SHA256SUMS.txt`. You can use it to confirm that the
-Windows and Android downloads arrived unchanged.
+Windows, macOS, and Android downloads arrived unchanged.
 
 ## Saves and compatibility
 

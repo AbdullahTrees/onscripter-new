@@ -161,7 +161,7 @@ final class CrashReport {
     }
 
     private static void appendHeader(Context context, StringBuilder out) {
-        out.append("onscripter-new crash report\n");
+        out.append(context.getString(R.string.app_name)).append(" crash report\n");
         out.append("App: ").append(context.getPackageName()).append('\n');
         out.append("Device: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
                 .append(", Android ").append(Build.VERSION.RELEASE)

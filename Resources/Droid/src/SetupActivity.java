@@ -25,8 +25,8 @@ import java.io.File;
  * supported point inside that sequence at which to block for a permission dialog or
  * a directory picker, so the decision is made before the engine activity exists.
  *
- * Doing it here also keeps the vendored SDLActivity untouched: it stays a plain
- * android.app.Activity, and only this screen depends on AppCompat.
+ * Keeping setup here also separates permission and folder-picker results from
+ * SDL's native startup lifecycle.
  */
 public class SetupActivity extends AppCompatActivity {
     private static final String C = "SetupActivity";

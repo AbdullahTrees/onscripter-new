@@ -1,8 +1,6 @@
 package org.umineko_project.onscripter_ru;
 
-import android.annotation.SuppressLint;
 import android.content.pm.ActivityInfo;
-import android.os.Build;
 import android.os.Bundle;
 import android.view.Display;
 import android.view.MotionEvent;
@@ -11,10 +9,6 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.window.OnBackInvokedCallback;
-import android.window.OnBackInvokedDispatcher;
-
-import androidx.annotation.RequiresApi;
 
 import org.libsdl.app.SDLActivity;
 
@@ -34,13 +28,6 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
     /** Screen position of the SDL surface, refreshed lazily. */
     private final int[] surfaceOrigin = new int[2];
     private SurfaceView surfaceView;
-
-    /**
-     * Created only on API 33+. Keep the field descriptor itself API-neutral:
-     * OnBackInvokedCallback does not exist below 33, and ONSActivity must still
-     * be loadable by those runtimes before the guarded methods are called.
-     */
-    private Object backCallback;
 
     @Override
     protected String[] getLibraries() {
@@ -85,16 +72,6 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         // and only on that one OS version.
         if (!getResources().getBoolean(R.bool.lock_landscape)) {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-        }
-
-        // Back has to be claimed, not merely observed. The manifest sets
-        // enableOnBackInvokedCallback, so on API 33+ onBackPressed is never
-        // called and SDL's own SDL_ANDROID_TRAP_BACK_BUTTON handling is dead
-        // code; without a callback here the system finishes the activity
-        // itself. Below 33 the attribute is ignored and onBackPressed is the
-        // only route, so exactly one of the two paths is live on any device.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerBackCallback();
         }
 
         preferSixtyHertz();
@@ -156,38 +133,6 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         return candidate < incumbent;
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
-    private void registerBackCallback() {
-        OnBackInvokedCallback callback = this::onSystemBack;
-        backCallback = callback;
-        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
-    private void unregisterBackCallback() {
-        if (backCallback != null) {
-            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(
-                    (OnBackInvokedCallback) backCallback);
-            backCallback = null;
-        }
-    }
-
-    /**
-     * The pre-33 half of the same gesture.
-     *
-     * Deliberately does not call super: that is what finishes the activity, and
-     * the whole point is that Back is a game action rather than an exit. The raw
-     * KEYCODE_BACK still reaches SDL as SDL_SCANCODE_AC_BACK, which the engine
-     * has no handler for, so nothing acts on it twice.
-     */
-    @Override
-    @SuppressLint("GestureBackNavigation")
-    @SuppressWarnings("deprecation")
-    public void onBackPressed() {
-        onSystemBack();
-    }
-
     /**
      * What the Back gesture means inside the game.
      *
@@ -203,7 +148,8 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
      * engine's shutdown runs on after the window is gone, which is what aborts
      * in hwuiTask1.
      */
-    private void onSystemBack() {
+    @Override
+    protected void onSystemBack() {
         if (touchInput != null && touchInput.systemBack()) {
             return;
         }
@@ -228,9 +174,6 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         // The engine calls exit() on a fatal error, so this is often the last
         // Java line before the process goes away.
         Diag.i(C, "onDestroy");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            unregisterBackCallback();
-        }
         super.onDestroy();
     }
 

@@ -48,6 +48,9 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
+import androidx.appcompat.app.AppCompatActivity;
+
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.Hashtable;
@@ -57,7 +60,7 @@ import java.util.Locale;
 /**
     SDL Activity
 */
-public class SDLActivity extends Activity implements View.OnSystemUiVisibilityChangeListener {
+public class SDLActivity extends AppCompatActivity implements View.OnSystemUiVisibilityChangeListener {
     private static final String TAG = "SDL";
     private static final int SDL_MAJOR_VERSION = 3;
     private static final int SDL_MINOR_VERSION = 4;
@@ -221,6 +224,13 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     protected static int mLastCursorID;
     protected static SDLGenericMotionListener_API14 mMotionListener;
     protected static HIDDeviceManager mHIDDeviceManager;
+
+    private final OnBackPressedCallback mBackCallback = new OnBackPressedCallback(true) {
+        @Override
+        public void handleOnBackPressed() {
+            onSystemBack();
+        }
+    };
 
     // This is what SDL runs in. It invokes SDL_main(), eventually
     protected static Thread mSDLThread;
@@ -484,6 +494,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         }
 
         setContentView(mLayout);
+        getOnBackPressedDispatcher().addCallback(this, mBackCallback);
 
         setWindowStyle(false);
 
@@ -725,8 +736,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         super.onDestroy();
     }
 
-    @Override
-    public void onBackPressed() {
+    protected void onSystemBack() {
         // Check if we want to block the back button in case of mouse right click.
         //
         // If we do, the normal hardware back button will no longer work and people have to use home,
@@ -740,7 +750,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
         // Default system back button behavior.
         if (!isFinishing()) {
-            super.onBackPressed();
+            superOnBackPressed();
         }
     }
 
@@ -800,7 +810,15 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
     // Used to access the system back behavior.
     public void superOnBackPressed() {
-        super.onBackPressed();
+        // JNI can explicitly request the system behavior, bypassing the game
+        // callback. Restore it if the system keeps this activity alive.
+        boolean enabled = mBackCallback.isEnabled();
+        mBackCallback.setEnabled(false);
+        try {
+            getOnBackPressedDispatcher().onBackPressed();
+        } finally {
+            mBackCallback.setEnabled(enabled);
+        }
     }
 
     @Override
@@ -1980,6 +1998,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         boolean result = (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED);
         nativePermissionResult(requestCode, result);
     }

@@ -20,6 +20,8 @@ import android.hardware.usb.*;
 import android.os.Handler;
 import android.os.Looper;
 
+import androidx.core.content.ContextCompat;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -71,10 +73,15 @@ public class HIDDeviceManager {
             } else if (action.equals(UsbManager.ACTION_USB_DEVICE_DETACHED)) {
                 UsbDevice usbDevice = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
                 handleUsbDeviceDetached(usbDevice);
-            } else if (action.equals(HIDDeviceManager.ACTION_USB_PERMISSION)) {
-                UsbDevice usbDevice = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                handleUsbDevicePermission(usbDevice, intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false));
             }
+        }
+    };
+
+    private final BroadcastReceiver mUsbPermissionBroadcast = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            UsbDevice usbDevice = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+            handleUsbDevicePermission(usbDevice, intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false));
         }
     };
 
@@ -188,16 +195,14 @@ public class HIDDeviceManager {
         Log.i(TAG," No more devices connected.");
         */
 
-        // Register for USB broadcasts and permission completions
+        // System USB broadcasts are protected; permission replies stay private
+        // to the PendingIntent created by this app.
         IntentFilter filter = new IntentFilter();
         filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
         filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
-        filter.addAction(HIDDeviceManager.ACTION_USB_PERMISSION);
-        if (Build.VERSION.SDK_INT >= 33) { /* Android 13.0 (TIRAMISU) */
-            mContext.registerReceiver(mUsbBroadcast, filter, Context.RECEIVER_EXPORTED);
-        } else {
-            mContext.registerReceiver(mUsbBroadcast, filter);
-        }
+        ContextCompat.registerReceiver(mContext, mUsbBroadcast, filter, ContextCompat.RECEIVER_EXPORTED);
+        ContextCompat.registerReceiver(mContext, mUsbPermissionBroadcast,
+                new IntentFilter(ACTION_USB_PERMISSION), ContextCompat.RECEIVER_NOT_EXPORTED);
 
         for (UsbDevice usbDevice : mUsbManager.getDeviceList().values()) {
             handleUsbDeviceAttached(usbDevice);
@@ -211,6 +216,11 @@ public class HIDDeviceManager {
     private void shutdownUSB() {
         try {
             mContext.unregisterReceiver(mUsbBroadcast);
+        } catch (Exception e) {
+            // We may not have registered, that's okay
+        }
+        try {
+            mContext.unregisterReceiver(mUsbPermissionBroadcast);
         } catch (Exception e) {
             // We may not have registered, that's okay
         }
@@ -367,18 +377,18 @@ public class HIDDeviceManager {
         }
     }
 
+    boolean hasBluetoothPermission() {
+        String permission = Build.VERSION.SDK_INT >= 31
+                ? android.Manifest.permission.BLUETOOTH_CONNECT
+                : android.Manifest.permission.BLUETOOTH;
+        return ContextCompat.checkSelfPermission(mContext, permission) == PackageManager.PERMISSION_GRANTED;
+    }
+
     private void initializeBluetooth() {
         Log.d(TAG, "Initializing Bluetooth");
 
-        if (Build.VERSION.SDK_INT >= 31 /* Android 12  */ &&
-            mContext.getPackageManager().checkPermission(android.Manifest.permission.BLUETOOTH_CONNECT, mContext.getPackageName()) != PackageManager.PERMISSION_GRANTED) {
-            Log.d(TAG, "Couldn't initialize Bluetooth, missing android.permission.BLUETOOTH_CONNECT");
-            return;
-        }
-
-        if (Build.VERSION.SDK_INT <= 30 /* Android 11.0 (R) */ &&
-            mContext.getPackageManager().checkPermission(android.Manifest.permission.BLUETOOTH, mContext.getPackageName()) != PackageManager.PERMISSION_GRANTED) {
-            Log.d(TAG, "Couldn't initialize Bluetooth, missing android.permission.BLUETOOTH");
+        if (!hasBluetoothPermission()) {
+            Log.d(TAG, "Couldn't initialize Bluetooth, permission not granted");
             return;
         }
 
@@ -401,24 +411,23 @@ public class HIDDeviceManager {
         }
 
         // Get our bonded devices.
-        for (BluetoothDevice device : btAdapter.getBondedDevices()) {
-
-            Log.d(TAG, "Bluetooth device available: " + device);
-            if (isSteamController(device)) {
-                connectBluetoothDevice(device);
+        try {
+            for (BluetoothDevice device : btAdapter.getBondedDevices()) {
+                Log.d(TAG, "Bluetooth device available: " + device);
+                if (isSteamController(device)) {
+                    connectBluetoothDevice(device);
+                }
             }
-
+        } catch (SecurityException e) {
+            Log.w(TAG, "Bluetooth permission revoked while enumerating controllers", e);
+            return;
         }
 
         // NOTE: These don't work on Chromebooks, to my undying dismay.
         IntentFilter filter = new IntentFilter();
         filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
         filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-        if (Build.VERSION.SDK_INT >= 33) { /* Android 13.0 (TIRAMISU) */
-            mContext.registerReceiver(mBluetoothBroadcast, filter, Context.RECEIVER_EXPORTED);
-        } else {
-            mContext.registerReceiver(mBluetoothBroadcast, filter);
-        }
+        ContextCompat.registerReceiver(mContext, mBluetoothBroadcast, filter, ContextCompat.RECEIVER_EXPORTED);
 
         if (mIsChromebook) {
             mHandler = new Handler(Looper.getMainLooper());
@@ -446,14 +455,20 @@ public class HIDDeviceManager {
     // This function provides a sort of dummy version of that, watching for changes in the
     // connected devices and attempting to add controllers as things change.
     void chromebookConnectionHandler() {
-        if (!mIsChromebook) {
+        if (!mIsChromebook || mBluetoothManager == null || !hasBluetoothPermission()) {
             return;
         }
 
         ArrayList<BluetoothDevice> disconnected = new ArrayList<BluetoothDevice>();
         ArrayList<BluetoothDevice> connected = new ArrayList<BluetoothDevice>();
 
-        List<BluetoothDevice> currentConnected = mBluetoothManager.getConnectedDevices(BluetoothProfile.GATT);
+        List<BluetoothDevice> currentConnected;
+        try {
+            currentConnected = mBluetoothManager.getConnectedDevices(BluetoothProfile.GATT);
+        } catch (SecurityException e) {
+            Log.w(TAG, "Bluetooth permission revoked while checking controllers", e);
+            return;
+        }
 
         for (BluetoothDevice bluetoothDevice : currentConnected) {
             if (!mLastBluetoothDevices.contains(bluetoothDevice)) {
@@ -486,6 +501,9 @@ public class HIDDeviceManager {
 
     boolean connectBluetoothDevice(BluetoothDevice bluetoothDevice) {
         Log.v(TAG, "connectBluetoothDevice device=" + bluetoothDevice);
+        if (!hasBluetoothPermission()) {
+            return false;
+        }
         synchronized (this) {
             if (mBluetoothDevices.containsKey(bluetoothDevice)) {
                 Log.v(TAG, "Steam controller with address " + bluetoothDevice + " already exists, attempting reconnect");
@@ -496,6 +514,10 @@ public class HIDDeviceManager {
                 return false;
             }
             HIDDeviceBLESteamController device = new HIDDeviceBLESteamController(this, bluetoothDevice);
+            if (device.getGatt() == null) {
+                device.shutdown();
+                return false;
+            }
             int id = device.getId();
             mBluetoothDevices.put(bluetoothDevice, device);
             mDevicesById.put(id, device);
@@ -506,9 +528,13 @@ public class HIDDeviceManager {
     }
 
     void disconnectBluetoothDevice(BluetoothDevice bluetoothDevice) {
+        disconnectBluetoothDevice(bluetoothDevice, null);
+    }
+
+    void disconnectBluetoothDevice(BluetoothDevice bluetoothDevice, HIDDeviceBLESteamController expectedDevice) {
         synchronized (this) {
             HIDDeviceBLESteamController device = mBluetoothDevices.get(bluetoothDevice);
-            if (device == null)
+            if (device == null || (expectedDevice != null && device != expectedDevice))
                 return;
 
             int id = device.getId();
@@ -521,22 +547,19 @@ public class HIDDeviceManager {
 
     boolean isSteamController(BluetoothDevice bluetoothDevice) {
         // Sanity check.  If you pass in a null device, by definition it is never a Steam Controller.
-        if (bluetoothDevice == null) {
+        if (bluetoothDevice == null || !hasBluetoothPermission()) {
             return false;
         }
 
-        // If the device has no local name, we really don't want to try an equality check against it.
-        if (bluetoothDevice.getName() == null) {
+        try {
+            String name = bluetoothDevice.getName();
+            return name != null &&
+                    (bluetoothDevice.getType() & BluetoothDevice.DEVICE_TYPE_LE) != 0 &&
+                    (name.equals("SteamController") || name.startsWith("Steam Ctrl"));
+        } catch (SecurityException e) {
+            Log.w(TAG, "Bluetooth permission revoked while identifying a controller", e);
             return false;
         }
-
-        // Steam Controllers will always support Bluetooth Low Energy
-        if ((bluetoothDevice.getType() & BluetoothDevice.DEVICE_TYPE_LE) == 0) {
-            return false;
-        }
-
-        // Match on the name either the original Steam Controller or the new second-generation one advertise with.
-        return bluetoothDevice.getName().equals("SteamController") || bluetoothDevice.getName().startsWith("Steam Ctrl");
     }
 
     private void close() {

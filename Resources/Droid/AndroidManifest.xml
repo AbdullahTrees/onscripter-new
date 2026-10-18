@@ -15,10 +15,19 @@
         android:name="android.hardware.usb.host"
         android:required="false" />
     <uses-feature
+        android:name="android.hardware.bluetooth"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.bluetooth_le"
+        android:required="false" />
+    <uses-feature
         android:name="android.hardware.type.pc"
         android:required="false" />
 
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- SDL's optional HID driver communicates with already-paired controllers. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!-- The engine reads game data with stat(2)/fopen(3), which the Storage Access
          Framework cannot serve. Full filesystem access is the only way to launch
@@ -27,17 +36,17 @@
 
     <application
         android:name=".ONSApplication"
-        android:label="onscripter-new"
-        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:allowBackup="false"
-        android:theme="@style/Theme.ONScripterRU"
+        android:theme="@style/Theme.ONScripterNEW"
         android:enableOnBackInvokedCallback="true"
         android:hardwareAccelerated="true"
         android:resizeableActivity="true">
 
         <activity
             android:name=".SetupActivity"
-            android:label="onscripter-new"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -51,7 +60,6 @@
         <!-- Shown after a crash; excluded from recents so it is not resumed later. -->
         <activity
             android:name=".CrashActivity"
-            android:label="onscripter-new"
             android:excludeFromRecents="true"
             android:process=":crash"
             android:exported="false" />
@@ -71,7 +79,6 @@
         -->
         <activity
             android:name=".ONSActivity"
-            android:label="onscripter-new"
             android:alwaysRetainTaskState="true"
             android:launchMode="singleTask"
             android:configChanges="layoutDirection|locale|fontScale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
