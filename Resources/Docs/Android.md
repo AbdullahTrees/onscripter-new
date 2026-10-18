@@ -1298,28 +1298,26 @@ batch ends on any change of target, pipeline (blend mode, blending on or off,
 blit or triangle program), viewport or scissor, and on every `GPU_ClearRGBA`,
 `GPU_FreeImage` or shader activation. Pipeline changes are legal inside one
 render pass; only a target change needs a new pass. Keeping consecutive batches
-to the same target in one render pass is the step after the vertex-upload change
-below, and it is pixel-identical by construction, since the same draws happen in
-the same order.
+to the same target in one render pass is the next step on this path, and it is
+pixel-identical by construction, since the same draws happen in the same order.
 
-**Upload each frame's vertices once, not once per batch.** *Unmeasured; do this
-before the render-pass merge above.* Every blit or triangle batch maps a
-transfer buffer, copies its vertices in, and records its own copy pass before
-its render pass (`flushNativeBlitBatchOnly` and `flushNativeTriangleBatch` in
-`SDL3GPUCompat.cpp`). Both the transfer buffer and the GPU buffer are uploaded
-with `cycle = true`, so each batch takes a fresh copy from SDL while earlier
-ones are still in flight, and those copies count against the memory the
-periodic drain exists to bound.
+**Drawing uploads each frame's vertices once.** Blit, triangle and solid-rect
+draws are queued as they are produced and recorded when the frame's drawing is
+submitted (`SDL3GPUCompat.cpp`). One copy pass then carries every batch's
+vertices before the first render pass, and each batch binds its own offset in
+the shared vertex and index buffers. Previously every batch mapped a transfer
+buffer, ran a copy pass with `cycle = true` and ended with its own render pass,
+so a frame took a fresh copy per batch and those copies counted against the
+memory the periodic drain exists to bound.
 
-Use one ring buffer per frame instead: each batch appends its vertices and
-indices at an offset and draws from that offset, and the frame uploads the whole
-range once. Pixel-identical by construction — the same vertices are drawn in
-the same order — and provable with the built-in benchmark's upload, draw and
-readback validation. The upload has to happen before the frame's first render
-pass, so draw batches must be queued and recorded at the point the frame is
-submitted rather than recorded as they are produced. That change is also what
-makes the render-pass merge possible: a copy pass cannot sit inside a render
-pass, so every batch that uploads its own vertices has to end the render pass.
+Ordering-sensitive paths — clears, texture uploads, copies, readbacks, sampler
+and program changes — materialise the queue first. The same draws happen in the
+same order, so this is pixel-identical by construction; the built-in
+benchmark's upload, draw and readback validation is the intended check. It also
+removes the copy pass from between render passes, which is what makes the
+render-pass merge above possible. Smoke-tested on the Redmi Note 11 (Adreno):
+the title screen and opening video render correctly, the video holding 60 fps.
+The novel-section measurements are still to be taken.
 
 **Batch texture uploads during loading.** *Unmeasured.* `uploadImageRows`
 submits as soon as each range has been mapped and copied, so a scene change
