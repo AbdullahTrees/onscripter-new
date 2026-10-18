@@ -550,11 +550,15 @@ void ONScripter::initSDL() {
 	// game config can turn it off with `audio-low-latency=0`; when the entry is
 	// absent, keep SDL's enabled default. The Android launcher passes 0 unless
 	// the game's ons.cfg overrides it.
+	bool lowLatencyAudio         = true;
+	std::string lowLatencyDetail = "default";
 	if (auto lowLatency = ons_cfg_options.find("audio-low-latency"); lowLatency != ons_cfg_options.end()) {
-		const std::string &value = lowLatency->second;
-		const bool enabled        = value != "0" && value != "false";
-		SDL_SetHint(SDL_HINT_ANDROID_LOW_LATENCY_AUDIO, enabled ? "1" : "0");
+		lowLatencyAudio  = lowLatency->second != "0" && lowLatency->second != "false";
+		lowLatencyDetail = "audio-low-latency=" + lowLatency->second;
 	}
+	SDL_SetHint(SDL_HINT_ANDROID_LOW_LATENCY_AUDIO, lowLatencyAudio ? "1" : "0");
+	sendToLog(LogLevel::Info, "Audio low-latency mode: %s (%s)\n",
+	          lowLatencyAudio ? "on" : "off", lowLatencyDetail.c_str());
 
 	if (!onsSDLInitSubSystem(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO)) {
 		errorAndExit("Couldn't initialize SDL", SDL_GetError(), "Init Error", true);
