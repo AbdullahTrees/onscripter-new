@@ -349,6 +349,47 @@ SDL_ThreadID rendererThread{0};
 // Submit early past this many passes, so a stretch with no flip -- loading, or
 // building a cache -- cannot pile up work and the memory it holds.
 constexpr Uint32 maxDeferredPasses = 32;
+
+// One frame's vertices and indices, plus the batches that read them. Draws are
+// queued rather than recorded as they are produced, so the whole frame's
+// vertices go up in a single copy pass before its first render pass. A copy
+// pass cannot sit inside a render pass, so hoisting it is also what lets
+// consecutive same-target batches share a render pass later.
+struct SDL3GPUPendingDraw {
+	enum class Kind : Uint8 { Blit, SolidRect, Triangle };
+
+	Kind kind{Kind::Blit};
+	GPU_Image *targetImage{nullptr};
+	SDL_GPUTexture *targetTexture{nullptr};
+	SDL_GPUGraphicsPipeline *pipeline{nullptr};
+	SDL_GPUViewport viewport{};
+	SDL_Rect scissor{};
+	Uint32 firstVertex{0};
+	Uint32 vertexCount{0};
+	Uint32 firstIndex{0};
+	Uint32 indexCount{0};
+	// Blit and solid-rect draws; firstIndex stays relative to the batch.
+	std::vector<SDL3GPUNativeBlitBatch::DrawGroup> drawGroups;
+	// Triangle draws.
+	SDL3GPUSamplerSet samplerSet;
+	bool nativeShaderProgram{false};
+	SDL3GPUShaderKind shaderKind{SDL3GPUShaderKind::Unknown};
+	bool pushColorScale{false};
+	std::vector<SDL3GPUNativeUniformRegister> fragmentUniformRegisters;
+};
+
+std::vector<SDL3GPUVertex> frameVertices;
+std::vector<Uint16> frameIndices;
+std::vector<SDL3GPUPendingDraw> pendingDraws;
+
+void discardPendingDraws() {
+	pendingDraws.clear();
+	frameVertices.clear();
+	frameIndices.clear();
+}
+
+bool materializePendingDraws();
+
 int nextUniformLocation{1};
 #if defined(ONS_USE_SDL3_SHADERCROSS)
 bool shaderCrossInitialized{false};
@@ -581,11 +622,13 @@ bool submitFrameCommandBuffer() {
 }
 
 // A recorded pass is complete. A private buffer is submitted now; the shared
-// one waits for the flip, unless it has grown past the cap.
-bool finishCommandBuffer(SDL_GPUCommandBuffer *commands) {
+// one waits for the flip, unless it has grown past the cap. passes is the
+// number of passes just recorded, since one call can now record many.
+bool finishCommandBuffer(SDL_GPUCommandBuffer *commands, Uint32 passes = 1) {
 	if (commands != frameCommands)
-		return submitGPUCommandBuffer(commands);
-	if (++frameCommandPasses >= maxDeferredPasses)
+		return submitGPUCommandBuffer(commands, passes);
+	frameCommandPasses += passes;
+	if (frameCommandPasses >= maxDeferredPasses)
 		return submitFrameCommandBuffer();
 	return true;
 }
@@ -2400,6 +2443,9 @@ bool createTexture(GPU_Image *image) {
 bool clearImageTexture(GPU_Image *image, SDL_Color color = SDL_Color{0, 0, 0, 0}) {
 	if (!image || !image->texture || !rendererState.device)
 		return false;
+	// Queued draws may target this texture; record them before the clear pass.
+	if (!flushNativeBlitBatch())
+		return false;
 	if (!ensureWritableImageTexture(image, false))
 		return false;
 
@@ -2537,6 +2583,9 @@ bool uploadImageRows(GPU_Image *image,
                      bool cycleTexture,
                      bool premultiply = false) {
 	if (!image || !image->texture || !rendererState.device || !rows || rowBytes == 0 || sourcePitch == 0)
+		return false;
+	// The copy pass must not overtake queued draws that read or write this image.
+	if (!flushNativeBlitBatch())
 		return false;
 	premultiply = premultiply && image->format == GPU_FORMAT_RGBA;
 
@@ -3015,6 +3064,9 @@ void releaseAllImageTextures() {
 
 bool copyTextureBaseLevel(SDL_GPUTexture *sourceTexture, SDL_GPUTexture *destinationTexture, Uint16 width, Uint16 height) {
 	if (!sourceTexture || !destinationTexture || !rendererState.device)
+		return false;
+	// The copy reads the source texture; queued draws must be recorded first.
+	if (!flushNativeBlitBatch())
 		return false;
 
 	SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
@@ -4015,6 +4067,8 @@ bool ensureSolidWhiteTexture() {
 		return true;
 	if (!rendererState.device)
 		return false;
+	if (!flushNativeBlitBatch())
+		return false;
 
 	SDL_GPUTextureCreateInfo textureInfo{};
 	textureInfo.type                 = SDL_GPU_TEXTURETYPE_2D;
@@ -4073,6 +4127,60 @@ bool ensureSolidWhiteTexture() {
 	return true;
 }
 
+/**
+ * Queues a solid-colour quad. It uses the same textured pipeline and white
+ * sampler a blit does, so it shares the frame's vertex upload and is recorded
+ * with the other queued draws.
+ */
+bool queueNativeSolidRect(GPU_Target *target, const SDL_Rect &bounds, SDL_Color color,
+                          SDL_GPUGraphicsPipeline *pipeline, SDL_GPUSampler *sampler) {
+	if (!flushNativeTriangleBatch() || !flushNativeBlitBatchOnly())
+		return false;
+	if (!target || !target->image || !target->texture)
+		return false;
+
+	const float r = color.r / 255.0f;
+	const float g = color.g / 255.0f;
+	const float b = color.b / 255.0f;
+	const float a = color.a / 255.0f;
+	const float x0 = static_cast<float>(bounds.x);
+	const float y0 = static_cast<float>(bounds.y);
+	const float x1 = static_cast<float>(bounds.x + bounds.w);
+	const float y1 = static_cast<float>(bounds.y + bounds.h);
+
+	SDL_GPUViewport viewport{};
+	viewport.w = static_cast<float>(target->image->w);
+	viewport.h = static_cast<float>(target->image->h);
+	viewport.min_depth = 0.0f;
+	viewport.max_depth = 1.0f;
+
+	SDL3GPUPendingDraw pending;
+	pending.kind          = SDL3GPUPendingDraw::Kind::SolidRect;
+	pending.targetImage   = target->image;
+	pending.targetTexture = target->texture;
+	pending.pipeline      = pipeline;
+	pending.viewport      = viewport;
+	pending.scissor       = bounds;
+	pending.firstVertex   = static_cast<Uint32>(frameVertices.size());
+	pending.vertexCount   = 4;
+	pending.firstIndex    = static_cast<Uint32>(frameIndices.size());
+	pending.indexCount    = 6;
+
+	frameVertices.push_back(SDL3GPUVertex{x0, y0, r, g, b, a, 0.0f, 0.0f});
+	frameVertices.push_back(SDL3GPUVertex{x1, y0, r, g, b, a, 0.0f, 0.0f});
+	frameVertices.push_back(SDL3GPUVertex{x0, y1, r, g, b, a, 0.0f, 0.0f});
+	frameVertices.push_back(SDL3GPUVertex{x1, y1, r, g, b, a, 0.0f, 0.0f});
+	const Uint16 indices[6]{0, 1, 2, 2, 1, 3};
+	frameIndices.insert(frameIndices.end(), indices, indices + 6);
+
+	const std::string telemetrySource =
+	    telemetryEnabled() ? currentTelemetrySource("native_fixed_draw") : std::string{};
+	pending.drawGroups.push_back(SDL3GPUNativeBlitBatch::DrawGroup{
+	    solidWhiteTexture, sampler, 0, pending.indexCount, pending.vertexCount, telemetrySource});
+	pendingDraws.push_back(std::move(pending));
+	return true;
+}
+
 bool nativeSolidRect(GPU_Target *target, const SDL_Rect &bounds, SDL_Color color) {
 	if (!rendererState.device || !target || !target->image || bounds.w <= 0 || bounds.h <= 0)
 		return false;
@@ -4088,97 +4196,7 @@ bool nativeSolidRect(GPU_Target *target, const SDL_Rect &bounds, SDL_Color color
 	if (!pipeline || !sampler)
 		return false;
 
-	const float r = color.r / 255.0f;
-	const float g = color.g / 255.0f;
-	const float b = color.b / 255.0f;
-	const float a = color.a / 255.0f;
-	const float x0 = static_cast<float>(bounds.x);
-	const float y0 = static_cast<float>(bounds.y);
-	const float x1 = static_cast<float>(bounds.x + bounds.w);
-	const float y1 = static_cast<float>(bounds.y + bounds.h);
-
-	const std::array<SDL3GPUVertex, 4> vertices{{
-	    SDL3GPUVertex{x0, y0, r, g, b, a, 0.0f, 0.0f},
-	    SDL3GPUVertex{x1, y0, r, g, b, a, 0.0f, 0.0f},
-	    SDL3GPUVertex{x0, y1, r, g, b, a, 0.0f, 0.0f},
-	    SDL3GPUVertex{x1, y1, r, g, b, a, 0.0f, 0.0f},
-	}};
-	const Uint16 indices[6]{0, 1, 2, 2, 1, 3};
-	const Uint32 vertexBytes = static_cast<Uint32>(vertices.size() * sizeof(SDL3GPUVertex));
-	const Uint32 indexBytes  = static_cast<Uint32>(sizeof(indices));
-	if (!prepareUploadedBuffer(vertexUploadBuffer, SDL_GPU_BUFFERUSAGE_VERTEX, vertices.data(), vertexBytes) ||
-	    !prepareUploadedBuffer(indexUploadBuffer, SDL_GPU_BUFFERUSAGE_INDEX, indices, indexBytes)) {
-		return false;
-	}
-
-	SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
-	if (!commands)
-		return false;
-
-	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
-	encodeBufferUpload(copyPass, vertexUploadBuffer);
-	encodeBufferUpload(copyPass, indexUploadBuffer);
-	SDL_EndGPUCopyPass(copyPass);
-
-	SDL_GPUColorTargetInfo colorTarget{};
-	colorTarget.texture  = target->texture;
-	colorTarget.load_op  = SDL_GPU_LOADOP_LOAD;
-	colorTarget.store_op = SDL_GPU_STOREOP_STORE;
-
-	SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(commands, &colorTarget, 1, nullptr);
-	if (!renderPass) {
-		abandonCommandBuffer(commands);
-		return false;
-	}
-
-	SDL_BindGPUGraphicsPipeline(renderPass, pipeline);
-
-	SDL_GPUBufferBinding vertexBinding{};
-	vertexBinding.buffer = vertexUploadBuffer.buffer;
-	SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
-
-	SDL_GPUBufferBinding indexBinding{};
-	indexBinding.buffer = indexUploadBuffer.buffer;
-	SDL_BindGPUIndexBuffer(renderPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-
-	SDL_GPUTextureSamplerBinding samplerBinding{};
-	samplerBinding.texture = solidWhiteTexture;
-	samplerBinding.sampler = sampler;
-	SDL_BindGPUFragmentSamplers(renderPass, 0, &samplerBinding, 1);
-
-	struct VertexUniforms {
-		float mvp[4][4];
-	} vertexUniforms{};
-	vertexUniforms.mvp[0][0] = 2.0f / static_cast<float>(target->image->w);
-	vertexUniforms.mvp[1][1] = -2.0f / static_cast<float>(target->image->h);
-	vertexUniforms.mvp[2][2] = 1.0f;
-	vertexUniforms.mvp[3][0] = -1.0f;
-	vertexUniforms.mvp[3][1] = 1.0f;
-	vertexUniforms.mvp[3][3] = 1.0f;
-	SDL_PushGPUVertexUniformData(commands, 0, &vertexUniforms, sizeof(vertexUniforms));
-
-	const float colorScale = 1.0f;
-	SDL_PushGPUFragmentUniformData(commands, 0, &colorScale, sizeof(colorScale));
-
-	SDL_GPUViewport viewport{};
-	viewport.w = static_cast<float>(target->image->w);
-	viewport.h = static_cast<float>(target->image->h);
-	viewport.min_depth = 0.0f;
-	viewport.max_depth = 1.0f;
-	SDL_SetGPUViewport(renderPass, &viewport);
-	SDL_SetGPUScissor(renderPass, &bounds);
-	SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(sizeof(indices) / sizeof(indices[0])), 1, 0, 0, 0);
-	SDL_EndGPURenderPass(renderPass);
-
-	const bool submitted = finishCommandBuffer(commands);
-	if (submitted) {
-		noteNativeFixedDraw(vertices.size());
-		target->image->pixels_dirty        = true;
-		target->image->pixels_solid        = false;
-		target->image->texture_initialized = true;
-		target->image->has_mipmaps         = false;
-	}
-	return submitted;
+	return queueNativeSolidRect(target, bounds, color, pipeline, sampler);
 }
 
 SDL_Rect targetScissor(const GPU_Target *target) {
@@ -4454,92 +4472,29 @@ bool flushNativeTriangleBatch() {
 		return false;
 	}
 
-	const Uint32 vertexBytes = static_cast<Uint32>(nativeTriangleBatch.vertices.size() * sizeof(SDL3GPUVertex));
-	const Uint32 indexBytes  = static_cast<Uint32>(nativeTriangleBatch.indices.size() * sizeof(Uint16));
-	if (!prepareUploadedBuffer(vertexUploadBuffer, SDL_GPU_BUFFERUSAGE_VERTEX, nativeTriangleBatch.vertices.data(), vertexBytes) ||
-	    !prepareUploadedBuffer(indexUploadBuffer, SDL_GPU_BUFFERUSAGE_INDEX, nativeTriangleBatch.indices.data(), indexBytes)) {
-		resetNativeTriangleBatch();
-		return false;
-	}
+	SDL3GPUPendingDraw pending;
+	pending.kind                     = SDL3GPUPendingDraw::Kind::Triangle;
+	pending.targetImage              = nativeTriangleBatch.targetImage;
+	pending.targetTexture            = nativeTriangleBatch.targetTexture;
+	pending.pipeline                 = nativeTriangleBatch.pipeline;
+	pending.viewport                 = nativeTriangleBatch.viewport;
+	pending.scissor                  = nativeTriangleBatch.scissor;
+	pending.firstVertex              = static_cast<Uint32>(frameVertices.size());
+	pending.vertexCount              = static_cast<Uint32>(nativeTriangleBatch.vertices.size());
+	pending.firstIndex               = static_cast<Uint32>(frameIndices.size());
+	pending.indexCount               = static_cast<Uint32>(nativeTriangleBatch.indices.size());
+	pending.samplerSet               = nativeTriangleBatch.samplerSet;
+	pending.nativeShaderProgram      = nativeTriangleBatch.nativeShaderProgram;
+	pending.shaderKind               = nativeTriangleBatch.shaderKind;
+	pending.pushColorScale           = nativeTriangleBatch.pushColorScale;
+	pending.fragmentUniformRegisters = std::move(nativeTriangleBatch.fragmentUniformRegisters);
 
-	SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
-	if (!commands) {
-		resetNativeTriangleBatch();
-		return false;
-	}
+	frameVertices.insert(frameVertices.end(), nativeTriangleBatch.vertices.begin(), nativeTriangleBatch.vertices.end());
+	frameIndices.insert(frameIndices.end(), nativeTriangleBatch.indices.begin(), nativeTriangleBatch.indices.end());
+	pendingDraws.push_back(std::move(pending));
 
-	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
-	encodeBufferUpload(copyPass, vertexUploadBuffer);
-	encodeBufferUpload(copyPass, indexUploadBuffer);
-	SDL_EndGPUCopyPass(copyPass);
-
-	SDL_GPUColorTargetInfo colorTarget{};
-	colorTarget.texture  = nativeTriangleBatch.targetTexture;
-	colorTarget.load_op  = SDL_GPU_LOADOP_LOAD;
-	colorTarget.store_op = SDL_GPU_STOREOP_STORE;
-
-	SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(commands, &colorTarget, 1, nullptr);
-	if (!renderPass) {
-		abandonCommandBuffer(commands);
-		resetNativeTriangleBatch();
-		return false;
-	}
-
-	SDL_BindGPUGraphicsPipeline(renderPass, nativeTriangleBatch.pipeline);
-
-	SDL_GPUBufferBinding vertexBinding{};
-	vertexBinding.buffer = vertexUploadBuffer.buffer;
-	SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
-
-	SDL_GPUBufferBinding indexBinding{};
-	indexBinding.buffer = indexUploadBuffer.buffer;
-	SDL_BindGPUIndexBuffer(renderPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-
-	std::array<SDL_GPUTextureSamplerBinding, 8> samplerBindings{};
-	for (size_t i = 0; i < nativeTriangleBatch.samplerSet.count; ++i) {
-		samplerBindings[i].texture = nativeTriangleBatch.samplerSet.textures[i];
-		samplerBindings[i].sampler = nativeTriangleBatch.samplerSet.samplers[i];
-	}
-	if (nativeTriangleBatch.samplerSet.count > 0)
-		SDL_BindGPUFragmentSamplers(renderPass, 0, samplerBindings.data(), static_cast<Uint32>(nativeTriangleBatch.samplerSet.count));
-
-	struct VertexUniforms {
-		float mvp[4][4];
-	} vertexUniforms{};
-	vertexUniforms.mvp[0][0] = 2.0f / nativeTriangleBatch.viewport.w;
-	vertexUniforms.mvp[1][1] = -2.0f / nativeTriangleBatch.viewport.h;
-	vertexUniforms.mvp[2][2] = 1.0f;
-	vertexUniforms.mvp[3][0] = -1.0f;
-	vertexUniforms.mvp[3][1] = 1.0f;
-	vertexUniforms.mvp[3][3] = 1.0f;
-	SDL_PushGPUVertexUniformData(commands, 0, &vertexUniforms, sizeof(vertexUniforms));
-
-	if (nativeTriangleBatch.pushColorScale) {
-		const float colorScale = 1.0f;
-		SDL_PushGPUFragmentUniformData(commands, 0, &colorScale, sizeof(colorScale));
-	} else if (!nativeTriangleBatch.fragmentUniformRegisters.empty()) {
-		SDL_PushGPUFragmentUniformData(commands, 0,
-		                               nativeTriangleBatch.fragmentUniformRegisters.data(),
-		                               static_cast<Uint32>(nativeTriangleBatch.fragmentUniformRegisters.size() * sizeof(SDL3GPUNativeUniformRegister)));
-	}
-
-	SDL_SetGPUViewport(renderPass, &nativeTriangleBatch.viewport);
-	SDL_SetGPUScissor(renderPass, &nativeTriangleBatch.scissor);
-	SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(nativeTriangleBatch.indices.size()), 1, 0, 0, 0);
-	SDL_EndGPURenderPass(renderPass);
-	const bool submitted = finishCommandBuffer(commands);
-
-	if (submitted) {
-		if (nativeTriangleBatch.nativeShaderProgram) {
-			noteNativeShaderDraw(nativeTriangleBatch.shaderKind, nativeTriangleBatch.vertices.size());
-		} else {
-			noteNativeFixedDraw(nativeTriangleBatch.vertices.size());
-		}
-		nativeTriangleBatch.targetImage->pixels_dirty = true;
-		nativeTriangleBatch.targetImage->has_mipmaps  = false;
-	}
 	resetNativeTriangleBatch();
-	return submitted;
+	return true;
 }
 
 bool nativeTriangleBatchMatches(GPU_Image *image,
@@ -4666,87 +4621,172 @@ bool flushNativeBlitBatchOnly() {
 		}
 	}
 
-	const Uint32 vertexBytes = static_cast<Uint32>(nativeBlitBatch.vertices.size() * sizeof(SDL3GPUVertex));
-	const Uint32 indexBytes  = static_cast<Uint32>(nativeBlitBatch.indices.size() * sizeof(Uint16));
-	if (!prepareUploadedBuffer(vertexUploadBuffer, SDL_GPU_BUFFERUSAGE_VERTEX, nativeBlitBatch.vertices.data(), vertexBytes) ||
-	    !prepareUploadedBuffer(indexUploadBuffer, SDL_GPU_BUFFERUSAGE_INDEX, nativeBlitBatch.indices.data(), indexBytes)) {
-		resetNativeBlitBatch();
+	SDL3GPUPendingDraw pending;
+	pending.kind          = SDL3GPUPendingDraw::Kind::Blit;
+	pending.targetImage   = nativeBlitBatch.targetImage;
+	pending.targetTexture = nativeBlitBatch.targetTexture;
+	pending.pipeline      = nativeBlitBatch.pipeline;
+	pending.viewport      = nativeBlitBatch.viewport;
+	pending.scissor       = nativeBlitBatch.scissor;
+	pending.firstVertex   = static_cast<Uint32>(frameVertices.size());
+	pending.vertexCount   = static_cast<Uint32>(nativeBlitBatch.vertices.size());
+	pending.firstIndex    = static_cast<Uint32>(frameIndices.size());
+	pending.indexCount    = static_cast<Uint32>(nativeBlitBatch.indices.size());
+	pending.drawGroups    = std::move(nativeBlitBatch.drawGroups);
+
+	frameVertices.insert(frameVertices.end(), nativeBlitBatch.vertices.begin(), nativeBlitBatch.vertices.end());
+	frameIndices.insert(frameIndices.end(), nativeBlitBatch.indices.begin(), nativeBlitBatch.indices.end());
+	pendingDraws.push_back(std::move(pending));
+
+	resetNativeBlitBatch();
+	return true;
+}
+
+bool materializePendingDraws() {
+	if (pendingDraws.empty())
+		return true;
+	if (!rendererState.device) {
+		discardPendingDraws();
+		return false;
+	}
+
+	const Uint32 vertexBytes = static_cast<Uint32>(frameVertices.size() * sizeof(SDL3GPUVertex));
+	const Uint32 indexBytes  = static_cast<Uint32>(frameIndices.size() * sizeof(Uint16));
+	if (vertexBytes == 0 || indexBytes == 0 ||
+	    !prepareUploadedBuffer(vertexUploadBuffer, SDL_GPU_BUFFERUSAGE_VERTEX, frameVertices.data(), vertexBytes) ||
+	    !prepareUploadedBuffer(indexUploadBuffer, SDL_GPU_BUFFERUSAGE_INDEX, frameIndices.data(), indexBytes)) {
+		discardPendingDraws();
 		return false;
 	}
 
 	SDL_GPUCommandBuffer *commands = acquireCommandBuffer();
 	if (!commands) {
-		resetNativeBlitBatch();
+		discardPendingDraws();
 		return false;
 	}
 
+	// One copy pass carries every batch's vertices, before the first draw reads
+	// any of them. This is the whole point of queueing the draws.
 	SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commands);
 	encodeBufferUpload(copyPass, vertexUploadBuffer);
 	encodeBufferUpload(copyPass, indexUploadBuffer);
 	SDL_EndGPUCopyPass(copyPass);
 
-	SDL_GPUColorTargetInfo colorTarget{};
-	colorTarget.texture  = nativeBlitBatch.targetTexture;
-	colorTarget.load_op  = SDL_GPU_LOADOP_LOAD;
-	colorTarget.store_op = SDL_GPU_STOREOP_STORE;
+	bool recorded = true;
+	for (const auto &draw : pendingDraws) {
+		SDL_GPUColorTargetInfo colorTarget{};
+		colorTarget.texture  = draw.targetTexture;
+		colorTarget.load_op  = SDL_GPU_LOADOP_LOAD;
+		colorTarget.store_op = SDL_GPU_STOREOP_STORE;
 
-	SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(commands, &colorTarget, 1, nullptr);
-	if (!renderPass) {
+		SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(commands, &colorTarget, 1, nullptr);
+		if (!renderPass) {
+			recorded = false;
+			break;
+		}
+
+		SDL_BindGPUGraphicsPipeline(renderPass, draw.pipeline);
+
+		SDL_GPUBufferBinding vertexBinding{};
+		vertexBinding.buffer = vertexUploadBuffer.buffer;
+		vertexBinding.offset = draw.firstVertex * static_cast<Uint32>(sizeof(SDL3GPUVertex));
+		SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
+
+		SDL_GPUBufferBinding indexBinding{};
+		indexBinding.buffer = indexUploadBuffer.buffer;
+		indexBinding.offset = draw.firstIndex * static_cast<Uint32>(sizeof(Uint16));
+		SDL_BindGPUIndexBuffer(renderPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
+
+		struct VertexUniforms {
+			float mvp[4][4];
+		} vertexUniforms{};
+		vertexUniforms.mvp[0][0] = 2.0f / draw.viewport.w;
+		vertexUniforms.mvp[1][1] = -2.0f / draw.viewport.h;
+		vertexUniforms.mvp[2][2] = 1.0f;
+		vertexUniforms.mvp[3][0] = -1.0f;
+		vertexUniforms.mvp[3][1] = 1.0f;
+		vertexUniforms.mvp[3][3] = 1.0f;
+		SDL_PushGPUVertexUniformData(commands, 0, &vertexUniforms, sizeof(vertexUniforms));
+
+		if (draw.kind == SDL3GPUPendingDraw::Kind::Triangle) {
+			std::array<SDL_GPUTextureSamplerBinding, 8> samplerBindings{};
+			for (size_t i = 0; i < draw.samplerSet.count; ++i) {
+				samplerBindings[i].texture = draw.samplerSet.textures[i];
+				samplerBindings[i].sampler = draw.samplerSet.samplers[i];
+			}
+			if (draw.samplerSet.count > 0)
+				SDL_BindGPUFragmentSamplers(renderPass, 0, samplerBindings.data(),
+				                            static_cast<Uint32>(draw.samplerSet.count));
+
+			if (draw.pushColorScale) {
+				const float colorScale = 1.0f;
+				SDL_PushGPUFragmentUniformData(commands, 0, &colorScale, sizeof(colorScale));
+			} else if (!draw.fragmentUniformRegisters.empty()) {
+				SDL_PushGPUFragmentUniformData(commands, 0,
+				                               draw.fragmentUniformRegisters.data(),
+				                               static_cast<Uint32>(draw.fragmentUniformRegisters.size() * sizeof(SDL3GPUNativeUniformRegister)));
+			}
+		} else {
+			const float colorScale = 1.0f;
+			SDL_PushGPUFragmentUniformData(commands, 0, &colorScale, sizeof(colorScale));
+		}
+
+		SDL_SetGPUViewport(renderPass, &draw.viewport);
+		SDL_SetGPUScissor(renderPass, &draw.scissor);
+
+		if (draw.kind == SDL3GPUPendingDraw::Kind::Triangle) {
+			SDL_DrawGPUIndexedPrimitives(renderPass, draw.indexCount, 1, 0, 0, 0);
+		} else {
+			for (const auto &group : draw.drawGroups) {
+				SDL_GPUTextureSamplerBinding samplerBinding{};
+				samplerBinding.texture = group.sourceTexture;
+				samplerBinding.sampler = group.sampler;
+				SDL_BindGPUFragmentSamplers(renderPass, 0, &samplerBinding, 1);
+				SDL_DrawGPUIndexedPrimitives(renderPass, group.indexCount, 1, group.firstIndex, 0, 0);
+			}
+		}
+		SDL_EndGPURenderPass(renderPass);
+	}
+
+	const bool submitted = recorded
+	                           ? finishCommandBuffer(commands, 1 + static_cast<Uint32>(pendingDraws.size()))
+	                           : false;
+	if (!recorded)
 		abandonCommandBuffer(commands);
-		resetNativeBlitBatch();
-		return false;
-	}
-
-	SDL_BindGPUGraphicsPipeline(renderPass, nativeBlitBatch.pipeline);
-
-	SDL_GPUBufferBinding vertexBinding{};
-	vertexBinding.buffer = vertexUploadBuffer.buffer;
-	SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
-
-	SDL_GPUBufferBinding indexBinding{};
-	indexBinding.buffer = indexUploadBuffer.buffer;
-	SDL_BindGPUIndexBuffer(renderPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-
-	struct VertexUniforms {
-		float mvp[4][4];
-	} vertexUniforms{};
-	vertexUniforms.mvp[0][0] = 2.0f / nativeBlitBatch.viewport.w;
-	vertexUniforms.mvp[1][1] = -2.0f / nativeBlitBatch.viewport.h;
-	vertexUniforms.mvp[2][2] = 1.0f;
-	vertexUniforms.mvp[3][0] = -1.0f;
-	vertexUniforms.mvp[3][1] = 1.0f;
-	vertexUniforms.mvp[3][3] = 1.0f;
-	SDL_PushGPUVertexUniformData(commands, 0, &vertexUniforms, sizeof(vertexUniforms));
-
-	const float colorScale = 1.0f;
-	SDL_PushGPUFragmentUniformData(commands, 0, &colorScale, sizeof(colorScale));
-
-	SDL_SetGPUViewport(renderPass, &nativeBlitBatch.viewport);
-	SDL_SetGPUScissor(renderPass, &nativeBlitBatch.scissor);
-	for (const auto &group : nativeBlitBatch.drawGroups) {
-		SDL_GPUTextureSamplerBinding samplerBinding{};
-		samplerBinding.texture = group.sourceTexture;
-		samplerBinding.sampler = group.sampler;
-		SDL_BindGPUFragmentSamplers(renderPass, 0, &samplerBinding, 1);
-		SDL_DrawGPUIndexedPrimitives(renderPass, group.indexCount, 1, group.firstIndex, 0, 0);
-	}
-	SDL_EndGPURenderPass(renderPass);
-	const bool submitted = finishCommandBuffer(commands);
 
 	if (submitted) {
-		for (const auto &group : nativeBlitBatch.drawGroups)
-			noteNativeFixedDrawForSource(group.telemetrySource, group.vertexCount);
-		nativeBlitBatch.targetImage->pixels_dirty = true;
-		nativeBlitBatch.targetImage->has_mipmaps  = false;
+		for (const auto &draw : pendingDraws) {
+			if (draw.kind == SDL3GPUPendingDraw::Kind::Triangle) {
+				if (draw.nativeShaderProgram)
+					noteNativeShaderDraw(draw.shaderKind, draw.vertexCount);
+				else
+					noteNativeFixedDraw(draw.vertexCount);
+				draw.targetImage->pixels_dirty = true;
+				draw.targetImage->has_mipmaps  = false;
+			} else if (draw.kind == SDL3GPUPendingDraw::Kind::SolidRect) {
+				noteNativeFixedDraw(draw.vertexCount);
+				draw.targetImage->pixels_dirty        = true;
+				draw.targetImage->pixels_solid        = false;
+				draw.targetImage->texture_initialized = true;
+				draw.targetImage->has_mipmaps         = false;
+			} else {
+				for (const auto &group : draw.drawGroups)
+					noteNativeFixedDrawForSource(group.telemetrySource, group.vertexCount);
+				draw.targetImage->pixels_dirty = true;
+				draw.targetImage->has_mipmaps  = false;
+			}
+		}
 	}
-	resetNativeBlitBatch();
+	discardPendingDraws();
 	return submitted;
 }
 
 bool flushNativeBlitBatch() {
-	const bool trianglesFlushed = flushNativeTriangleBatch();
-	const bool blitsFlushed     = flushNativeBlitBatchOnly();
-	return trianglesFlushed && blitsFlushed;
+	if (!flushNativeTriangleBatch())
+		return false;
+	if (!flushNativeBlitBatchOnly())
+		return false;
+	return materializePendingDraws();
 }
 
 bool nativeBlitBatchMatchesState(GPU_Target *target, SDL_GPUGraphicsPipeline *pipeline,
