@@ -345,6 +345,11 @@ Uint64 commandBuffersSinceSubmissionWait{0};
 // thread on Android. Only the thread that created the renderer shares it.
 SDL_GPUCommandBuffer *frameCommands{nullptr};
 Uint32 frameCommandPasses{0};
+// Texture uploads hold staging memory until their command buffer is submitted.
+// Batches them up to this much staging, then submits, so a scene load cuts its
+// queue submissions without letting copies pile up.
+Uint32 frameUploadBytes{0};
+constexpr Uint32 maxDeferredUploadBytes = 8 * 1024 * 1024;
 SDL_ThreadID rendererThread{0};
 // Submit early past this many passes, so a stretch with no flip -- loading, or
 // building a cache -- cannot pile up work and the memory it holds.
@@ -618,6 +623,7 @@ bool submitFrameCommandBuffer() {
 	const Uint64 work  = std::max<Uint32>(1, frameCommandPasses);
 	frameCommands      = nullptr;
 	frameCommandPasses = 0;
+	frameUploadBytes   = 0;
 	return submitGPUCommandBuffer(commands, work);
 }
 
@@ -649,6 +655,7 @@ SDL_GPUFence *submitCommandBufferAndAcquireFence(SDL_GPUCommandBuffer *commands)
 		work               = std::max<Uint32>(1, frameCommandPasses);
 		frameCommands      = nullptr;
 		frameCommandPasses = 0;
+		frameUploadBytes   = 0;
 	}
 	return submitGPUCommandBufferAndAcquireFence(commands, work);
 }
@@ -2748,13 +2755,21 @@ bool uploadImageRows(GPU_Image *image,
 
 		SDL_UploadToGPUTexture(copyPass, &source, &destination, cycleTexture && firstRow == 0);
 		SDL_EndGPUCopyPass(copyPass);
-		// Uploads are submitted at once, as they always were. Every one reuses a
-		// staging buffer that only grows, and SDL cycles it while a recorded
-		// copy still reads it, so holding uploads for the flip could keep many
-		// multi-megabyte copies alive. The upload still goes through the shared
-		// buffer, which submits it after the passes recorded before it.
-		const bool submitted = commands == frameCommands ? submitFrameCommandBuffer() :
-		                                                   submitGPUCommandBuffer(commands);
+		// Uploads on the render thread ride the shared command buffer so a load
+		// makes one submission per batch instead of one per image. SDL cycles
+		// the staging buffer when a recorded copy still reads it, so the batch
+		// is capped by staging bytes and by the generic pass cap; both force it
+		// out before a load can hold many multi-megabyte copies alive. Other
+		// threads have no shared buffer and submit their copy at once.
+		bool submitted = true;
+		if (commands == frameCommands) {
+			frameUploadBytes += uploadPitch * count;
+			submitted = finishCommandBuffer(commands, 1);
+			if (submitted && frameUploadBytes >= maxDeferredUploadBytes)
+				submitted = submitFrameCommandBuffer();
+		} else {
+			submitted = submitGPUCommandBuffer(commands);
+		}
 		if (!submitted)
 			return false;
 		noteTextureUpload(uploadPitch * count, telemetrySource);

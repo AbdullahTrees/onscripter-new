@@ -1366,13 +1366,18 @@ despite 2.16× the pixels. Its higher total CPU and memory sit below the engine:
 GL mtrack 375.5 MB against the Redmi's EGL 82.8 MB + Graphics 114.9 MB, with the
 engine's own texture census at 113–122 MB on both.
 
-**Batch texture uploads during loading.** *Unmeasured.* `uploadImageRows`
-submits as soon as each range has been mapped and copied, so a scene change
-that uploads many images performs many submissions in a row. Batching them while
-keeping the existing staging-memory limit would likely cut load-time hitches;
-the unexplained 129 ms frame at title load may be one of them. Pixel-identical —
-it only affects when the copies run — so prove it with screenshots plus an
-unchanged load sequence and frame-time trace.
+**Texture uploads are batched.** `uploadImageRows` records copies into the
+shared command buffer and submits when the batch reaches 8 MB of staging, or
+at the existing 32-pass cap, instead of submitting after every mapped range.
+The byte cap bounds the copies SDL keeps alive for in-flight staging buffers;
+uploads from other threads have no shared buffer and still submit at once. On
+the PC, an identical 1194-upload run (137.7 MB) made 4120 command-buffer
+submissions against 5111 before the change: 991 fewer queue submissions, a 19%
+drop for that run. The benchmark's texture upload/render/readback validation
+passes, and both Adreno and Mali devices render the title video and menus
+correctly. Load wall-clock and frame-time traces are still unmeasured; the
+129 ms title-load frame should be re-checked with a frame-time trace on the
+Pad.
 
 **Keep compiled shaders between launches.** *Unchecked.* If SDL's Vulkan backend
 does not save its pipeline cache, every launch recompiles each blend-mode and
