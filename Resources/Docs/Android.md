@@ -1457,11 +1457,12 @@ filtering is not the engine's, so this changes pixels. It breaks the invariant
 unless the result can be shown identical, and it almost certainly cannot.
 Recorded so nobody tries it without knowing.
 
-**Audio low-latency mode costs ~7% of a core and buys 35–44 ms.** Nobody chose
-this mode: since SDL 3.2 the AAudio backend calls
+**Audio uses the normal-latency path, saving ~7% of a core.** Nobody chose the
+old mode: since SDL 3.2 the AAudio backend called
 `AAudioStreamBuilder_setPerformanceMode(LOW_LATENCY)` unless the hint
-`SDL_ANDROID_LOW_LATENCY_AUDIO` is `0` (`SDL_aaudio.c`). The engine sets no
-audio hint.
+`SDL_ANDROID_LOW_LATENCY_AUDIO` is `0` (`SDL_aaudio.c`), and the engine
+previously set no audio hint. It now sets the hint to `0` before
+`SDL_INIT_AUDIO`, inside the Android platform boundary.
 
 Measured on the Pad's title menu with BGM playing, two 10-second samples per
 build from `/proc/<pid>/task/<tid>/stat` and `voluntary_ctxt_switches`:
@@ -1484,11 +1485,12 @@ clock when the mixer first pulls the video's audio, not when it is heard:
 pictures already run about one output latency (82.7 ms) ahead of their sound.
 The normal path would push that to 117–126 ms.
 
-Decision pending. Keep the current low-latency mode, or open audio with the
-hint `0` and have video sync subtract the measured output latency, which also
-removes today's 82.7 ms offset but changes video timing and needs sign-off. The
-hint must be set before `SDL_INIT_AUDIO`; the measured test change is kept
-uncommitted on the tablet for hands-on comparison.
+**Kept.** The hint is set to `0` before `SDL_INIT_AUDIO`. Hands-on comparison on
+the Pad found no perceptible difference in audio or video sync, and the CPU
+saving is real. The reported track latency rises by 35–44 ms;
+`AudioBridge::playbackTimeNanos` could subtract the measured output latency to
+remove both that and today's 82.7 ms picture-ahead offset, but that changes
+video timing and is not needed unless an offset becomes visible.
 Android-only.
 
 **Holding exactly 60 fps costs the tablet extra CPU.** The pacing change (pay

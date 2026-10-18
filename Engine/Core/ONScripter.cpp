@@ -542,6 +542,11 @@ void ONScripter::initSDL() {
 	// For some less obvious reasons JNI setOrientation is called with 1x1 resolution on droid.
 	// As a result it chooses portrait layout for us which is undesired.
 	SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeRight,LandscapeLeft");
+	// SDL's AAudio backend requests LOW_LATENCY by default. A visual novel does
+	// not need real-time audio, and without AAudio's MMAP path the mode appears
+	// to buy latency at the cost of a much higher AudioTrack wake-up rate. Set
+	// this before SDL_INIT_AUDIO so the stream opens in normal-latency mode.
+	SDL_SetHint(SDL_HINT_ANDROID_LOW_LATENCY_AUDIO, "0");
 #endif
 
 	if (!onsSDLInitSubSystem(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO)) {
