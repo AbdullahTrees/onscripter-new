@@ -1333,6 +1333,29 @@ FPS stayed at the 60 fps cap, frame time at 16.6–16.7 ms, and the scene was
 visually identical. The memory figures are one session per build, so treat them
 as directional until a second pair is run; the CPU figures are two samples each.
 
+The same change on the OnePlus Pad (Mali-G710, 2800×2000), in its normal novel
+scene (save slot 1, Episode 5 prologue), two samples per build:
+
+| | Before | After |
+|---|---|---|
+| Engine loop CPU | 29–33% of a core | 27–28% |
+| Process CPU | 69–71% | 69% |
+| TOTAL PSS | 699.3 MB | 604.8 MB |
+| GL mtrack | 474.3 MB | 375.5 MB |
+| Native heap | 162.5 MB | 161.9 MB |
+| Engine texture census | 113 MB | 113 MB |
+
+The Pad is the decisive result: the per-batch `cycle = true` vertex buffers were
+about 99 MB of GL mtrack there, and PSS fell by 94.5 MB. The Adreno driver
+accounts the same buffers under EGL mtrack/Graphics instead, so the Redmi's PSS
+change is only about 7.6 MB; do not compare GL mtrack across the two vendors.
+
+A cross-device check on save slot 1 with the after build: the Pad ran the engine
+loop at 27–28% and the Redmi at 33%, so the Pad's engine loop is not worse
+despite 2.16× the pixels. Its higher total CPU and memory sit below the engine:
+GL mtrack 375.5 MB against the Redmi's EGL 82.8 MB + Graphics 114.9 MB, with the
+engine's own texture census at 113–122 MB on both.
+
 **Batch texture uploads during loading.** *Unmeasured.* `uploadImageRows`
 submits as soon as each range has been mapped and copied, so a scene change
 that uploads many images performs many submissions in a row. Batching them while
