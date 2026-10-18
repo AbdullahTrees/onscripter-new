@@ -198,7 +198,7 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 	ctrl.quit(0);
 }
 
-static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
+static void parseOptions(int argc, char **argv, bool &hasArchivePath, bool fromOptionFile) {
 	std::vector<std::string_view> arguments;
 	arguments.reserve(argc > 1 ? static_cast<size_t>(argc - 1) : 0);
 	for (int i = 1; i < argc; ++i)
@@ -555,6 +555,16 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
 				argc--;
 				argv++;
 				ons.ons_cfg_options["system-offset-y"] = argv[0];
+			} else if (fromOptionFile) {
+				// Configuration files may carry keys from another build or a
+				// newer version. Ignore them; consume the value emitted for a
+				// key=value pair so it cannot be mistaken for an archive path
+				// or interpreted as another option.
+				sendToLog(LogLevel::Info, "Ignoring unknown configuration key %s\n", argv[0]);
+				if (argc > 2 && argv[1][0] != '-') {
+					argc--;
+					argv++;
+				}
 			} else {
 				char errstr[256];
 				std::snprintf(errstr, sizeof(errstr), "unknown option %s", argv[0]);
@@ -565,6 +575,8 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
 			ons.setArchivePath(argv[0]);
 			argc--;
 			argv++;
+		} else if (fromOptionFile) {
+			sendToLog(LogLevel::Info, "Ignoring unexpected configuration argument %s\n", argv[0]);
 		} else {
 			optionHelp();
 		}
@@ -633,7 +645,7 @@ static bool parseOptionFile(const char *filename, bool &hasArchivePath) {
 
 	// now parse the options
 	if (arguments.size() > 1 && arguments[1])
-		parseOptions(static_cast<int>(arguments.size()), arguments.data(), hasArchivePath);
+		parseOptions(static_cast<int>(arguments.size()), arguments.data(), hasArchivePath, true);
 	for (auto &arg : arguments)
 		freearr(&arg);
 	return true;
@@ -838,7 +850,7 @@ int main(int argc, char **argv) {
 		performTerminate("Failed to obtain program arguments!");
 
 	//Firstly, read command line options
-	parseOptions(ons.argc, ons.argv, hasArchivePath);
+	parseOptions(ons.argc, ons.argv, hasArchivePath, false);
 
 #if defined(ONS_USE_SDL3)
 	if (ons.ons_cfg_options.find("sdl3-benchmark") != ons.ons_cfg_options.end()) {
