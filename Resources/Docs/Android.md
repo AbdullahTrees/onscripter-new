@@ -1298,8 +1298,43 @@ batch ends on any change of target, pipeline (blend mode, blending on or off,
 blit or triangle program), viewport or scissor, and on every `GPU_ClearRGBA`,
 `GPU_FreeImage` or shader activation. Pipeline changes are legal inside one
 render pass; only a target change needs a new pass. Keeping consecutive batches
-to the same target in one render pass is the next step on this path, and it is
-pixel-identical by construction, since the same draws happen in the same order.
+to the same target in one render pass is the step after the vertex-upload change
+below, and it is pixel-identical by construction, since the same draws happen in
+the same order.
+
+**Upload each frame's vertices once, not once per batch.** *Unmeasured; do this
+before the render-pass merge above.* Every blit or triangle batch maps a
+transfer buffer, copies its vertices in, and records its own copy pass before
+its render pass (`flushNativeBlitBatchOnly` and `flushNativeTriangleBatch` in
+`SDL3GPUCompat.cpp`). Both the transfer buffer and the GPU buffer are uploaded
+with `cycle = true`, so each batch takes a fresh copy from SDL while earlier
+ones are still in flight, and those copies count against the memory the
+periodic drain exists to bound.
+
+Use one ring buffer per frame instead: each batch appends its vertices and
+indices at an offset and draws from that offset, and the frame uploads the whole
+range once. Pixel-identical by construction — the same vertices are drawn in
+the same order — and provable with the built-in benchmark's upload, draw and
+readback validation. The upload has to happen before the frame's first render
+pass, so draw batches must be queued and recorded at the point the frame is
+submitted rather than recorded as they are produced. That change is also what
+makes the render-pass merge possible: a copy pass cannot sit inside a render
+pass, so every batch that uploads its own vertices has to end the render pass.
+
+**Batch texture uploads during loading.** *Unmeasured.* `uploadImageRows`
+submits as soon as each range has been mapped and copied, so a scene change
+that uploads many images performs many submissions in a row. Batching them while
+keeping the existing staging-memory limit would likely cut load-time hitches;
+the unexplained 129 ms frame at title load may be one of them. Pixel-identical —
+it only affects when the copies run — so prove it with screenshots plus an
+unchanged load sequence and frame-time trace.
+
+**Keep compiled shaders between launches.** *Unchecked.* If SDL's Vulkan backend
+does not save its pipeline cache, every launch recompiles each blend-mode and
+shader pipeline the first time it is used. SDL 3 may expose this; a log line
+timing `SDL_CreateGPUGraphicsPipeline` would show within a run whether the
+first-use hitches are shader compilation. No pixel change if the same pipelines
+are simply reused.
 
 **The rain is drawn over the whole screen and then mostly covered.** In scenes
 with a retained rain layer, such as the reference hallway where rain falls outside
@@ -1341,6 +1376,16 @@ dirty rect). The forced per-frame clip in `Event.cpp`, marked as a safety net, i
 what defeats it. Pixel-identical if the dirty rect is right; the risk is the
 effects that touch the HUD (quakes, fades, wipes, text box growth), so it needs a
 regression pass over them.
+
+**Skip unchanged frames on static screens.** *Overlaps the HUD item above; wait
+with the parked idle-saving work.* `nextUpdateNanos` (`Event.cpp:1087-1100`)
+already decides each frame whether anything needs drawing. In text mode, though,
+`addTextWindowClip(before_dirty_rect_hud)` (`Event.cpp:2736`) marks the text
+window dirty every frame, so it always redraws. If the cursor animates slower
+than 60 fps, frames between its changes could skip the draw and the present
+entirely. The screen would look exactly the same, unlike lowering the frame
+rate. Prove it by holding a static text screen with the cursor hidden and with
+it animating, and comparing frame hashes and the cursor's visible cadence.
 
 **Each flip clears the whole screen target, and the HUD is cleared each frame.**
 `clearWholeTarget(screen_target)` after every `GPU_Flip`, and the HUD clear in
@@ -1406,6 +1451,17 @@ present to the display cadence lands it on the compositor's deadline, where the
 GPU path costs more, while the old 58.5 fps drifted through all phases. On
 Windows the same change makes every build cheaper (120.0 fps at 120 Hz, less CPU).
 Every item above that cuts GPU work also cuts this cost.
+
+**Break down graphics memory by kind before cutting it.** *Instrument first.*
+`GL mtrack` is 490–524 MB in the reference scene, while the engine's own census
+accounts for only a quarter of it (see *Graphics memory is ~370 MB and only a
+quarter of it is accounted for*, above). Add live texture bytes, grouped by
+kind — render target, image cache, mipmapped, staging — to
+`--sdl3-gpu-telemetry`. That tells us whether the safe cuts are worth doing:
+skip mipmaps on images that are never sampled smaller, free targets that are
+only used by effects when the effect ends, and release large staging buffers
+after loading. Each needs a pixel check; skipping mipmaps is safe only where an
+image is never sampled below its base level.
 
 **Rejected, with numbers, so nobody retries them blind:**
 
