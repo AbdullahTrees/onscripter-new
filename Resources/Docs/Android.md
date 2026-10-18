@@ -1457,12 +1457,14 @@ filtering is not the engine's, so this changes pixels. It breaks the invariant
 unless the result can be shown identical, and it almost certainly cannot.
 Recorded so nobody tries it without knowing.
 
-**Audio uses the normal-latency path, saving ~7% of a core.** Nobody chose the
-old mode: since SDL 3.2 the AAudio backend called
-`AAudioStreamBuilder_setPerformanceMode(LOW_LATENCY)` unless the hint
+**Audio uses the normal-latency path by default on Android, saving ~7% of a
+core.** SDL 3.2's AAudio backend requests `LOW_LATENCY` unless the hint
 `SDL_ANDROID_LOW_LATENCY_AUDIO` is `0` (`SDL_aaudio.c`), and the engine
-previously set no audio hint. It now sets the hint to `0` before
-`SDL_INIT_AUDIO`, inside the Android platform boundary.
+previously set no hint. It now reads `audio-low-latency` from the game config
+and sets the hint before `SDL_INIT_AUDIO`. When the entry is absent the hint is
+left at SDL's enabled default, so PC and Linux keep low latency; the Android
+launcher passes `--audio-low-latency 0` as its default, and an `ons.cfg` entry
+overrides it because command-line options are parsed first.
 
 Measured on the Pad's title menu with BGM playing, two 10-second samples per
 build from `/proc/<pid>/task/<tid>/stat` and `voluntary_ctxt_switches`:
@@ -1472,10 +1474,10 @@ build from `/proc/<pid>/task/<tid>/stat` and `voluntary_ctxt_switches`:
 | `AudioTrack` CPU | 9.2–9.4% of a core | 1.5–2.1% |
 | `AudioTrack` wake-ups | 771–774/s | 97–100/s |
 | SDL mixer CPU | 0.9% | 0.9–1.5% |
-| Reported track latency | 82.7 ms (`F1`, fast track) | 117.2–126.3 ms (normal track) |
+| Reported track latency | 82.7 ms (`F1`, fast track) | 105.4–126.3 ms (normal track) |
 | AAudio MMAP endpoints | 0 | 0 |
 
-The fast track is lost with the hint off, and the track reports 35–44 ms more
+The fast track is lost with the hint off, and the track reports 22–44 ms more
 output latency. It is not on AAudio's MMAP path in either mode, so low latency
 buys only the fast mixer's shorter path; SDL's fixed 20 ms callback buffer still
 dominates.
@@ -1483,14 +1485,16 @@ dominates.
 The latency matters because `AudioBridge::playbackTimeNanos` starts the video
 clock when the mixer first pulls the video's audio, not when it is heard:
 pictures already run about one output latency (82.7 ms) ahead of their sound.
-The normal path would push that to 117–126 ms.
+The normal path would push that to 105–126 ms.
 
-**Kept.** The hint is set to `0` before `SDL_INIT_AUDIO`. Hands-on comparison on
-the Pad found no perceptible difference in audio or video sync, and the CPU
-saving is real. The reported track latency rises by 35–44 ms;
-`AudioBridge::playbackTimeNanos` could subtract the measured output latency to
-remove both that and today's 82.7 ms picture-ahead offset, but that changes
-video timing and is not needed unless an offset becomes visible.
+**Kept, with a config switch.** The Android launcher passes `0`; hands-on
+comparison on the Pad found no perceptible difference in audio or video sync,
+and the CPU saving is real. Add `audio-low-latency=1` to `ons.cfg` to restore
+the fast track and its 80–83 ms latency. The normal path's reported latency is
+22–44 ms higher; `AudioBridge::playbackTimeNanos` could subtract the measured
+output latency to remove both that and today's 82.7 ms picture-ahead offset,
+but that changes video timing and is not needed unless an offset becomes
+visible.
 Android-only.
 
 **Holding exactly 60 fps costs the tablet extra CPU.** The pacing change (pay

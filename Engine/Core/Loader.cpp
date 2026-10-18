@@ -127,6 +127,7 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 	printf("     --audiodriver dev            set the SDL_AUDIODRIVER to dev\n");
 	printf("     --audiobuffer size           set the audio buffer size in kB (default: 2)\n");
 	printf("     --audioformat format         set the audio format (choose from s8, u8, s16, u16, s32, f32)\n");
+	printf("     --audio-low-latency state    pass 0/1 or true/false to enable/disable AAudio low-latency mode (default: on)\n");
 	printf("     --renderer-blacklist list    comma-separated list of disabled renderers (choose from Vulkan)\n");
 	printf("     --prefer-renderer name       try using this renderer first of all\n");
 #if defined(ONS_USE_SDL3)
@@ -230,6 +231,10 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
 				argc--;
 				argv++;
 				ons.ons_cfg_options["audioformat"] = argv[0];
+			} else if (!std::strcmp(argv[0] + 1, "-audio-low-latency")) {
+				argc--;
+				argv++;
+				ons.ons_cfg_options["audio-low-latency"] = argv[0];
 			} else if (!std::strcmp(argv[0] + 1, "-renderer-blacklist")) {
 				argc--;
 				argv++;
