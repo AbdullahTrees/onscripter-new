@@ -1457,37 +1457,38 @@ filtering is not the engine's, so this changes pixels. It breaks the invariant
 unless the result can be shown identical, and it almost certainly cannot.
 Recorded so nobody tries it without knowing.
 
-**Audio runs in low-latency mode for no benefit, costing about 11% of a core.**
-*Low priority.* The engine fixes above are worth far more, and this one needs an
-audio/video timing check before it can ship.
+**Audio low-latency mode costs ~7% of a core and buys 35–44 ms.** Nobody chose
+this mode: since SDL 3.2 the AAudio backend calls
+`AAudioStreamBuilder_setPerformanceMode(LOW_LATENCY)` unless the hint
+`SDL_ANDROID_LOW_LATENCY_AUDIO` is `0` (`SDL_aaudio.c`). The engine sets no
+audio hint.
 
-Nobody chose this mode. It is SDL's default: since SDL 3.2 the AAudio backend
-calls `AAudioStreamBuilder_setPerformanceMode(LOW_LATENCY)` unless the hint
-`SDL_ANDROID_LOW_LATENCY_AUDIO` is `0` (`SDL_aaudio.c`). The engine sets no audio
-hint at all.
+Measured on the Pad's title menu with BGM playing, two 10-second samples per
+build from `/proc/<pid>/task/<tid>/stat` and `voluntary_ctxt_switches`:
 
-On the OnePlus Pad it buys nothing:
+| | Low latency (default) | Hint `0` |
+|---|---|---|
+| `AudioTrack` CPU | 9.2–9.4% of a core | 1.5–2.1% |
+| `AudioTrack` wake-ups | 771–774/s | 97–100/s |
+| SDL mixer CPU | 0.9% | 0.9–1.5% |
+| Reported track latency | 82.7 ms (`F1`, fast track) | 117.2–126.3 ms (normal track) |
+| AAudio MMAP endpoints | 0 | 0 |
 
-- `dumpsys media.audio_flinger` shows the game's track as `F1`, a fast-mixer
-  track (mixer period 5.33 ms).
-- It is not on AAudio's MMAP path: `dumpsys media.aaudio` lists no streams.
-- The track still reports 82.7 ms of latency. SDL's buffer is a fixed 20 ms per
-  callback with 40 ms capacity whatever the mode, and that dominates.
-- Meanwhile the `AudioTrack` thread wakes about 680 times a second (once every
-  1.5 ms, about thirty times per SDL callback) for about 11% of a core. SDL's
-  mixer thread uses under 1% at 62 wake-ups a second.
+The fast track is lost with the hint off, and the track reports 35–44 ms more
+output latency. It is not on AAudio's MMAP path in either mode, so low latency
+buys only the fast mixer's shorter path; SDL's fixed 20 ms callback buffer still
+dominates.
 
-Turning it off changes no pixel. It can, however, change what is visible in
-video: `AudioBridge::playbackTimeNanos` starts the video clock when the mixer
-first pulls the video's audio, not when it is heard, so pictures already run
-about one output latency (83 ms) ahead of their sound. If the normal path's
-latency is larger, video runs further ahead.
+The latency matters because `AudioBridge::playbackTimeNanos` starts the video
+clock when the mixer first pulls the video's audio, not when it is heard:
+pictures already run about one output latency (82.7 ms) ahead of their sound.
+The normal path would push that to 117–126 ms.
 
-Do it as a measured experiment. Set the hint before audio opens, then compare
-the `AudioTrack` CPU and wake-ups and the reported track latency against the
-numbers above. If the latency holds, ship it. If it grows, either keep low
-latency, or have video sync subtract the measured output latency, which also
-removes today's 83 ms offset but changes video timing and needs sign-off.
+Decision pending. Keep the current low-latency mode, or open audio with the
+hint `0` and have video sync subtract the measured output latency, which also
+removes today's 82.7 ms offset but changes video timing and needs sign-off. The
+hint must be set before `SDL_INIT_AUDIO`; the measured test change is kept
+uncommitted on the tablet for hands-on comparison.
 Android-only.
 
 **Holding exactly 60 fps costs the tablet extra CPU.** The pacing change (pay
