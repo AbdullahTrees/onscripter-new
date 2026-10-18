@@ -1312,21 +1312,28 @@ to the same target was tried and rejected: it is pixel-identical by
 construction, but it raised Mali memory in the matched A/B (see *Rejected, with
 numbers*, below).
 
-**Drawing uploads each frame's vertices once.** Blit, triangle and solid-rect
-draws are queued as they are produced and recorded when the frame's drawing is
-submitted (`SDL3GPUCompat.cpp`). One copy pass then carries every batch's
-vertices before the first render pass, and each batch binds its own offset in
-the shared vertex and index buffers. Previously every batch mapped a transfer
-buffer, ran a copy pass with `cycle = true` and ended with its own render pass,
-so a frame took a fresh copy per batch and those copies counted against the
-memory the periodic drain exists to bound.
+**Queued draws share one vertex upload.** Blit, triangle and solid-rect draws
+are queued as they are produced and recorded at the next point that depends on
+ordering (`materializePendingDraws` in `SDL3GPUCompat.cpp`). One copy pass then
+carries the vertices of every queued batch before the first of their render
+passes, and each batch binds its own offset in the shared vertex and index
+buffers. Previously every batch mapped a transfer buffer, ran a copy pass with
+`cycle = true` and ended with its own render pass, so a frame took a fresh copy
+per batch and those copies counted against the memory the periodic drain exists
+to bound.
 
-Ordering-sensitive paths — clears, texture uploads, copies, readbacks, sampler
-and program changes — materialise the queue first. The same draws happen in the
-same order, so this is pixel-identical by construction; the built-in
-benchmark's upload, draw and readback validation is the intended check. It also
-removes the copy pass from between render passes, which is what made the
-render-pass merge experiment possible.
+The points that record the queue are the frame's submission and anything that
+depends on ordering: clears, texture uploads, copies, readbacks, image frees,
+and sampler or program changes. These are the same places that ended a batch
+before, so a flush costs no more than it did, and with nothing queued it is
+three empty checks. A frame is therefore not one upload but one per run of
+draws between those points, typically two or three, since the HUD clear and the
+screen clear each split it. Deferred clears, below, would merge most of them.
+
+The same draws happen in the same order, so this is pixel-identical by
+construction; the built-in benchmark's upload, draw and readback validation is
+the intended check. It also removes the copy pass from between render passes,
+which is what made the render-pass merge experiment possible.
 
 Measured on the Redmi Note 11 (Adreno 610), loaded novel scene (save slot 2),
 with the frame and pool state settled. Two samples per build:
@@ -1373,20 +1380,12 @@ at the existing 32-pass cap, instead of submitting after every mapped range.
 The byte cap bounds the copies SDL keeps alive for in-flight staging buffers;
 uploads from other threads have no shared buffer and still submit at once. On
 the PC, an identical 1194-upload run (137,694,976 bytes) made 4120
-command-buffer submissions against 5111 before the change: 991 fewer queue
-submissions, a 19%
+command-buffer submissions against 5111 before the change: 991 fewer, a 19%
 drop for that run. The benchmark's texture upload/render/readback validation
 passes, and both Adreno and Mali devices render the title video and menus
 correctly. Load wall-clock and frame-time traces are still unmeasured; the
 129 ms title-load frame should be re-checked with a frame-time trace on the
 Pad.
-
-**Keep compiled shaders between launches.** *Unchecked.* If SDL's Vulkan backend
-does not save its pipeline cache, every launch recompiles each blend-mode and
-shader pipeline the first time it is used. SDL 3 may expose this; a log line
-timing `SDL_CreateGPUGraphicsPipeline` would show within a run whether the
-first-use hitches are shader compilation. No pixel change if the same pipelines
-are simply reused.
 
 **The rain is drawn over the whole screen and then mostly covered.** In scenes
 with a retained rain layer, such as the reference hallway where rain falls outside
@@ -1442,12 +1441,14 @@ it animating, and comparing frame hashes and the cursor's visible cadence.
 
 **Each flip clears the whole screen target, and the HUD is cleared each frame.**
 `clearWholeTarget(screen_target)` after every `GPU_Flip`, and the HUD clear in
-`refreshHudTo`, each cost a submission, and each forces the pending batch out
-first. That is most of `GPU_ClearRGBA`'s 17%. A deferred clear avoids the
-submission while keeping the result: mark the target as pending a clear and use
-`LOADOP_CLEAR` on its next render pass. Any readback, upload or sample of the
-target must apply the pending clear first. Pixel-identical if those paths are all
-covered.
+`refreshHudTo`, are each a render pass of their own. Before drawing shared a
+command buffer, each was also a submission, and that was most of
+`GPU_ClearRGBA`'s 17% in the breakdown above. Each clear still records the queued
+draws first, so it splits the frame's vertex upload in two. A deferred clear
+removes both the pass and the split while keeping the result: mark the target as
+pending a clear and use `LOADOP_CLEAR` on its next render pass. Any readback,
+upload or sample of the target must apply the pending clear first.
+Pixel-identical if those paths are all covered.
 
 **Presenting costs about a third of the engine thread.** `GPU_Flip` blits the
 1920x1080 canvas up to the 2800x2000 swapchain, then `vkQueuePresentKHR` spends
