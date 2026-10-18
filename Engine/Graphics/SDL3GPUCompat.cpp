@@ -849,6 +849,70 @@ void liveImageMemoryTotals(size_t &textureBytes, size_t &pixelBytes) {
 	}
 }
 
+/**
+ * The same live images, split by the question a cut would ask: how much is
+ * render targets, how much is ordinary image cache, how much carries mip
+ * levels, and how much is staging that only exists for uploads. Mipmapped
+ * bytes are a subset of the target/cache bytes, not an additional group.
+ */
+struct TextureCensus {
+	size_t liveImages{0};
+	size_t targetImages{0};
+	size_t targetBytes{0};
+	size_t cachedImages{0};
+	size_t cachedBytes{0};
+	size_t mipmappedImages{0};
+	size_t mipmappedBytes{0};
+	size_t cpuPixelBytes{0};
+	size_t stagingTransferBytes{0};
+	size_t stagingGpuBytes{0};
+};
+
+TextureCensus textureCensus() {
+	TextureCensus census;
+	std::unordered_set<SDL_GPUTexture *> counted;
+	for (auto *image : liveTextureImages) {
+		if (!image)
+			continue;
+		++census.liveImages;
+		const bool isTarget = image->target != nullptr ||
+		                      (image->context_target && image->context_target->image == image);
+		if (isTarget)
+			++census.targetImages;
+		else
+			++census.cachedImages;
+		if (image->mip_level_count > 1)
+			++census.mipmappedImages;
+		census.cpuPixelBytes += image->pixels.capacity();
+		if (image->storage)
+			census.cpuPixelBytes += image->storage->alpha.capacity();
+		if (!image->texture || !counted.insert(image->texture).second)
+			continue;
+
+		size_t bytes = 0;
+		Uint32 w = image->w, h = image->h;
+		const Uint32 levels = std::max<Uint32>(1, image->mip_level_count);
+		for (Uint32 level = 0; level < levels; ++level) {
+			bytes += static_cast<size_t>(w) * h * image->bytes_per_pixel;
+			w = std::max<Uint32>(1, w / 2);
+			h = std::max<Uint32>(1, h / 2);
+		}
+		if (isTarget)
+			census.targetBytes += bytes;
+		else
+			census.cachedBytes += bytes;
+		if (image->mip_level_count > 1)
+			census.mipmappedBytes += bytes;
+	}
+	census.stagingTransferBytes = static_cast<size_t>(textureUploadBuffer.capacity) +
+	                              textureDownloadBuffer.capacity +
+	                              vertexUploadBuffer.capacity +
+	                              indexUploadBuffer.capacity;
+	census.stagingGpuBytes = static_cast<size_t>(vertexUploadBuffer.capacity) +
+	                         indexUploadBuffer.capacity;
+	return census;
+}
+
 SDL_GPUTextureFormat textureFormat(GPU_FormatEnum format) {
 	switch (format) {
 		case GPU_FORMAT_LUMINANCE:
@@ -1404,11 +1468,21 @@ SDL_GPUGraphicsPipeline *getPipeline(SDL_GPUTextureFormat targetFormat, GPU_bool
 	pipelineInfo.target_info.color_target_descriptions = &colorTarget;
 	pipelineInfo.target_info.num_color_targets = 1;
 
+	const Uint64 pipelineStart = SDL_GetPerformanceCounter();
 	SDL_GPUGraphicsPipeline *pipeline = SDL_CreateGPUGraphicsPipeline(rendererState.device, &pipelineInfo);
+	const Uint64 pipelineEnd = SDL_GetPerformanceCounter();
 	if (!pipeline) {
 		setShaderMessage(SDL_GetError());
 		return nullptr;
 	}
+	// First-use pipeline compilation is a launch hitch, not a frame cost. SDL's
+	// GPU API (as pinned here) exposes no pipeline cache, so this line is the
+	// measurement that would justify adding one.
+	const double pipelineMs =
+	    static_cast<double>(pipelineEnd - pipelineStart) * 1000.0 /
+	    static_cast<double>(SDL_GetPerformanceFrequency());
+	sendToLog(LogLevel::Info, "SDL3_GPU pipeline created in %.2f ms (format %d, blending %d)\n",
+	          pipelineMs, static_cast<int>(targetFormat), useBlending ? 1 : 0);
 
 	pipelineCache.push_back(SDL3GPUPipelineEntry{targetFormat, useBlending, blendMode, vertexShader, fragmentShader, pipeline});
 	return pipeline;
@@ -2138,6 +2212,26 @@ void printAndResetTelemetry() {
 	          static_cast<unsigned long long>(liveTextureImages.size()),
 	          static_cast<unsigned long long>(liveTextureBytes),
 	          static_cast<unsigned long long>(livePixelBytes));
+
+	const TextureCensus census = textureCensus();
+	constexpr double censusMb   = 1024.0 * 1024.0;
+	sendToLog(LogLevel::Info,
+	          "SDL3_GPU memory census: target_images=%llu target_mb=%.1f "
+	          "cached_images=%llu cached_mb=%.1f mipmapped_images=%llu mipmapped_mb=%.1f "
+	          "cpu_pixel_mb=%.1f staging_transfer_mb=%.1f staging_gpu_mb=%.1f\n",
+	          static_cast<unsigned long long>(census.targetImages),
+	          static_cast<double>(census.targetBytes) / censusMb,
+	          static_cast<unsigned long long>(census.cachedImages),
+	          static_cast<double>(census.cachedBytes) / censusMb,
+	          static_cast<unsigned long long>(census.mipmappedImages),
+	          static_cast<double>(census.mipmappedBytes) / censusMb,
+	          static_cast<double>(census.cpuPixelBytes) / censusMb,
+	          static_cast<double>(census.stagingTransferBytes) / censusMb,
+	          static_cast<double>(census.stagingGpuBytes) / censusMb);
+
+	// Dimensions say whether the target bytes are the canvas, effect targets or
+	// small per-scene buffers; the kind label alone does not.
+	GPU_LogLargestLiveImages(12);
 
 	for (const auto &stats : telemetry.transfers) {
 		if (stats.textureUploads == 0 && stats.readbacks == 0)

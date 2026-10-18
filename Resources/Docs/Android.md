@@ -1237,6 +1237,16 @@ Measurements are from the OnePlus Pad (MediaTek mt6983, Mali, 2800x2000 surface,
 1920x1080 canvas) in the reference scene described under *Measuring a
 performance change*, taken 2026-10-17. Percentages are of one core.
 
+The on-screen counter's CPU/loop figures are a live indicator, not a
+measurement. On the Pad, a 5-second `/proc` per-thread delta read 79.2% total
+and 33.6% `SDLThread` while the panel showed 68%/28%; on the Redmi the two
+agreed within a point. Use `/proc` task deltas, `simpleperf stat --app`,
+`dumpsys meminfo`, and `dumpsys gfxinfo` for decisions. `dumpsys meminfo`
+categories are vendor-specific: Adreno reports under `EGL mtrack`/`Graphics`
+while Mali reports under `GL mtrack`, so never compare those counters across
+vendors. The Pad's CPU/GPU sensors read about 94°C with `mStatus=4` during
+these runs (skin 44°C, OS thermal status 0); repeat A/B work on a cool device.
+
 **Where the time goes now.** Since each frame's drawing shares one command buffer
 (below), the reference scene runs at 72–73% of a core in total. Of that,
 `SDLThread` is 34–35% and the driver thread 6–7%. `GL mtrack` is 490–524 MB and
@@ -1487,16 +1497,47 @@ GPU path costs more, while the old 58.5 fps drifted through all phases. On
 Windows the same change makes every build cheaper (120.0 fps at 120 Hz, less CPU).
 Every item above that cuts GPU work also cuts this cost.
 
-**Break down graphics memory by kind before cutting it.** *Instrument first.*
-`GL mtrack` is 490–524 MB in the reference scene, while the engine's own census
-accounts for only a quarter of it (see *Graphics memory is ~370 MB and only a
-quarter of it is accounted for*, above). Add live texture bytes, grouped by
-kind — render target, image cache, mipmapped, staging — to
-`--sdl3-gpu-telemetry`. That tells us whether the safe cuts are worth doing:
-skip mipmaps on images that are never sampled smaller, free targets that are
-only used by effects when the effect ends, and release large staging buffers
-after loading. Each needs a pixel check; skipping mipmaps is safe only where an
-image is never sampled below its base level.
+**Graphics memory is split by kind in `--sdl3-gpu-telemetry`.** The new
+`SDL3_GPU memory census` line reports render-target images/bytes, cached
+images/bytes, mipmapped images/bytes (a subset of the first two), CPU pixel
+bytes, and staging transfer/GPU bytes. The twelve largest live textures follow,
+with dimensions and the render-target marker.
+
+Title-screen results:
+
+| | Redmi (Adreno 610) | OnePlus Pad (Mali-G710) | PC (Vulkan) |
+|---|---|---|---|
+| Render targets | 30 / 150.2 MB | 30 / 151.0 MB | 32 / 158.0 MB |
+| Cached images | 6 / 12.6 MB | 3 / 4.0 MB | 9 / 32.2 MB |
+| Mipmapped | 0 | 0 | 0 |
+| Staging | 0.3 MB | 0.3 MB | 4.0 MB |
+| Total live textures | 162.8 MB | 155.0 MB | 190.2 MB |
+
+The engine's target allocation is nearly identical on the two Android devices
+despite the Pad's 2.16× larger surface, so the Pad's extra `GL mtrack` is below
+the engine: swapchain, fullscript and driver allocations, not texture targets.
+The largest images are the same everywhere: one 2048×4096 = 32 MB render
+target (the glyph atlas, sized by `GLYPH_ATLAS_W/H` in `GlyphAtlas.hpp`), six
+2172×1222 = 10.4 MB targets, and 1920×1080 canvas targets. The 2172×1222
+targets are the canvas/HUD/text/window and retained-rain bands, which are
+persistent compositing targets and cannot be freed; the glyph atlas is
+required for text and has a fixed size.
+
+**Texture memory is not the lever it looked like.** Mipmapped images are zero
+on all three platforms, staging is 0.3 MB on both devices (4.0 MB transiently
+on the PC), and every large texture is either a persistent compositing target or the
+fixed-size glyph atlas. Cached-image totals vary with scene state (4.0–32.2 MB
+across the samples above) and are ordinary image cache, not a leak. The old
+breakup cellforms resource is 384×24; it was ruled out as a memory factor.
+Further memory work has to come from target lifetime or from below the engine
+(driver/swapchain), not from texture formats or mipmaps.
+
+**First-use pipeline compilation is timed.** `SDL3_GPU pipeline created in N
+ms` is logged for every cache miss. On the PC it is 0.03–0.11 ms; on the Redmi
+(Adreno) 10.2–49.7 ms and on the Pad (Mali) 2.8–13.9 ms, with six pipelines
+created at startup. SDL's pinned GPU API exposes no pipeline cache, so there is
+nothing to persist without an SDL upgrade; the cost is real but small next to
+the load work.
 
 **Rejected, with numbers, so nobody retries them blind:**
 
@@ -1512,6 +1553,16 @@ image is never sampled below its base level.
   reverted on taste. It cannot fill its frame-time lows without a tick from the
   engine per presented frame, which conflicts with the counter belonging to the
   app.
+- **Same-target render-pass merging** (2026-10-18). Tried on top of queued draw
+  recording: it rendered identically, but at the matched save-slot-1 state it
+  raised Pad `GL mtrack` from 448.2 to 468.7 MB and PSS from 669.2 to 690.3 MB,
+  while `simpleperf` task-clock was unchanged (0.865 to 0.862 CPUs). On the
+  Redmi it saved about 4 MB PSS and 9 MB Graphics, which does not compensate on
+  the memory-constrained Pad. The drain still counts draws, so this is not the
+  backlog bound; the Mali driver appears to retain more when a pass spans many
+  pipeline/state changes. The patch is saved as
+  `DerivedData/render-pass-merge.patch`; revisit only with a GPU-side counter
+  and a workload where pass overhead matters.
 
 ### Features
 

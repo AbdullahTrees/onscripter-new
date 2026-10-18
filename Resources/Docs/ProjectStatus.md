@@ -42,6 +42,28 @@ make -j8
 `configure` downloads source archives for the pinned dependency graph, verifies
 their SHA-256 hashes, and builds static libraries below `DerivedData`.
 
+## Running a Windows build against installed game data
+
+The build produces `DerivedData/MinGW-x86_64/onscripter-new.exe`. It can run
+against an existing game installation without copying the game directory:
+
+```sh
+./DerivedData/MinGW-x86_64/onscripter-new.exe \
+  --root "D:/Games/Umineko When They Cry (Project Umineko)" --use-logfile
+```
+
+Run it from an MSYS2 UCRT64 shell so the UCRT64 runtime DLLs are on `PATH`.
+Startup reads `ons.cfg` from the `--root` directory (for `game-script`,
+`window-width`, and similar options). Saves and caches go to
+`C:\ProgramData\ONScripter-RU\<game-id>\`, and with `--use-logfile` the
+`out.txt` and `err.txt` logs are written there too. Quote the whole argument
+list when launching through PowerShell: `Start-Process -ArgumentList` does not
+quote individual arguments, so an unquoted `--root` path with spaces is split.
+
+The game's data archives are not modified, so a shared installation is safe to
+point at; only `ons.cfg` can be rewritten when settings are changed in the
+Config menu.
+
 ## Android builds
 
 The Android engine is built with NDK 29 through `configure` and GNU Make, then
@@ -133,6 +155,12 @@ regression suite. A release is not fully verified until it has:
 4. started with legal Umineko Project data;
 5. exercised saves, text, audio, video, menus, and archive loading; and
 6. completed the built-in SDL3 benchmark on representative hardware.
+
+A local Windows build that links distribution SDL3 instead of the pinned
+recipe can fail the benchmark's `effectWarp` pixel comparison while the game
+itself renders correctly. The same engine built through the pinned dependency
+graph must pass before release; treat a shortcut-build mismatch as a
+toolchain difference, not a renderer regression.
 
 That missing deterministic game corpus is the main limit on aggressive renderer
 or ownership refactors and on claims of maximal optimization.
