@@ -5134,9 +5134,16 @@ SDL_Surface *createBenchmarkSurface(int width, int height) {
 }
 
 void finishBenchmarkWork(GPU_Image *image) {
+	GPU_SubmitFrame();
 	SDL_Surface *surface = GPU_CopySurfaceFromImage(image);
 	if (surface)
 		SDL_FreeSurface(surface);
+	// A solid image or a cached upload can be copied on the CPU, so copying
+	// its surface alone does not wait for the GPU work between timed cases.
+	const bool waited = SDL_WaitForGPUIdle(rendererState.device);
+	noteBlockingGPUWait();
+	if (waited)
+		retireSubmissionBacklogAfterCompletedFence();
 }
 
 bool copyImageRowsToSurface(const GPU_Image *image, SDL_Surface *surface, const Uint8 *pixels) {
@@ -6760,7 +6767,7 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 			GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + cached[j].x, 16.0f + cached[j].y);
 			GPU_Blit(textImage, nullptr, targetSurface, 16.0f + cached[j].x + 55.0f, 16.0f + cached[j].y + 13.0f);
 		}
-		GPU_FlushBlitBuffer();
+		GPU_SubmitFrame();
 	}
 	finishBenchmarkWork(target);
 
@@ -6822,7 +6829,7 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 		for (int i = 0; i < iterations; ++i) {
 			for (int j = visibleFirst; j < visibleLast; ++j)
 				GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + cached[j].x, 16.0f + cached[j].y);
-			GPU_FlushBlitBuffer();
+			GPU_SubmitFrame();
 		}
 	}));
 	finishBenchmarkWork(target);
@@ -6832,7 +6839,7 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 		for (int i = 0; i < iterations; ++i) {
 			for (int j = visibleFirst; j < visibleLast; ++j)
 				GPU_Blit(textImage, nullptr, targetSurface, 16.0f + cached[j].x + 55.0f, 16.0f + cached[j].y + 13.0f);
-			GPU_FlushBlitBuffer();
+			GPU_SubmitFrame();
 		}
 	}));
 	finishBenchmarkWork(target);
@@ -6852,7 +6859,7 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 				GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + x, 16.0f + y);
 				GPU_Blit(textImage, nullptr, targetSurface, 16.0f + x + ml, 16.0f + y + mt);
 			}
-			GPU_FlushBlitBuffer();
+			GPU_SubmitFrame();
 		}
 	});
 	printBenchmarkResult(benchmarkOutput.file, "musicbox_full_frame_uncached", iterations, fullUncachedMs);
@@ -6867,7 +6874,7 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 				GPU_Blit(bgImage, nullptr, targetSurface, 16.0f + c.x, 16.0f + c.y);
 				GPU_Blit(textImage, nullptr, targetSurface, 16.0f + c.x + c.textMarginLeft, 16.0f + c.y + c.textMarginTop);
 			}
-			GPU_FlushBlitBuffer();
+			GPU_SubmitFrame();
 		}
 	});
 	printBenchmarkResult(benchmarkOutput.file, "musicbox_full_frame_cached", iterations, fullCachedMs);
@@ -6889,7 +6896,7 @@ int SDLCALL GPU_RunMusicBoxBenchmark(int iterations, int width, int height, cons
 				auto &c = cached[j];
 				GPU_Blit(textImage, nullptr, targetSurface, 16.0f + c.x + c.textMarginLeft, 16.0f + c.y + c.textMarginTop);
 			}
-			GPU_FlushBlitBuffer();
+			GPU_SubmitFrame();
 		}
 	});
 	printBenchmarkResult(benchmarkOutput.file, "musicbox_full_frame_reordered", iterations, fullReorderedMs);
@@ -7293,8 +7300,10 @@ int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const ch
 	finishBenchmarkWork(uploadTarget);
 
 	printBenchmarkResult(benchmarkOutput.file, "clear_full_submit", iterations, benchmarkMs([&]() {
-		                     for (int i = 0; i < iterations; ++i)
+		                     for (int i = 0; i < iterations; ++i) {
 			                     GPU_ClearRGBA(targetSurface, static_cast<Uint8>(i), static_cast<Uint8>(i * 3), static_cast<Uint8>(i * 7), 255);
+			                     GPU_SubmitFrame();
+		                     }
 	                     }));
 	finishBenchmarkWork(target);
 
@@ -7308,8 +7317,10 @@ int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const ch
 	const GPU_Rect rect{17.0f, 19.0f, 256.0f, 256.0f};
 	const SDL_Color rectColor{64, 128, 192, 255};
 	printBenchmarkResult(benchmarkOutput.file, "clear_rect_256_submit", iterations, benchmarkMs([&]() {
-		                     for (int i = 0; i < iterations; ++i)
+		                     for (int i = 0; i < iterations; ++i) {
 			                     GPU_RectangleFilled2(targetSurface, rect, rectColor);
+			                     GPU_SubmitFrame();
+		                     }
 	                     }));
 	finishBenchmarkWork(target);
 
@@ -7318,7 +7329,7 @@ int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const ch
 			                     const float x = 128.0f + static_cast<float>((i * 37) % std::max(1, width - 256));
 			                     const float y = 128.0f + static_cast<float>((i * 53) % std::max(1, height - 256));
 			                     GPU_Blit(source, nullptr, targetSurface, x, y);
-			                     GPU_FlushBlitBuffer();
+			                     GPU_SubmitFrame();
 		                     }
 	                     }));
 	finishBenchmarkWork(target);
@@ -7329,15 +7340,17 @@ int SDLCALL GPU_RunSDL3Benchmark(int iterations, int width, int height, const ch
 			                     const float y = 128.0f + static_cast<float>((i * 53) % std::max(1, height - 256));
 			                     GPU_Blit(source, nullptr, targetSurface, x, y);
 		                     }
-		                     GPU_FlushBlitBuffer();
+		                     GPU_SubmitFrame();
 	                     }));
 	finishBenchmarkWork(target);
 
 	printBenchmarkResult(benchmarkOutput.file, "triangle_batch_1024_quads_submit", iterations, benchmarkMs([&]() {
-		                     for (int i = 0; i < iterations; ++i)
+		                     for (int i = 0; i < iterations; ++i) {
 			                     GPU_TriangleBatch(source, targetSurface, static_cast<unsigned short>(triangleValues.size() / 4),
 			                                       triangleValues.data(), static_cast<unsigned int>(triangleIndices.size()),
 			                                       triangleIndices.data(), GPU_BATCH_XY_ST);
+			                     GPU_SubmitFrame();
+		                     }
 	                     }));
 	finishBenchmarkWork(target);
 

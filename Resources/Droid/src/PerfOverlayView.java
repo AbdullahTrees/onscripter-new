@@ -108,8 +108,10 @@ final class PerfOverlayView extends View {
 
     @Override
     protected void onDetachedFromWindow() {
+        // Android clears its attached state after this callback returns.
+        polling = false;
+        removeCallbacks(poll);
         super.onDetachedFromWindow();
-        updatePolling();
     }
 
     @Override
