@@ -283,7 +283,12 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath, bool fromO
 				} else {
 					argc--;
 					argv++;
-					sendToLog(LogLevel::Error, "Ignoring next attempt to redefine root path from %s to %s!\n", ons.getPath(0), argv[0]);
+					// ons.cfg stores the root it was saved with, so seeing the same
+					// path again after --root is the normal case, not a conflict.
+					auto spath = FileIO::safePath(argv[0], true);
+					if (std::strcmp(spath, ons.getPath(0)) != 0)
+						sendToLog(LogLevel::Error, "Ignoring next attempt to redefine root path from %s to %s!\n", ons.getPath(0), argv[0]);
+					freearr(&spath);
 				}
 			} else if (!std::strcmp(argv[0] + 1, "s") || !std::strcmp(argv[0] + 1, "-save")) {
 				argc--;
@@ -609,8 +614,16 @@ static bool parseOptionFile(const char *filename, bool &hasArchivePath) {
 	bool withinstr     = false;
 	bool withincomment = false;
 	bool leadingdashes = true;
+	// A value runs from its '=' to the end of the line, so a path with spaces
+	// stays one argument. The engine writes this file itself (operate_config
+	// save) without quoting anything, the --root path included.
+	bool withinvalue   = false;
 
-	auto appendArgument = [&arguments, &currarg, &lastend, &withinstr, &leadingdashes]() {
+	auto appendArgument = [&arguments, &currarg, &lastend, &withinstr, &leadingdashes, &withinvalue]() {
+		if (withinvalue) {
+			while (!currarg.empty() && (currarg.back() == ' ' || currarg.back() == '\t'))
+				currarg.pop_back();
+		}
 		if (!lastend && !currarg.empty()) {
 			lastend   = true;
 			withinstr = false;
@@ -625,12 +638,19 @@ static bool parseOptionFile(const char *filename, bool &hasArchivePath) {
 		if (lastend && (ch == ';' || ch == '#'))
 			withincomment = true;
 
-		if ((!withinstr && !withincomment && (ch == '=' || ch == ' ' || ch == '\t')) ||
-		    ch == '\0' || ch == '\r' || ch == '\n') {
+		const bool lineEnd = ch == '\0' || ch == '\r' || ch == '\n';
+		if (withinvalue && !lineEnd) {
+			// Spaces after the '=' are not part of the value
+			if (!withincomment && !(currarg.empty() && (ch == ' ' || ch == '\t'))) {
+				lastend = false;
+				currarg += ch;
+			}
+		} else if ((!withinstr && !withincomment && (ch == '=' || ch == ' ' || ch == '\t')) || lineEnd) {
 			withincomment = false;
 			appendArgument();
 			// If the argument is a=b, then it should become --a b
 			leadingdashes = ch != '=';
+			withinvalue   = ch == '=';
 		} else if (!withincomment) {
 			lastend = false;
 			currarg += ch;
