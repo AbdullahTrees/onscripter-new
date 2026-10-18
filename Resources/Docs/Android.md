@@ -1315,9 +1315,23 @@ and program changes — materialise the queue first. The same draws happen in th
 same order, so this is pixel-identical by construction; the built-in
 benchmark's upload, draw and readback validation is the intended check. It also
 removes the copy pass from between render passes, which is what makes the
-render-pass merge above possible. Smoke-tested on the Redmi Note 11 (Adreno):
-the title screen and opening video render correctly, the video holding 60 fps.
-The novel-section measurements are still to be taken.
+render-pass merge above possible.
+
+Measured on the Redmi Note 11 (Adreno 610), loaded novel scene (save slot 2),
+with the frame and pool state settled. Two samples per build:
+
+| | Before | After |
+|---|---|---|
+| Engine loop CPU | 28–29% of a core | 23–27% |
+| Process CPU | 58–60% | 51–57% |
+| TOTAL PSS | 324.5 MB | 316.9 MB |
+| Native heap | 163.3 MB | 153.1 MB |
+| Graphics | 107.5 MB | 110.2 MB |
+| EGL mtrack | 82.8 MB | 82.8 MB |
+
+FPS stayed at the 60 fps cap, frame time at 16.6–16.7 ms, and the scene was
+visually identical. The memory figures are one session per build, so treat them
+as directional until a second pair is run; the CPU figures are two samples each.
 
 **Batch texture uploads during loading.** *Unmeasured.* `uploadImageRows`
 submits as soon as each range has been mapped and copied, so a scene change
