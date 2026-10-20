@@ -1483,24 +1483,43 @@ build from `/proc/<pid>/task/<tid>/stat` and `voluntary_ctxt_switches`:
 | Reported track latency | 82.7 ms (`F1`, fast track) | 105.4–126.3 ms (normal track) |
 | AAudio MMAP endpoints | 0 | 0 |
 
-The fast track is lost with the hint off, and the track reports 22–44 ms more
-output latency. It is not on AAudio's MMAP path in either mode, so low latency
+The fast track is lost with the hint off, and on the Pad the track reports
+22–44 ms more output latency. It is not on AAudio's MMAP path in either mode, so low latency
 buys only the fast mixer's shorter path; SDL's fixed 20 ms callback buffer still
 dominates.
 
 The latency matters because `AudioBridge::playbackTimeNanos` starts the video
-clock when the mixer first pulls the video's audio, not when it is heard:
-pictures already run about one output latency (82.7 ms) ahead of their sound.
-The normal path would push that to 105–126 ms.
+clock when the mixer first pulls the video's audio, not when it is heard, so
+pictures lead their sound by the whole output path. The track latency above is
+AudioFlinger's estimate and leaves out SDL's own buffer, so it understates that
+lead. Measured instead with a temporary shim in `SDL_aaudio.c`, which compared
+each mix against `AAudioStream_getTimestamp`, from the engine's mix to the
+speaker (2026-10-19, title screen with music):
+
+| | Low latency | Normal path |
+|---|---|---|
+| OnePlus Pad (MediaTek) | 141–143 ms | 144–163 ms |
+| Redmi Note 11 (Qualcomm) | 118–120 ms | 225–267 ms |
+
+With low latency on, the Pad's ~142 ms is SDL's buffer (3 slots of 20 ms, 2
+kept full: 40 ms), AAudio's stream buffer (2 × 20 ms, full: 40 ms), the fast
+mixer (42.7 ms) and about 20 ms in the vendor's path; the Redmi's fast mixer
+is 21 ms. Both 40 ms buffers follow SDL's 20 ms default period, because the
+SDL_mixer compatibility layer drops the engine's `--audiobuffer` size
+(`Mix_OpenAudioDevice` ignores `chunksize`). Off, the Pad routes the game to
+its primary output and the total barely moves. The Redmi routes it to the
+deep-buffer output (`AUDIO_OUTPUT_FLAG_DEEP_BUFFER`, 40 ms periods, ~147 ms
+hardware writes), which roughly doubles the lead. Which output a stream gets
+is the device's policy, not the engine's.
 
 **Kept, with a config switch.** The Android launcher passes `0`; hands-on
-comparison on the Pad found no perceptible difference in audio or video sync,
-and the CPU saving is real. Add `audio-low-latency=1` to `ons.cfg` to restore
-the fast track and its 80–83 ms latency. The normal path's reported latency is
-22–44 ms higher; `AudioBridge::playbackTimeNanos` could subtract the measured
-output latency to remove both that and today's 82.7 ms picture-ahead offset,
-but that changes video timing and is not needed unless an offset becomes
-visible.
+comparison on the Pad found no perceptible difference, which matches the
+measurement there. Qualcomm devices like the Redmi pay about 120 ms of extra
+picture lead for the CPU saving; `audio-low-latency=1` in `ons.cfg` restores
+the fast track. The full fix is for the video clock to subtract the measured
+output latency, which the shim shows SDL can report with a small patch. That
+would remove the 120–140 ms lead on every device and leave the low-latency
+choice as a pure CPU and battery trade.
 Android-only.
 
 **The engine thread reports its frame work to Android's performance-hint API.**
