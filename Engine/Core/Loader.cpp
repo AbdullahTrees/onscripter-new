@@ -561,27 +561,22 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath, bool fromO
 				argv++;
 				ons.ons_cfg_options["system-offset-y"] = argv[0];
 			} else if (fromOptionFile) {
-				// Configuration files may carry keys from another build or a
-				// newer version. Ignore them; consume the value emitted for a
-				// key=value pair so it cannot be mistaken for an archive path
-				// or interpreted as another option.
+				// Each configuration entry is parsed separately. Ignore its
+				// entire value, even if it looks like another option.
 				sendToLog(LogLevel::Info, "Ignoring unknown configuration key %s\n", argv[0]);
-				if (argc > 2 && argv[1][0] != '-') {
-					argc--;
-					argv++;
-				}
+				return;
 			} else {
 				char errstr[256];
 				std::snprintf(errstr, sizeof(errstr), "unknown option %s", argv[0]);
 				ons.errorAndCont(errstr, nullptr, "Command-Line Issue", true);
 			}
+		} else if (fromOptionFile) {
+			sendToLog(LogLevel::Info, "Ignoring unexpected configuration argument %s\n", argv[0]);
 		} else if (!hasArchivePath) {
 			hasArchivePath = true;
 			ons.setArchivePath(argv[0]);
 			argc--;
 			argv++;
-		} else if (fromOptionFile) {
-			sendToLog(LogLevel::Info, "Ignoring unexpected configuration argument %s\n", argv[0]);
 		} else {
 			optionHelp();
 		}
@@ -628,10 +623,22 @@ static bool parseOptionFile(const char *filename, bool &hasArchivePath) {
 			lastend   = true;
 			withinstr = false;
 			// Arguments names should start with with two leading dashes
-			auto arg = copystr(((leadingdashes ? "--" : "") + currarg).c_str());
+			auto arg = copystr(((leadingdashes && currarg.front() != '-' ? "--" : "") + currarg).c_str());
 			arguments.emplace_back(arg);
 			currarg.clear();
 		}
+	};
+
+	auto parseEntry = [&]() {
+		if (arguments.size() > 1) {
+			// Only a known valued option may consume the entry's value. Values
+			// of unknown keys and flags must never be validated as more options.
+			const int count = arguments.size() > 2 && CommandLine::optionRequiresValue(arguments[1]) ? 3 : 2;
+			parseOptions(count, arguments.data(), hasArchivePath, true);
+		}
+		for (auto &arg : arguments)
+			freearr(&arg);
+		arguments.resize(1);
 	};
 
 	for (auto &ch : fbuf) {
@@ -658,16 +665,16 @@ static bool parseOptionFile(const char *filename, bool &hasArchivePath) {
 
 		if (ch == '\'' || ch == '\"')
 			withinstr = !withinstr;
+		if (lineEnd) {
+			parseEntry();
+			withinstr = false;
+		}
 	}
 
 	// If we still have something
 	appendArgument();
 
-	// now parse the options
-	if (arguments.size() > 1 && arguments[1])
-		parseOptions(static_cast<int>(arguments.size()), arguments.data(), hasArchivePath, true);
-	for (auto &arg : arguments)
-		freearr(&arg);
+	parseEntry();
 	return true;
 }
 

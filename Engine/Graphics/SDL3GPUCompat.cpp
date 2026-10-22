@@ -395,6 +395,14 @@ void discardPendingDraws() {
 
 bool materializePendingDraws();
 
+bool finishPendingDraw() {
+	// Queued render passes count toward the same limit as recorded passes.
+	// Otherwise a long run without a flip can grow the vertex arrays forever.
+	if (frameCommandPasses + pendingDraws.size() + 1 >= maxDeferredPasses)
+		return materializePendingDraws();
+	return true;
+}
+
 int nextUniformLocation{1};
 #if defined(ONS_USE_SDL3_SHADERCROSS)
 bool shaderCrossInitialized{false};
@@ -2763,7 +2771,8 @@ bool uploadImageRows(GPU_Image *image,
 		// threads have no shared buffer and submit their copy at once.
 		bool submitted = true;
 		if (commands == frameCommands) {
-			frameUploadBytes += uploadPitch * count;
+			// Cycling retains the whole allocation, including unused capacity.
+			frameUploadBytes += textureUploadBuffer.capacity;
 			submitted = finishCommandBuffer(commands, 1);
 			if (submitted && frameUploadBytes >= maxDeferredUploadBytes)
 				submitted = submitFrameCommandBuffer();
@@ -4287,7 +4296,7 @@ bool queueNativeSolidRect(GPU_Target *target, const SDL_Rect &bounds, SDL_Color 
 	pending.drawGroups.push_back(SDL3GPUNativeBlitBatch::DrawGroup{
 	    solidWhiteTexture, sampler, 0, pending.indexCount, pending.vertexCount, telemetrySource});
 	pendingDraws.push_back(std::move(pending));
-	return true;
+	return finishPendingDraw();
 }
 
 bool nativeSolidRect(GPU_Target *target, const SDL_Rect &bounds, SDL_Color color) {
@@ -4603,7 +4612,7 @@ bool flushNativeTriangleBatch() {
 	pendingDraws.push_back(std::move(pending));
 
 	resetNativeTriangleBatch();
-	return true;
+	return finishPendingDraw();
 }
 
 bool nativeTriangleBatchMatches(GPU_Image *image,
@@ -4748,7 +4757,7 @@ bool flushNativeBlitBatchOnly() {
 	pendingDraws.push_back(std::move(pending));
 
 	resetNativeBlitBatch();
-	return true;
+	return finishPendingDraw();
 }
 
 bool materializePendingDraws() {

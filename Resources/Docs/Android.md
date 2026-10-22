@@ -1201,30 +1201,11 @@ after resume`. The rebuild happens on the first flip after resume, and an idle
 screen has nothing to flip. Single observation, and worth re-measuring now that a
 failed swapchain reclaim is retried rather than abandoned.
 
-**A game folder whose path contains spaces is truncated when it comes from
-`ons.cfg`.** Options in that file go through the same parser as argv, and the
-parser splits on whitespace, so a `root=` line naming a real folder produces a
-truncated path plus one bogus option per remaining word. Found on a tablet whose
-game lives in `.../Umineko When They Cry (Project Umineko)`:
-
-```
-Ignoring next attempt to redefine root path from .../Umineko When They Cry (Project Umineko)/
-                                             to .../Umineko!
-***[Warning] Command-Line Issue: unknown option --When ***
-***[Warning] Command-Line Issue: unknown option --They ***
-***[Warning] Command-Line Issue: unknown option --Cry ***
-```
-
-It is masked on Android rather than absent. `ONSActivity` passes `--root` on
-argv, argv is parsed first, and the engine refuses to redefine a root it already
-has -- so the truncated value loses and the game runs. Nothing arranged that:
-remove the argv route, or reach any other path-valued option this way, and the
-truncation stands. On desktop, where `ons.cfg` is the primary route, it would
-take effect directly.
-
-Quoting is the obvious fix, but note that fixing it turns a currently-ignored
-line into an effective one, which changes behaviour for anyone whose `ons.cfg`
-has been silently half-ignored until now.
+**Configuration paths with spaces are fixed.** A `key=value` entry now keeps
+the value through the end of its line, including spaces. Entries are parsed
+separately, so a missing value cannot consume the next setting, and unknown
+keys are ignored together with their values. A saved `root=` matching the
+launcher's `--root` no longer produces a redefinition warning.
 
 ### Performance
 

@@ -7,6 +7,9 @@ namespace CommandLine {
 bool optionRequiresValue(std::string_view option) {
 	static constexpr std::array options{
 	    "--audiodriver", "--audiobuffer", "--audioformat", "--renderer-blacklist",
+#ifdef DROID
+	    "--audio-low-latency",
+#endif
 	    "--prefer-renderer", "--registry", "--dll", "-r", "--root", "--tmp-root",
 	    "-s", "--save", "--window-width", "--gameid", "--nsa-offset", "--automode-time",
 	    "--voicedelay-time", "--voicewait-time", "--final-voicedelay-time", "--game-script",
