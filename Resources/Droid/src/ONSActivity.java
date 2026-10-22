@@ -297,7 +297,11 @@ public class ONSActivity extends SDLActivity implements TouchInput.SurfaceMapper
         // graphics/../video/masked/*.m2v -- MPEG-2, which is close to free to
         // decode in software. Only the 35 H.264 movies in video/1080p are
         // expensive, they play rarely, and a 720p set ships alongside them.
-        String[] arguments = new String[] { "--root", dir.getAbsolutePath(), "--hwdecoder", "off" };
+        // Audio does not need real-time latency here, and AAudio's low-latency
+        // mode costs a thread wake-up every 1.5 ms on this hardware. The game's
+        // ons.cfg can put it back with `audio-low-latency=1`; command-line
+        // options are parsed before the config file, so the config wins.
+        String[] arguments = new String[] { "--root", dir.getAbsolutePath(), "--hwdecoder", "off", "--audio-low-latency", "0" };
         Diag.i(C, "handing off to engine, argv " + Arrays.toString(arguments));
         return arguments;
     }

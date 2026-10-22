@@ -1201,30 +1201,11 @@ after resume`. The rebuild happens on the first flip after resume, and an idle
 screen has nothing to flip. Single observation, and worth re-measuring now that a
 failed swapchain reclaim is retried rather than abandoned.
 
-**A game folder whose path contains spaces is truncated when it comes from
-`ons.cfg`.** Options in that file go through the same parser as argv, and the
-parser splits on whitespace, so a `root=` line naming a real folder produces a
-truncated path plus one bogus option per remaining word. Found on a tablet whose
-game lives in `.../Umineko When They Cry (Project Umineko)`:
-
-```
-Ignoring next attempt to redefine root path from .../Umineko When They Cry (Project Umineko)/
-                                             to .../Umineko!
-***[Warning] Command-Line Issue: unknown option --When ***
-***[Warning] Command-Line Issue: unknown option --They ***
-***[Warning] Command-Line Issue: unknown option --Cry ***
-```
-
-It is masked on Android rather than absent. `ONSActivity` passes `--root` on
-argv, argv is parsed first, and the engine refuses to redefine a root it already
-has -- so the truncated value loses and the game runs. Nothing arranged that:
-remove the argv route, or reach any other path-valued option this way, and the
-truncation stands. On desktop, where `ons.cfg` is the primary route, it would
-take effect directly.
-
-Quoting is the obvious fix, but note that fixing it turns a currently-ignored
-line into an effective one, which changes behaviour for anyone whose `ons.cfg`
-has been silently half-ignored until now.
+**Configuration paths with spaces are fixed.** A `key=value` entry now keeps
+the value through the end of its line, including spaces. Entries are parsed
+separately, so a missing value cannot consume the next setting, and unknown
+keys are ignored together with their values. A saved `root=` matching the
+launcher's `--root` no longer produces a redefinition warning.
 
 ### Performance
 
@@ -1236,6 +1217,16 @@ of a moving one, before and after.
 Measurements are from the OnePlus Pad (MediaTek mt6983, Mali, 2800x2000 surface,
 1920x1080 canvas) in the reference scene described under *Measuring a
 performance change*, taken 2026-10-17. Percentages are of one core.
+
+The on-screen counter's CPU/loop figures are a live indicator, not a
+measurement. On the Pad, a 5-second `/proc` per-thread delta read 79.2% total
+and 33.6% `SDLThread` while the panel showed 68%/28%; on the Redmi the two
+agreed within a point. Use `/proc` task deltas, `simpleperf stat --app`,
+`dumpsys meminfo`, and `dumpsys gfxinfo` for decisions. `dumpsys meminfo`
+categories are vendor-specific: Adreno reports under `EGL mtrack`/`Graphics`
+while Mali reports under `GL mtrack`, so never compare those counters across
+vendors. The Pad's CPU/GPU sensors read about 94°C with `mStatus=4` during
+these runs (skin 44°C, OS thermal status 0); repeat A/B work on a cool device.
 
 **Where the time goes now.** Since each frame's drawing shares one command buffer
 (below), the reference scene runs at 72–73% of a core in total. Of that,
@@ -1297,9 +1288,85 @@ loads and stores its whole target, about 8 MB each way for the 1920x1080 HUD. A
 batch ends on any change of target, pipeline (blend mode, blending on or off,
 blit or triangle program), viewport or scissor, and on every `GPU_ClearRGBA`,
 `GPU_FreeImage` or shader activation. Pipeline changes are legal inside one
-render pass; only a target change needs a new pass. Keeping consecutive batches
-to the same target in one render pass is the next step on this path, and it is
-pixel-identical by construction, since the same draws happen in the same order.
+render pass; only a target change needs a new pass. Merging consecutive batches
+to the same target was tried and rejected: it is pixel-identical by
+construction, but it raised Mali memory in the matched A/B (see *Rejected, with
+numbers*, below).
+
+**Queued draws share one vertex upload.** Blit, triangle and solid-rect draws
+are queued as they are produced and recorded at the next point that depends on
+ordering (`materializePendingDraws` in `SDL3GPUCompat.cpp`). One copy pass then
+carries the vertices of every queued batch before the first of their render
+passes, and each batch binds its own offset in the shared vertex and index
+buffers. Previously every batch mapped a transfer buffer, ran a copy pass with
+`cycle = true` and ended with its own render pass, so a frame took a fresh copy
+per batch and those copies counted against the memory the periodic drain exists
+to bound.
+
+The points that record the queue are the frame's submission and anything that
+depends on ordering: clears, texture uploads, copies, readbacks, image frees,
+and sampler or program changes. These are the same places that ended a batch
+before, so a flush costs no more than it did, and with nothing queued it is
+three empty checks. A frame is therefore not one upload but one per run of
+draws between those points, typically two or three, since the HUD clear and the
+screen clear each split it. Deferred clears, below, would merge most of them.
+
+The same draws happen in the same order, so this is pixel-identical by
+construction; the built-in benchmark's upload, draw and readback validation is
+the intended check. It also removes the copy pass from between render passes,
+which is what made the render-pass merge experiment possible.
+
+Measured on the Redmi Note 11 (Adreno 610), loaded novel scene (save slot 2),
+with the frame and pool state settled. Two samples per build:
+
+| | Before | After |
+|---|---|---|
+| Engine loop CPU | 28–29% of a core | 23–27% |
+| Process CPU | 58–60% | 51–57% |
+| TOTAL PSS | 324.5 MB | 316.9 MB |
+| Native heap | 163.3 MB | 153.1 MB |
+| Graphics | 107.5 MB | 110.2 MB |
+| EGL mtrack | 82.8 MB | 82.8 MB |
+
+FPS stayed at the 60 fps cap, frame time at 16.6–16.7 ms, and the scene was
+visually identical. The memory figures are one session per build, so treat them
+as directional until a second pair is run; the CPU figures are two samples each.
+
+The same change on the OnePlus Pad (Mali-G710, 2800×2000), in its normal novel
+scene (save slot 1, Episode 5 prologue), two samples per build:
+
+| | Before | After |
+|---|---|---|
+| Engine loop CPU | 29–33% of a core | 27–28% |
+| Process CPU | 69–71% | 69% |
+| TOTAL PSS | 699.3 MB | 604.8 MB |
+| GL mtrack | 474.3 MB | 375.5 MB |
+| Native heap | 162.5 MB | 161.9 MB |
+| Engine texture census | 113 MB | 113 MB |
+
+The Pad is the decisive result: the per-batch `cycle = true` vertex buffers were
+about 99 MB of GL mtrack there, and PSS fell by 94.5 MB. The Adreno driver
+accounts the same buffers under EGL mtrack/Graphics instead, so the Redmi's PSS
+change is only about 7.6 MB; do not compare GL mtrack across the two vendors.
+
+A cross-device check on save slot 1 with the after build: the Pad ran the engine
+loop at 27–28% and the Redmi at 33%, so the Pad's engine loop is not worse
+despite 2.16× the pixels. Its higher total CPU and memory sit below the engine:
+GL mtrack 375.5 MB against the Redmi's EGL 82.8 MB + Graphics 114.9 MB, with the
+engine's own texture census at 113–122 MB on both.
+
+**Texture uploads are batched.** `uploadImageRows` records copies into the
+shared command buffer and submits when the batch reaches 8 MB of staging, or
+at the existing 32-pass cap, instead of submitting after every mapped range.
+The byte cap bounds the copies SDL keeps alive for in-flight staging buffers;
+uploads from other threads have no shared buffer and still submit at once. On
+the PC, an identical 1194-upload run (137,694,976 bytes) made 4120
+command-buffer submissions against 5111 before the change: 991 fewer, a 19%
+drop for that run. The benchmark's texture upload/render/readback validation
+passes, and both Adreno and Mali devices render the title video and menus
+correctly. Load wall-clock and frame-time traces are still unmeasured; the
+129 ms title-load frame should be re-checked with a frame-time trace on the
+Pad.
 
 **The rain is drawn over the whole screen and then mostly covered.** In scenes
 with a retained rain layer, such as the reference hallway where rain falls outside
@@ -1327,7 +1394,8 @@ Two improvements, both pixel-identical:
   exactly. Prove it with a screenshot diff of the hallway scene, and recompute the
   box whenever the band is rebuilt.
 - **Keep the three steps in one render pass.** This follows from keeping
-  same-target batches in one render pass, above.
+  same-target batches in one render pass, above; that general merge was
+  rejected on memory grounds, so the rain case would need its own experiment.
 
 Drawing the rain at a lower rate than the scene would also save work, but it
 changes the motion, so it breaks the invariant. Not an option.
@@ -1342,14 +1410,26 @@ what defeats it. Pixel-identical if the dirty rect is right; the risk is the
 effects that touch the HUD (quakes, fades, wipes, text box growth), so it needs a
 regression pass over them.
 
+**Skip unchanged frames on static screens.** *Overlaps the HUD item above; wait
+with the parked idle-saving work.* `nextUpdateNanos` (`Event.cpp:1087-1100`)
+already decides each frame whether anything needs drawing. In text mode, though,
+`addTextWindowClip(before_dirty_rect_hud)` (`Event.cpp:2736`) marks the text
+window dirty every frame, so it always redraws. If the cursor animates slower
+than 60 fps, frames between its changes could skip the draw and the present
+entirely. The screen would look exactly the same, unlike lowering the frame
+rate. Prove it by holding a static text screen with the cursor hidden and with
+it animating, and comparing frame hashes and the cursor's visible cadence.
+
 **Each flip clears the whole screen target, and the HUD is cleared each frame.**
 `clearWholeTarget(screen_target)` after every `GPU_Flip`, and the HUD clear in
-`refreshHudTo`, each cost a submission, and each forces the pending batch out
-first. That is most of `GPU_ClearRGBA`'s 17%. A deferred clear avoids the
-submission while keeping the result: mark the target as pending a clear and use
-`LOADOP_CLEAR` on its next render pass. Any readback, upload or sample of the
-target must apply the pending clear first. Pixel-identical if those paths are all
-covered.
+`refreshHudTo`, are each a render pass of their own. Before drawing shared a
+command buffer, each was also a submission, and that was most of
+`GPU_ClearRGBA`'s 17% in the breakdown above. Each clear still records the queued
+draws first, so it splits the frame's vertex upload in two. A deferred clear
+removes both the pass and the split while keeping the result: mark the target as
+pending a clear and use `LOADOP_CLEAR` on its next render pass. Any readback,
+upload or sample of the target must apply the pending clear first.
+Pixel-identical if those paths are all covered.
 
 **Presenting costs about a third of the engine thread.** `GPU_Flip` blits the
 1920x1080 canvas up to the 2800x2000 swapchain, then `vkQueuePresentKHR` spends
@@ -1359,38 +1439,81 @@ filtering is not the engine's, so this changes pixels. It breaks the invariant
 unless the result can be shown identical, and it almost certainly cannot.
 Recorded so nobody tries it without knowing.
 
-**Audio runs in low-latency mode for no benefit, costing about 11% of a core.**
-*Low priority.* The engine fixes above are worth far more, and this one needs an
-audio/video timing check before it can ship.
+**Audio uses the normal-latency path by default on Android, saving ~7% of a
+core.** SDL 3.2's AAudio backend requests `LOW_LATENCY` unless the hint
+`SDL_ANDROID_LOW_LATENCY_AUDIO` is `0` (`SDL_aaudio.c`), and the engine
+previously set no hint. It now reads `audio-low-latency` from the game config
+and sets the hint before `SDL_INIT_AUDIO`. When the entry is absent the hint is
+left at SDL's enabled default, so PC and Linux keep low latency; the Android
+launcher passes `--audio-low-latency 0` as its default, and an `ons.cfg` entry
+overrides it because command-line options are parsed first. The engine logs
+`Audio low-latency mode: on|off (<source>)` before `SDL_INIT_AUDIO`, so the
+effective mode is visible in `out.txt` and logcat. The option and its log line
+exist only in Android builds; other builds neither list nor accept
+`--audio-low-latency` on the command line, and an `audio-low-latency` entry in a
+config file is ignored like any unknown configuration key.
 
-Nobody chose this mode. It is SDL's default: since SDL 3.2 the AAudio backend
-calls `AAudioStreamBuilder_setPerformanceMode(LOW_LATENCY)` unless the hint
-`SDL_ANDROID_LOW_LATENCY_AUDIO` is `0` (`SDL_aaudio.c`). The engine sets no audio
-hint at all.
+Measured on the Pad's title menu with BGM playing, two 10-second samples per
+build from `/proc/<pid>/task/<tid>/stat` and `voluntary_ctxt_switches`:
 
-On the OnePlus Pad it buys nothing:
+| | Low latency (default) | Hint `0` |
+|---|---|---|
+| `AudioTrack` CPU | 9.2–9.4% of a core | 1.5–2.1% |
+| `AudioTrack` wake-ups | 771–774/s | 97–100/s |
+| SDL mixer CPU | 0.9% | 0.9–1.5% |
+| Reported track latency | 82.7 ms (`F1`, fast track) | 105.4–126.3 ms (normal track) |
+| AAudio MMAP endpoints | 0 | 0 |
 
-- `dumpsys media.audio_flinger` shows the game's track as `F1`, a fast-mixer
-  track (mixer period 5.33 ms).
-- It is not on AAudio's MMAP path: `dumpsys media.aaudio` lists no streams.
-- The track still reports 82.7 ms of latency. SDL's buffer is a fixed 20 ms per
-  callback with 40 ms capacity whatever the mode, and that dominates.
-- Meanwhile the `AudioTrack` thread wakes about 680 times a second (once every
-  1.5 ms, about thirty times per SDL callback) for about 11% of a core. SDL's
-  mixer thread uses under 1% at 62 wake-ups a second.
+The fast track is lost with the hint off, and on the Pad the track reports
+22–44 ms more output latency. It is not on AAudio's MMAP path in either mode, so low latency
+buys only the fast mixer's shorter path; SDL's fixed 20 ms callback buffer still
+dominates.
 
-Turning it off changes no pixel. It can, however, change what is visible in
-video: `AudioBridge::playbackTimeNanos` starts the video clock when the mixer
-first pulls the video's audio, not when it is heard, so pictures already run
-about one output latency (83 ms) ahead of their sound. If the normal path's
-latency is larger, video runs further ahead.
+The latency matters because `AudioBridge::playbackTimeNanos` starts the video
+clock when the mixer first pulls the video's audio, not when it is heard, so
+pictures lead their sound by the whole output path. The track latency above is
+AudioFlinger's estimate and leaves out SDL's own buffer, so it understates that
+lead. Measured instead with a temporary shim in `SDL_aaudio.c`, which compared
+each mix against `AAudioStream_getTimestamp`, from the engine's mix to the
+speaker (2026-10-19, title screen with music):
 
-Do it as a measured experiment. Set the hint before audio opens, then compare
-the `AudioTrack` CPU and wake-ups and the reported track latency against the
-numbers above. If the latency holds, ship it. If it grows, either keep low
-latency, or have video sync subtract the measured output latency, which also
-removes today's 83 ms offset but changes video timing and needs sign-off.
+| | Low latency | Normal path |
+|---|---|---|
+| OnePlus Pad (MediaTek) | 141–143 ms | 144–163 ms |
+| Redmi Note 11 (Qualcomm) | 118–120 ms | 225–267 ms |
+
+With low latency on, the Pad's ~142 ms is SDL's buffer (3 slots of 20 ms, 2
+kept full: 40 ms), AAudio's stream buffer (2 × 20 ms, full: 40 ms), the fast
+mixer (42.7 ms) and about 20 ms in the vendor's path; the Redmi's fast mixer
+is 21 ms. Both 40 ms buffers follow SDL's 20 ms default period, because the
+SDL_mixer compatibility layer drops the engine's `--audiobuffer` size
+(`Mix_OpenAudioDevice` ignores `chunksize`). Off, the Pad routes the game to
+its primary output and the total barely moves. The Redmi routes it to the
+deep-buffer output (`AUDIO_OUTPUT_FLAG_DEEP_BUFFER`, 40 ms periods, ~147 ms
+hardware writes), which roughly doubles the lead. Which output a stream gets
+is the device's policy, not the engine's.
+
+**Kept, with a config switch.** The Android launcher passes `0`; hands-on
+comparison on the Pad found no perceptible difference, which matches the
+measurement there. Qualcomm devices like the Redmi pay about 120 ms of extra
+picture lead for the CPU saving; `audio-low-latency=1` in `ons.cfg` restores
+the fast track. The full fix is for the video clock to subtract the measured
+output latency, which the shim shows SDL can report with a small patch. That
+would remove the 120–140 ms lead on every device and leave the low-latency
+choice as a pure CPU and battery trade.
 Android-only.
+
+**The engine thread reports its frame work to Android's performance-hint API.**
+Each frame, `waitEvent` (`Event.cpp`) reports the work up to the frame's wait
+plus the flip after it, against a target of half a frame, so the CPU governor
+can run the core only as fast as the frame needs. The API arrived in Android 13
+and minSdk is 30, so it is looked up in `libandroid.so` at runtime. `dumpsys
+performance_hint` lists the session for the engine thread. On the OnePlus Pad's
+title screen it changed nothing measurable (engine thread 21–23% before, 24–25%
+after; cluster frequencies and presented frames unchanged), because the
+governor already ran those cores slowly there. Heavier scenes are unmeasured.
+The display side is separate and already done: `ONSActivity.preferSixtyHertz`
+asks for a 60 Hz mode, and the Pad's panel runs at 60 Hz in game.
 
 **Holding exactly 60 fps costs the tablet extra CPU.** The pacing change (pay
 back each frame's lateness) took the counter from 58–59 to a steady 60.0 fps.
@@ -1407,6 +1530,48 @@ GPU path costs more, while the old 58.5 fps drifted through all phases. On
 Windows the same change makes every build cheaper (120.0 fps at 120 Hz, less CPU).
 Every item above that cuts GPU work also cuts this cost.
 
+**Graphics memory is split by kind in `--sdl3-gpu-telemetry`.** The new
+`SDL3_GPU memory census` line reports render-target images/bytes, cached
+images/bytes, mipmapped images/bytes (a subset of the first two), CPU pixel
+bytes, and staging transfer/GPU bytes. The twelve largest live textures follow,
+with dimensions and the render-target marker.
+
+Title-screen results:
+
+| | Redmi (Adreno 610) | OnePlus Pad (Mali-G710) | PC (Vulkan) |
+|---|---|---|---|
+| Render targets | 30 / 150.2 MB | 30 / 151.0 MB | 32 / 158.0 MB |
+| Cached images | 6 / 12.6 MB | 3 / 4.0 MB | 9 / 32.2 MB |
+| Mipmapped | 0 | 0 | 0 |
+| Staging | 0.3 MB | 0.3 MB | 4.0 MB |
+| Total live textures | 162.8 MB | 155.0 MB | 190.2 MB |
+
+The engine's target allocation is nearly identical on the two Android devices
+despite the Pad's 2.16× larger surface, so the Pad's extra `GL mtrack` is below
+the engine: swapchain, fullscript and driver allocations, not texture targets.
+The largest images are the same everywhere: one 2048×4096 = 32 MB render
+target (the glyph atlas, sized by `GLYPH_ATLAS_W/H` in `GlyphAtlas.hpp`), six
+2172×1222 = 10.4 MB targets, and 1920×1080 canvas targets. The 2172×1222
+targets are the canvas/HUD/text/window and retained-rain bands, which are
+persistent compositing targets and cannot be freed; the glyph atlas is
+required for text and has a fixed size.
+
+**Texture memory is not the lever it looked like.** Mipmapped images are zero
+on all three platforms, staging is 0.3 MB on both devices (4.0 MB transiently
+on the PC), and every large texture is either a persistent compositing target or the
+fixed-size glyph atlas. Cached-image totals vary with scene state (4.0–32.2 MB
+across the samples above) and are ordinary image cache, not a leak. The old
+breakup cellforms resource is 384×24; it was ruled out as a memory factor.
+Further memory work has to come from target lifetime or from below the engine
+(driver/swapchain), not from texture formats or mipmaps.
+
+**First-use pipeline compilation is timed.** `SDL3_GPU pipeline created in N
+ms` is logged for every cache miss. On the PC it is 0.03–0.11 ms; on the Redmi
+(Adreno) 10.2–49.7 ms and on the Pad (Mali) 2.8–13.9 ms, with six pipelines
+created at startup. SDL's pinned GPU API exposes no pipeline cache, so there is
+nothing to persist without an SDL upgrade; the cost is real but small next to
+the load work.
+
 **Rejected, with numbers, so nobody retries them blind:**
 
 - **Waiting on the oldest submission fence instead of draining the GPU.** The
@@ -1421,6 +1586,16 @@ Every item above that cuts GPU work also cuts this cost.
   reverted on taste. It cannot fill its frame-time lows without a tick from the
   engine per presented frame, which conflicts with the counter belonging to the
   app.
+- **Same-target render-pass merging** (2026-10-18). Tried on top of queued draw
+  recording: it rendered identically, but at the matched save-slot-1 state it
+  raised Pad `GL mtrack` from 448.2 to 468.7 MB and PSS from 669.2 to 690.3 MB,
+  while `simpleperf` task-clock was unchanged (0.865 to 0.862 CPUs). On the
+  Redmi it saved about 4 MB PSS and 9 MB Graphics, which does not compensate on
+  the memory-constrained Pad. The drain still counts draws, so this is not the
+  backlog bound; the Mali driver appears to retain more when a pass spans many
+  pipeline/state changes. The patch is saved as
+  `DerivedData/render-pass-merge.patch`; revisit only with a GPU-side counter
+  and a workload where pass overhead matters.
 
 ### Features
 

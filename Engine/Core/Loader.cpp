@@ -127,6 +127,9 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 	printf("     --audiodriver dev            set the SDL_AUDIODRIVER to dev\n");
 	printf("     --audiobuffer size           set the audio buffer size in kB (default: 2)\n");
 	printf("     --audioformat format         set the audio format (choose from s8, u8, s16, u16, s32, f32)\n");
+#ifdef DROID
+	printf("     --audio-low-latency state    pass 0/1 or true/false to enable/disable AAudio low-latency mode (default: on)\n");
+#endif
 	printf("     --renderer-blacklist list    comma-separated list of disabled renderers (choose from Vulkan)\n");
 	printf("     --prefer-renderer name       try using this renderer first of all\n");
 #if defined(ONS_USE_SDL3)
@@ -195,7 +198,7 @@ void *__wrap_SDL_LoadObject(const char *sofile) {
 	ctrl.quit(0);
 }
 
-static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
+static void parseOptions(int argc, char **argv, bool &hasArchivePath, bool fromOptionFile) {
 	std::vector<std::string_view> arguments;
 	arguments.reserve(argc > 1 ? static_cast<size_t>(argc - 1) : 0);
 	for (int i = 1; i < argc; ++i)
@@ -230,6 +233,12 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
 				argc--;
 				argv++;
 				ons.ons_cfg_options["audioformat"] = argv[0];
+#ifdef DROID
+			} else if (!std::strcmp(argv[0] + 1, "-audio-low-latency")) {
+				argc--;
+				argv++;
+				ons.ons_cfg_options["audio-low-latency"] = argv[0];
+#endif
 			} else if (!std::strcmp(argv[0] + 1, "-renderer-blacklist")) {
 				argc--;
 				argv++;
@@ -274,7 +283,12 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
 				} else {
 					argc--;
 					argv++;
-					sendToLog(LogLevel::Error, "Ignoring next attempt to redefine root path from %s to %s!\n", ons.getPath(0), argv[0]);
+					// ons.cfg stores the root it was saved with, so seeing the same
+					// path again after --root is the normal case, not a conflict.
+					auto spath = FileIO::safePath(argv[0], true);
+					if (std::strcmp(spath, ons.getPath(0)) != 0)
+						sendToLog(LogLevel::Error, "Ignoring next attempt to redefine root path from %s to %s!\n", ons.getPath(0), argv[0]);
+					freearr(&spath);
 				}
 			} else if (!std::strcmp(argv[0] + 1, "s") || !std::strcmp(argv[0] + 1, "-save")) {
 				argc--;
@@ -546,11 +560,18 @@ static void parseOptions(int argc, char **argv, bool &hasArchivePath) {
 				argc--;
 				argv++;
 				ons.ons_cfg_options["system-offset-y"] = argv[0];
+			} else if (fromOptionFile) {
+				// Each configuration entry is parsed separately. Ignore its
+				// entire value, even if it looks like another option.
+				sendToLog(LogLevel::Info, "Ignoring unknown configuration key %s\n", argv[0]);
+				return;
 			} else {
 				char errstr[256];
 				std::snprintf(errstr, sizeof(errstr), "unknown option %s", argv[0]);
 				ons.errorAndCont(errstr, nullptr, "Command-Line Issue", true);
 			}
+		} else if (fromOptionFile) {
+			sendToLog(LogLevel::Info, "Ignoring unexpected configuration argument %s\n", argv[0]);
 		} else if (!hasArchivePath) {
 			hasArchivePath = true;
 			ons.setArchivePath(argv[0]);
@@ -588,28 +609,55 @@ static bool parseOptionFile(const char *filename, bool &hasArchivePath) {
 	bool withinstr     = false;
 	bool withincomment = false;
 	bool leadingdashes = true;
+	// A value runs from its '=' to the end of the line, so a path with spaces
+	// stays one argument. The engine writes this file itself (operate_config
+	// save) without quoting anything, the --root path included.
+	bool withinvalue   = false;
 
-	auto appendArgument = [&arguments, &currarg, &lastend, &withinstr, &leadingdashes]() {
+	auto appendArgument = [&arguments, &currarg, &lastend, &withinstr, &leadingdashes, &withinvalue]() {
+		if (withinvalue) {
+			while (!currarg.empty() && (currarg.back() == ' ' || currarg.back() == '\t'))
+				currarg.pop_back();
+		}
 		if (!lastend && !currarg.empty()) {
 			lastend   = true;
 			withinstr = false;
 			// Arguments names should start with with two leading dashes
-			auto arg = copystr(((leadingdashes ? "--" : "") + currarg).c_str());
+			auto arg = copystr(((leadingdashes && currarg.front() != '-' ? "--" : "") + currarg).c_str());
 			arguments.emplace_back(arg);
 			currarg.clear();
 		}
+	};
+
+	auto parseEntry = [&]() {
+		if (arguments.size() > 1) {
+			// Only a known valued option may consume the entry's value. Values
+			// of unknown keys and flags must never be validated as more options.
+			const int count = arguments.size() > 2 && CommandLine::optionRequiresValue(arguments[1]) ? 3 : 2;
+			parseOptions(count, arguments.data(), hasArchivePath, true);
+		}
+		for (auto &arg : arguments)
+			freearr(&arg);
+		arguments.resize(1);
 	};
 
 	for (auto &ch : fbuf) {
 		if (lastend && (ch == ';' || ch == '#'))
 			withincomment = true;
 
-		if ((!withinstr && !withincomment && (ch == '=' || ch == ' ' || ch == '\t')) ||
-		    ch == '\0' || ch == '\r' || ch == '\n') {
+		const bool lineEnd = ch == '\0' || ch == '\r' || ch == '\n';
+		if (withinvalue && !lineEnd) {
+			// Spaces after the '=' are not part of the value
+			if (!withincomment && !(currarg.empty() && (ch == ' ' || ch == '\t'))) {
+				lastend = false;
+				currarg += ch;
+			}
+		} else if ((!withinstr && !withincomment && (ch == '=' || ch == ' ' || ch == '\t')) || lineEnd) {
 			withincomment = false;
 			appendArgument();
 			// If the argument is a=b, then it should become --a b
 			leadingdashes = ch != '=';
+			withinvalue   = ch == '=';
 		} else if (!withincomment) {
 			lastend = false;
 			currarg += ch;
@@ -617,16 +665,16 @@ static bool parseOptionFile(const char *filename, bool &hasArchivePath) {
 
 		if (ch == '\'' || ch == '\"')
 			withinstr = !withinstr;
+		if (lineEnd) {
+			parseEntry();
+			withinstr = false;
+		}
 	}
 
 	// If we still have something
 	appendArgument();
 
-	// now parse the options
-	if (arguments.size() > 1 && arguments[1])
-		parseOptions(static_cast<int>(arguments.size()), arguments.data(), hasArchivePath);
-	for (auto &arg : arguments)
-		freearr(&arg);
+	parseEntry();
 	return true;
 }
 
@@ -829,7 +877,7 @@ int main(int argc, char **argv) {
 		performTerminate("Failed to obtain program arguments!");
 
 	//Firstly, read command line options
-	parseOptions(ons.argc, ons.argv, hasArchivePath);
+	parseOptions(ons.argc, ons.argv, hasArchivePath, false);
 
 #if defined(ONS_USE_SDL3)
 	if (ons.ons_cfg_options.find("sdl3-benchmark") != ons.ons_cfg_options.end()) {
